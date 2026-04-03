@@ -6,7 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.api.routes import health, requests, cases, agents, mcps, plans, runs, control, supervision
+from app.api.routes import (
+    health, requests, cases, agents, mcps, plans, runs,
+    control, supervision, approvals, audit, workflows,
+)
+from app.api.routes import settings as settings_routes
 
 settings = get_settings()
 
@@ -44,3 +48,7 @@ app.include_router(plans.router, prefix="/api", tags=["plans"])
 app.include_router(runs.router, prefix="/api", tags=["runs"])
 app.include_router(control.router, prefix="/api", tags=["control"])
 app.include_router(supervision.router, prefix="/api", tags=["supervision"])
+app.include_router(approvals.router, prefix="/api/approvals", tags=["approvals"])
+app.include_router(audit.router, prefix="/api", tags=["audit"])
+app.include_router(workflows.router, prefix="/api/workflow-definitions", tags=["workflows"])
+app.include_router(settings_routes.router, prefix="/api/settings", tags=["settings"])
