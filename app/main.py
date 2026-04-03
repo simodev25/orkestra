@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.api.routes import health, requests, cases, agents, mcps, plans, runs
+from app.api.routes import health, requests, cases, agents, mcps, plans, runs, control, supervision
 
 settings = get_settings()
 
@@ -42,3 +42,5 @@ app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(mcps.router, prefix="/api/mcps", tags=["mcps"])
 app.include_router(plans.router, prefix="/api", tags=["plans"])
 app.include_router(runs.router, prefix="/api", tags=["runs"])
+app.include_router(control.router, prefix="/api", tags=["control"])
+app.include_router(supervision.router, prefix="/api", tags=["supervision"])
