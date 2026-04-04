@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     STORAGE_BACKEND: str = "local"
     STORAGE_LOCAL_PATH: str = "./storage/documents"
 
+    # LLM Provider
+    LLM_PROVIDER: str = "ollama"  # "ollama", "openai", "mistral"
+    OLLAMA_HOST: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "mistral"
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "mistral-small-latest"
+    OPENAI_BASE_URL: str = "https://api.mistral.ai/v1"
+
     # Observability
     LOG_LEVEL: str = "INFO"
     PROMETHEUS_ENABLED: bool = False

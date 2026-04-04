@@ -19,6 +19,8 @@ dependencies = [
     "structlog>=24.0.0",
     "aiofiles>=24.0.0",
     "prometheus-client>=0.20.0",
+    "agentscope>=1.0.0",
+    "ollama>=0.4.0",
 ]
 
 [project.optional-dependencies]
