@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-ork-bg text-ork-text font-sans antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-ork-bg;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-ork-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ork-dim;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-ork-surface border border-ork-border rounded-lg;
+  }
+  .glass-panel-hover {
+    @apply glass-panel hover:border-ork-cyan/30 transition-colors duration-200;
+  }
+  .stat-value {
+    @apply text-2xl font-mono font-semibold tracking-tight;
+  }
+  .section-title {
+    @apply text-xs font-mono uppercase tracking-[0.2em] text-ork-muted;
+  }
+  .data-label {
+    @apply text-xs font-mono text-ork-dim;
+  }
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.1);
+  }
+  .glow-dot {
+    @apply w-2 h-2 rounded-full;
+    box-shadow: 0 0 8px currentColor;
+  }
+}
