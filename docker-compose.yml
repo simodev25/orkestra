@@ -24,7 +24,7 @@ services:
       POSTGRES_PASSWORD: orkestra
       POSTGRES_DB: orkestra
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     ports:
-      - "6380:6379"
+      - "6382:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -60,7 +60,7 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
-      - "8100:8000"
+      - "8200:8000"
     environment:
       ORKESTRA_DATABASE_URL: postgresql+asyncpg://orkestra:orkestra@postgres:5432/orkestra
       ORKESTRA_DATABASE_URL_SYNC: postgresql://orkestra:orkestra@postgres:5432/orkestra
@@ -93,7 +93,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "3100:3000"
+      - "3200:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://api:8000
     depends_on:
