@@ -10,6 +10,7 @@ from app.models.control import ControlDecision
 from app.models.approval import ApprovalRequest
 from app.models.audit import AuditEvent, EvidenceRecord, ReplayBundle
 from app.models.registry import AgentDefinition, MCPDefinition
+from app.models.mcp_catalog import OrkestraMCPBinding
 from app.models.settings import PolicyProfile, BudgetProfile
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "Run", "RunNode", "SubagentInvocation", "MCPInvocation",
     "ControlDecision", "ApprovalRequest", "AuditEvent", "EvidenceRecord",
     "ReplayBundle", "AgentDefinition", "MCPDefinition",
+    "OrkestraMCPBinding",
     "PolicyProfile", "BudgetProfile",
 ]

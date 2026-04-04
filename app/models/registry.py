@@ -1,6 +1,8 @@
 """AgentDefinition and MCPDefinition entities."""
 
-from sqlalchemy import String, Text, Integer, Boolean
+from datetime import datetime
+
+from sqlalchemy import String, Text, Integer, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,7 +28,12 @@ class AgentDefinition(BaseModel):
     cost_profile: Mapped[str] = mapped_column(String(20), default="medium")
     limitations: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     prompt_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    prompt_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     skills_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    skills_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_test_status: Mapped[str] = mapped_column(String(30), default="not_tested")
+    last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    usage_count: Mapped[int] = mapped_column(Integer, default=0)
     version: Mapped[str] = mapped_column(String(20), default="1.0.0")
     status: Mapped[str] = mapped_column(String(20), default=AgentStatus.DRAFT)
     owner: Mapped[str | None] = mapped_column(String(100), nullable=True)

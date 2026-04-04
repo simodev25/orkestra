@@ -16,7 +16,7 @@ const NAV = [
   { label: "Runs", href: "/runs", icon: Play },
   { section: "Registries" },
   { label: "Agents", href: "/agents", icon: Bot },
-  { label: "MCPs", href: "/mcps", icon: Wrench },
+  { label: "MCP Catalog", href: "/mcps", icon: Wrench },
   { section: "Governance" },
   { label: "Control", href: "/control", icon: Shield },
   { label: "Approvals", href: "/approvals", icon: CheckCircle },
