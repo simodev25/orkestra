@@ -62,6 +62,7 @@ services:
     ports:
       - "8200:8000"
     environment:
+      PYTHONPATH: /app
       ORKESTRA_DATABASE_URL: postgresql+asyncpg://orkestra:orkestra@postgres:5432/orkestra
       ORKESTRA_DATABASE_URL_SYNC: postgresql://orkestra:orkestra@postgres:5432/orkestra
       ORKESTRA_REDIS_URL: redis://redis:6379/0
@@ -75,6 +76,8 @@ services:
         condition: service_healthy
     volumes:
       - ./app:/app/app:ro
+      - ./migrations:/app/migrations:ro
+      - ./alembic.ini:/app/alembic.ini:ro
       - ./storage:/app/storage
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
