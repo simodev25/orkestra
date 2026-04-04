@@ -96,7 +96,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "3200:3000"
+      - "3300:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://api:8000
     depends_on:
