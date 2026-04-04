@@ -143,6 +143,11 @@ async def _execute_mcp_tool(mcp_id: str, action: str | None, kwargs: dict) -> st
 
     # Extract text from ToolResponse
     if hasattr(result, "content"):
-        texts = [block.text for block in result.content if hasattr(block, "text")]
-        return "\n".join(texts)
+        texts = []
+        for block in result.content:
+            if isinstance(block, dict):
+                texts.append(block.get("text", ""))
+            elif hasattr(block, "text"):
+                texts.append(block.text)
+        return "\n".join(texts) if texts else str(result)
     return str(result)
