@@ -41,6 +41,7 @@ export default function NewRequestPage() {
         criticality,
       });
       await api.submitRequest(created.id);
+      await api.convertToCase(created.id);
       setSuccess(true);
     } catch (err: any) {
       setError(err.message || "Failed to create request");

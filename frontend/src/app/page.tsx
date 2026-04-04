@@ -45,8 +45,9 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const activeAgents = agents.filter((a) => a.status === "active").length || 6;
-  const activeMcps = mcps.filter((m) => m.status === "active").length || 4;
+  const isDemo = !!error;
+  const activeAgents = isDemo ? 6 : agents.filter((a) => a.status === "active").length;
+  const activeMcps = isDemo ? 4 : mcps.filter((m) => m.status === "active").length;
   const m = metrics || MOCK_METRICS;
 
   const maxStatusCount = Math.max(...Object.values(m.runs_by_status), 1);

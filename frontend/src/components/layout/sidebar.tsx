@@ -19,7 +19,6 @@ const NAV = [
   { label: "MCPs", href: "/mcps", icon: Wrench },
   { section: "Governance" },
   { label: "Control", href: "/control", icon: Shield },
-  { label: "Supervision", href: "/runs", icon: Eye },
   { label: "Approvals", href: "/approvals", icon: CheckCircle },
   { label: "Audit", href: "/audit", icon: FileSearch },
   { section: "Configuration" },
@@ -59,7 +58,7 @@ export function Sidebar() {
           const active = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href!));
           return (
             <Link
-              key={item.href}
+              key={item.label}
               href={item.href!}
               className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded text-[13px] mb-0.5 transition-colors duration-150 ${
                 active
