@@ -231,6 +231,24 @@ async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
     return await db.get(AgentDefinition, agent_id)
 
 
+async def delete_agent(db: AsyncSession, agent_id: str) -> None:
+    agent = await db.get(AgentDefinition, agent_id)
+    if not agent:
+        raise ValueError(f"Agent {agent_id} not found")
+    if agent.status == "active":
+        raise ValueError("Cannot delete an active agent. Disable or deprecate it first.")
+
+    await db.delete(agent)
+    await db.flush()
+    await emit_event(
+        db,
+        "agent.deleted",
+        "system",
+        "agent_registry",
+        payload={"agent_id": agent_id},
+    )
+
+
 async def get_registry_stats(db: AsyncSession, workflow_id: str | None = None) -> AgentRegistryStats:
     result = await db.execute(select(AgentDefinition))
     items = list(result.scalars().all())

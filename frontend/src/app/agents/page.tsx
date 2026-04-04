@@ -4,8 +4,10 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
 import { GenerateAgentModal } from "@/components/agents/generate-agent-modal";
 import {
+  deleteAgent,
   getAgentRegistryStats,
   listAgents,
   listMcpCatalogForAgentDesign,
@@ -53,6 +55,8 @@ function AgentRegistryPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
+  const [agentPendingDelete, setAgentPendingDelete] = useState<AgentDefinition | null>(null);
 
   const families = useMemo(() => {
     const unique = new Set(agents.map((a) => a.family));
@@ -91,6 +95,22 @@ function AgentRegistryPageContent() {
 
   function updateFilter<K extends keyof AgentRegistryFilters>(key: K, value: AgentRegistryFilters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function confirmDeleteAgent() {
+    if (!agentPendingDelete) return;
+    setDeletingAgentId(agentPendingDelete.id);
+    setError(null);
+    try {
+      await deleteAgent(agentPendingDelete.id);
+      setAgentPendingDelete(null);
+      await loadAll(filters);
+    } catch (err: unknown) {
+      setAgentPendingDelete(null);
+      setError(err instanceof Error ? err.message : "Failed to delete agent");
+    } finally {
+      setDeletingAgentId(null);
+    }
   }
 
   return (
@@ -271,6 +291,13 @@ function AgentRegistryPageContent() {
                     <Link href={`/agents/${agent.id}/edit`} className="text-ork-purple hover:underline block">
                       Edit
                     </Link>
+                    <button
+                      onClick={() => setAgentPendingDelete(agent)}
+                      disabled={deletingAgentId === agent.id}
+                      className="text-ork-red hover:underline block disabled:opacity-50"
+                    >
+                      {deletingAgentId === agent.id ? "Deleting..." : "Delete"}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -285,6 +312,22 @@ function AgentRegistryPageContent() {
         onSaved={() => {
           void loadAll(filters);
         }}
+      />
+
+      <ConfirmDangerDialog
+        open={Boolean(agentPendingDelete)}
+        title="Delete Agent"
+        description="This removes the agent definition from Orkestra Registry. This action cannot be undone."
+        targetLabel={
+          agentPendingDelete ? `${agentPendingDelete.name} (${agentPendingDelete.id})` : undefined
+        }
+        confirmLabel="Delete Agent"
+        loading={Boolean(agentPendingDelete && deletingAgentId === agentPendingDelete.id)}
+        onCancel={() => {
+          if (deletingAgentId) return;
+          setAgentPendingDelete(null);
+        }}
+        onConfirm={() => void confirmDeleteAgent()}
       />
     </div>
   );

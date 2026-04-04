@@ -69,6 +69,14 @@ export async function updateAgentStatus(agentId: string, status: string): Promis
   });
 }
 
+export async function deleteAgent(agentId: string): Promise<void> {
+  const res = await fetch(`${BASE}/${agentId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || res.statusText);
+  }
+}
+
 export async function getAgentRegistryStats(workflowId?: string): Promise<AgentRegistryStats> {
   const query = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : "";
   return request<AgentRegistryStats>(`${BASE}/stats${query}`);

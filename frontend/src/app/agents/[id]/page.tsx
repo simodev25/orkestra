@@ -3,19 +3,24 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { getAgent, listMcpCatalogForAgentDesign } from "@/lib/agent-registry/service";
+import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
+import { deleteAgent, getAgent, listMcpCatalogForAgentDesign } from "@/lib/agent-registry/service";
 import type { AgentDefinition, McpCatalogSummary } from "@/lib/agent-registry/types";
 
 export default function AgentDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
 
   const [agent, setAgent] = useState<AgentDefinition | null>(null);
   const [catalogMcps, setCatalogMcps] = useState<McpCatalogSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +71,19 @@ export default function AgentDetailPage() {
   const forbiddenEffects = agent.forbidden_effects ?? [];
   const limitations = agent.limitations ?? [];
 
+  async function confirmDelete(agentId: string) {
+    setDeleting(true);
+    setActionError(null);
+    try {
+      await deleteAgent(agentId);
+      router.push("/agents");
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete agent");
+      setDeleting(false);
+      setConfirmDeleteOpen(false);
+    }
+  }
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4 animate-fade-in">
       <div className="flex items-start justify-between gap-3">
@@ -86,8 +104,20 @@ export default function AgentDetailPage() {
           >
             Edit
           </Link>
+          <button
+            onClick={() => setConfirmDeleteOpen(true)}
+            disabled={deleting}
+            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-red/30 text-ork-red bg-ork-red/10 disabled:opacity-50"
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </button>
         </div>
       </div>
+      {actionError && (
+        <div className="glass-panel p-3 border border-ork-red/30">
+          <p className="text-xs font-mono text-ork-red">{actionError}</p>
+        </div>
+      )}
 
       <Section title="Identity">
         <KV label="name" value={agent.name} />
@@ -178,6 +208,20 @@ export default function AgentDetailPage() {
         <KV label="created_at" value={agent.created_at} mono />
         <KV label="updated_at" value={agent.updated_at} mono />
       </Section>
+
+      <ConfirmDangerDialog
+        open={confirmDeleteOpen}
+        title="Delete Agent"
+        description="This removes the agent definition from Orkestra Registry. This action cannot be undone."
+        targetLabel={`${agent.name} (${agent.id})`}
+        confirmLabel="Delete Agent"
+        loading={deleting}
+        onCancel={() => {
+          if (deleting) return;
+          setConfirmDeleteOpen(false);
+        }}
+        onConfirm={() => void confirmDelete(agent.id)}
+      />
     </div>
   );
 }

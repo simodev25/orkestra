@@ -96,3 +96,47 @@ async def test_save_generated_draft_rejects_invalid_state_and_unknown_mcp(client
     detail = resp.json()["detail"]
     assert "status must be draft or designed" in detail
     assert "unknown ids" in detail
+
+
+async def test_delete_agent_and_reject_delete_active(client):
+    create_resp = await client.post(
+        "/api/agents",
+        json={
+            "id": "deletable_agent",
+            "name": "Deletable Agent",
+            "family": "analyst",
+            "purpose": "Collect evidence and produce structured summaries for governance.",
+            "status": "draft",
+            "skills": ["entity_resolution"],
+            "prompt_content": "Collect evidence only.",
+            "skills_content": "# skill file",
+            "limitations": ["no write actions"],
+        },
+    )
+    assert create_resp.status_code == 201
+
+    delete_resp = await client.delete("/api/agents/deletable_agent")
+    assert delete_resp.status_code == 204
+
+    get_resp = await client.get("/api/agents/deletable_agent")
+    assert get_resp.status_code == 404
+
+    active_resp = await client.post(
+        "/api/agents",
+        json={
+            "id": "active_agent_delete_blocked",
+            "name": "Active Agent",
+            "family": "analyst",
+            "purpose": "Collect evidence and produce structured summaries for governance.",
+            "status": "active",
+            "skills": ["entity_resolution"],
+            "prompt_content": "Collect evidence only.",
+            "skills_content": "# skill file",
+            "limitations": ["no write actions"],
+        },
+    )
+    assert active_resp.status_code == 201
+
+    blocked_resp = await client.delete("/api/agents/active_agent_delete_blocked")
+    assert blocked_resp.status_code == 400
+    assert "Cannot delete an active agent" in blocked_resp.json()["detail"]

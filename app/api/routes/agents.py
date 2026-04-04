@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -93,6 +93,21 @@ async def update_agent_status(
         return await agent_registry_service.update_agent_status(db, agent_id, data.status, data.reason or "")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await agent_registry_service.get_agent(db, agent_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    try:
+        await agent_registry_service.delete_agent(db, agent_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/generate-draft", response_model=AgentGenerationResponse)
