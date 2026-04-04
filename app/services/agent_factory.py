@@ -94,12 +94,14 @@ def get_tools_for_agent(agent_def: AgentDefinition) -> list:
     from app.mcp_servers.document_parser import parse_document, classify_document
     from app.mcp_servers.consistency_checker import check_consistency, validate_fields
     from app.mcp_servers.search_engine import search_knowledge
+    from app.mcp_servers.weather import get_weather
 
     # Map MCP IDs to tool functions
     MCP_TOOL_MAP = {
         "document_parser": [parse_document, classify_document],
         "consistency_checker": [check_consistency, validate_fields],
         "search_engine": [search_knowledge],
+        "weather": [get_weather],
     }
 
     tools = []
