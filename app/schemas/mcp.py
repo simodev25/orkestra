@@ -113,3 +113,29 @@ class MCPTestResult(OrkBaseSchema):
     latency_ms: int = 0
     output: Optional[str] = None
     error: Optional[str] = None
+
+
+class MCPValidationFinding(OrkBaseSchema):
+    rule_id: str
+    category: str
+    severity: str
+    message: str
+    field: Optional[str] = None
+    suggestion: Optional[str] = None
+
+
+class MCPValidationReport(OrkBaseSchema):
+    mcp_id: str
+    valid: bool
+    score: int
+    errors: int = 0
+    warnings: int = 0
+    infos: int = 0
+    categories_checked: list[str] = []
+    integration_tested: bool = False
+    integration_latency_ms: Optional[int] = None
+    findings: list[MCPValidationFinding] = []
+
+
+class MCPValidateRequest(OrkBaseSchema):
+    include_integration: bool = True

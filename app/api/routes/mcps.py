@@ -5,8 +5,10 @@ from app.core.database import get_db
 from app.schemas.mcp import (
     MCPCreate, MCPOut, MCPStatusUpdate,
     MCPUpdate, MCPHealth, MCPUsage, MCPCatalogStats, MCPTestRequest, MCPTestResult,
+    MCPValidationReport, MCPValidateRequest,
 )
 from app.services import mcp_registry_service
+from app.services.mcp_validation_engine import validate_mcp, validate_lifecycle_gate
 
 router = APIRouter()
 
@@ -68,6 +70,32 @@ async def get_mcp_usage(mcp_id: str, db: AsyncSession = Depends(get_db)):
         return await mcp_registry_service.get_mcp_usage(db, mcp_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+@router.post("/{mcp_id}/validate", response_model=MCPValidationReport)
+async def validate_mcp_endpoint(
+    mcp_id: str,
+    data: MCPValidateRequest = MCPValidateRequest(),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        report = await validate_mcp(db, mcp_id, include_integration=data.include_integration)
+        return report.to_dict()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{mcp_id}/validate-gate/{target_status}", response_model=MCPValidationReport)
+async def validate_gate_endpoint(
+    mcp_id: str,
+    target_status: str,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        report = await validate_lifecycle_gate(db, mcp_id, target_status)
+        return report.to_dict()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 
 @router.post("/{mcp_id}/test", response_model=MCPTestResult)
 async def test_mcp(mcp_id: str, data: MCPTestRequest = MCPTestRequest(), db: AsyncSession = Depends(get_db)):

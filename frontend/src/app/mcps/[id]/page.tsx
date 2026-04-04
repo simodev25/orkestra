@@ -204,6 +204,12 @@ export default function McpDetailPage() {
           >
             Test
           </Link>
+          <Link
+            href={`/mcps/${mcp.id}/validate`}
+            className="px-4 py-2 text-xs font-mono uppercase tracking-wider bg-ork-cyan/10 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/20 transition-colors"
+          >
+            Validate
+          </Link>
           {mcp.status !== "active" ? (
             <button className="px-4 py-2 text-xs font-mono uppercase tracking-wider bg-ork-green/10 text-ork-green border border-ork-green/30 rounded hover:bg-ork-green/20 transition-colors">
               Activate
