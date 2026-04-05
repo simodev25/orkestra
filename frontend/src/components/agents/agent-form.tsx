@@ -94,9 +94,7 @@ export function AgentForm({
   const [criticality, setCriticality] = useState(initial?.criticality ?? "medium");
   const [costProfile, setCostProfile] = useState(initial?.cost_profile ?? "medium");
   const [limitations, setLimitations] = useState(toCsv(initial?.limitations));
-  const [promptRef, setPromptRef] = useState(initial?.prompt_ref ?? "");
   const [promptContent, setPromptContent] = useState(initial?.prompt_content ?? "");
-  const [skillsRef, setSkillsRef] = useState(initial?.skills_ref ?? "");
   const [skillsContent, setSkillsContent] = useState(initial?.skills_content ?? "");
   const [soulContent, setSoulContent] = useState(initial?.soul_content ?? "");
   const [version, setVersion] = useState(initial?.version ?? "1.0.0");
@@ -190,9 +188,7 @@ export function AgentForm({
       criticality: criticality.trim(),
       cost_profile: costProfile.trim(),
       limitations: parseCsv(limitations),
-      prompt_ref: promptRef.trim() || null,
       prompt_content: promptContent.trim(),
-      skills_ref: skillsRef.trim() || null,
       skills_content: skillsContent.trim(),
       soul_content: soulContent.trim() || null,
       version: version.trim() || "1.0.0",
@@ -472,16 +468,10 @@ export function AgentForm({
       </section>
 
       <section className="glass-panel p-4 space-y-3">
-        <h2 className="section-title text-sm">7. Prompt</h2>
+        <h2 className="section-title text-sm">7. Agent Prompt</h2>
         <div>
-          <p className="data-label">prompt_ref</p>
-          <input
-            value={promptRef}
-            onChange={(e) => setPromptRef(e.target.value)}
-            placeholder="prompts/company_lookup.v1.md"
-            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono mb-2"
-          />
           <p className="data-label">prompt_content</p>
+          <p className="text-[10px] font-mono text-ork-dim mb-1">Agent-specific mission prompt (Layer 4 of the prompt builder)</p>
           <textarea
             value={promptContent}
             onChange={(e) => setPromptContent(e.target.value)}
@@ -492,16 +482,10 @@ export function AgentForm({
       </section>
 
       <section className="glass-panel p-4 space-y-3">
-        <h2 className="section-title text-sm">8. Skills file</h2>
+        <h2 className="section-title text-sm">8. Skills Content</h2>
         <div>
-          <p className="data-label">skills_ref</p>
-          <input
-            value={skillsRef}
-            onChange={(e) => setSkillsRef(e.target.value)}
-            placeholder="skills/company_lookup.skills.md"
-            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono mb-2"
-          />
           <p className="data-label">skills_content</p>
+          <p className="text-[10px] font-mono text-ork-dim mb-1">Auto-generated from selected skills. Edit only if needed.</p>
           <textarea
             value={skillsContent}
             onChange={(e) => setSkillsContent(e.target.value)}
