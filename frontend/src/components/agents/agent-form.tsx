@@ -124,6 +124,30 @@ export function AgentForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyId]);
 
+  // Auto-generate skills_content when skills selection changes
+  useEffect(() => {
+    if (familySkills.length === 0 || skillIds.length === 0) return;
+    const selected = familySkills.filter((s) => skillIds.includes(s.skill_id));
+    if (selected.length === 0) return;
+    const content = selected
+      .map((s) => {
+        const lines = [`## ${s.label} (${s.skill_id})`];
+        if (s.description) lines.push(s.description);
+        if (s.behavior_templates?.length) {
+          lines.push("\nBehavior:");
+          s.behavior_templates.forEach((t) => lines.push(`- ${t}`));
+        }
+        if (s.output_guidelines?.length) {
+          lines.push("\nOutput guidelines:");
+          s.output_guidelines.forEach((g) => lines.push(`- ${g}`));
+        }
+        return lines.join("\n");
+      })
+      .join("\n\n---\n\n");
+    setSkillsContent(content);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillIds, familySkills]);
+
   const unknownAllowed = useMemo(() => {
     const knownIds = new Set(availableMcps.map((m) => m.id));
     return allowedMcps.filter((m) => !knownIds.has(m));
