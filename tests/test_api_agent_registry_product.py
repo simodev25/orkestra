@@ -2,15 +2,16 @@
 
 
 async def test_agent_registry_stats_and_update(client):
+    await client.post("/api/families", json={"id": "analyst", "label": "Analyst"})
     create_resp = await client.post(
         "/api/agents",
         json={
             "id": "registry_agent",
             "name": "Registry Agent",
-            "family": "analyst",
+            "family_id": "analyst",
             "purpose": "Collect and structure company legal evidence for due diligence.",
             "status": "draft",
-            "skills": ["context_gap_detection", "source_comparison"],
+            "skill_ids": [],
             "prompt_content": "Do evidence-first legal lookup.",
             "skills_content": "# skill file",
             "limitations": ["no write actions"],
@@ -44,6 +45,23 @@ async def test_agent_registry_stats_and_update(client):
 
 
 async def test_generate_agent_draft_and_save(client):
+    # Seed family and skills required by the mock LLM generator
+    await client.post("/api/families", json={"id": "analyst", "label": "Analyst"})
+    for skill_id, label in [
+        ("context_gap_detection", "Context Gap Detection"),
+        ("document_analysis", "Document Analysis"),
+        ("source_comparison", "Source Comparison"),
+    ]:
+        await client.post("/api/skills", json={
+            "skill_id": skill_id,
+            "label": label,
+            "category": "analysis",
+            "description": f"{label} skill",
+            "behavior_templates": [f"Apply {label}"],
+            "output_guidelines": ["Be precise"],
+            "allowed_families": ["analyst"],
+        })
+
     generate_resp = await client.post(
         "/api/agents/generate-draft",
         json={
@@ -71,10 +89,10 @@ async def test_save_generated_draft_rejects_invalid_state_and_unknown_mcp(client
     bad_draft = {
         "id": "bad_generated_agent",
         "name": "Bad Generated Agent",
-        "family": "analyst",
+        "family_id": "analyst",
         "purpose": "Bad generated purpose for validation checks.",
         "description": "desc",
-        "skills": ["context_gap_detection"],
+        "skill_ids": ["context_gap_detection"],
         "selection_hints": {"routing_keywords": ["legal"]},
         "allowed_mcps": ["unknown_mcp_id"],
         "forbidden_effects": ["act"],
@@ -99,15 +117,16 @@ async def test_save_generated_draft_rejects_invalid_state_and_unknown_mcp(client
 
 
 async def test_delete_agent_and_reject_delete_active(client):
+    await client.post("/api/families", json={"id": "analyst", "label": "Analyst"})
     create_resp = await client.post(
         "/api/agents",
         json={
             "id": "deletable_agent",
             "name": "Deletable Agent",
-            "family": "analyst",
+            "family_id": "analyst",
             "purpose": "Collect evidence and produce structured summaries for governance.",
             "status": "draft",
-            "skills": ["context_gap_detection"],
+            "skill_ids": [],
             "prompt_content": "Collect evidence only.",
             "skills_content": "# skill file",
             "limitations": ["no write actions"],
@@ -126,10 +145,10 @@ async def test_delete_agent_and_reject_delete_active(client):
         json={
             "id": "active_agent_delete_blocked",
             "name": "Active Agent",
-            "family": "analyst",
+            "family_id": "analyst",
             "purpose": "Collect evidence and produce structured summaries for governance.",
             "status": "active",
-            "skills": ["context_gap_detection"],
+            "skill_ids": [],
             "prompt_content": "Collect evidence only.",
             "skills_content": "# skill file",
             "limitations": ["no write actions"],

@@ -108,7 +108,7 @@ async def generate_plan(db: AsyncSession, case_id: str) -> OrchestrationPlan:
     plan = OrchestrationPlan(
         case_id=case_id,
         objective_summary=f"Process case {case_id} ({case.case_type or 'general'})",
-        selected_agents=[{"agent_id": a.id, "name": a.name, "family": a.family} for a in agents],
+        selected_agents=[{"agent_id": a.id, "name": a.name, "family": a.family_id} for a in agents],
         selected_mcps=[{"mcp_id": m.id, "name": m.name, "effect_type": m.effect_type} for m in mcps],
         execution_topology=topology,
         estimated_cost=estimated_cost,

@@ -2,15 +2,24 @@
 
 import pytest
 from app.models.registry import AgentDefinition, MCPDefinition
+from app.models.family import FamilyDefinition
 from app.models.run import Run, RunNode
 from app.models.enums import RunNodeStatus, AgentStatus, MCPStatus
 from app.services.subagent_executor import execute_subagent
 from app.services.mcp_executor import invoke_mcp
 
 
+async def _ensure_family(db_session, family_id="analysis"):
+    family = FamilyDefinition(id=family_id, label=family_id.capitalize())
+    db_session.add(family)
+    await db_session.flush()
+    return family
+
+
 async def _setup_agent(db_session, agent_id="test_agent"):
+    await _ensure_family(db_session, "analysis")
     agent = AgentDefinition(
-        id=agent_id, name="Test Agent", family="analysis",
+        id=agent_id, name="Test Agent", family_id="analysis",
         purpose="Test agent", version="1.0.0", status=AgentStatus.ACTIVE,
         allowed_mcps=["doc_parser"],
     )
@@ -82,8 +91,9 @@ class TestMCPExecutor:
         assert inv.cost > 0
 
     async def test_invoke_mcp_denied_by_allowlist(self, db_session):
+        await _ensure_family(db_session, "test")
         agent = AgentDefinition(
-            id="restricted_agent", name="Restricted", family="test",
+            id="restricted_agent", name="Restricted", family_id="test",
             purpose="Test restricted", version="1.0.0", status=AgentStatus.ACTIVE,
             allowed_mcps=["other_mcp"],  # doc_parser NOT in allowlist
         )

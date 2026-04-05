@@ -4,6 +4,7 @@ import pytest
 from app.models.settings import PolicyProfile, BudgetProfile
 from app.models.run import Run
 from app.models.registry import AgentDefinition, MCPDefinition
+from app.models.family import FamilyDefinition
 from app.models.enums import AgentStatus, MCPStatus
 from app.services.control_service import (
     evaluate_plan, check_agent_authorization, check_mcp_authorization,
@@ -73,7 +74,10 @@ class TestPlanEvaluation:
 
 class TestAgentAuthorization:
     async def test_active_agent_allowed(self, db_session):
-        agent = AgentDefinition(id="good_agent", name="Good", family="test",
+        family = FamilyDefinition(id="test", label="Test")
+        db_session.add(family)
+        await db_session.flush()
+        agent = AgentDefinition(id="good_agent", name="Good", family_id="test",
                                 purpose="Test", status=AgentStatus.ACTIVE)
         db_session.add(agent)
         run = await _setup_run(db_session)
@@ -84,7 +88,10 @@ class TestAgentAuthorization:
         assert d.decision_type == "allow"
 
     async def test_inactive_agent_denied(self, db_session):
-        agent = AgentDefinition(id="draft_agent", name="Draft", family="test",
+        family = FamilyDefinition(id="test", label="Test")
+        db_session.add(family)
+        await db_session.flush()
+        agent = AgentDefinition(id="draft_agent", name="Draft", family_id="test",
                                 purpose="Test", status=AgentStatus.DRAFT)
         db_session.add(agent)
         run = await _setup_run(db_session)
@@ -105,7 +112,10 @@ class TestAgentAuthorization:
 
 class TestMCPAuthorization:
     async def test_mcp_allowed(self, db_session):
-        agent = AgentDefinition(id="agent_1", name="A1", family="test",
+        family = FamilyDefinition(id="test", label="Test")
+        db_session.add(family)
+        await db_session.flush()
+        agent = AgentDefinition(id="agent_1", name="A1", family_id="test",
                                 purpose="Test", status=AgentStatus.ACTIVE,
                                 allowed_mcps=["doc_parser"])
         mcp = MCPDefinition(id="doc_parser", name="Parser", purpose="Parse",
@@ -120,7 +130,10 @@ class TestMCPAuthorization:
         assert d.decision_type == "allow"
 
     async def test_mcp_denied_not_in_allowlist(self, db_session):
-        agent = AgentDefinition(id="agent_1", name="A1", family="test",
+        family = FamilyDefinition(id="test", label="Test")
+        db_session.add(family)
+        await db_session.flush()
+        agent = AgentDefinition(id="agent_1", name="A1", family_id="test",
                                 purpose="Test", status=AgentStatus.ACTIVE,
                                 allowed_mcps=["other_mcp"])
         mcp = MCPDefinition(id="doc_parser", name="Parser", purpose="Parse",
@@ -135,7 +148,10 @@ class TestMCPAuthorization:
         assert d.decision_type == "deny"
 
     async def test_sensitive_mcp_requires_review(self, db_session):
-        agent = AgentDefinition(id="agent_1", name="A1", family="test",
+        family = FamilyDefinition(id="test", label="Test")
+        db_session.add(family)
+        await db_session.flush()
+        agent = AgentDefinition(id="agent_1", name="A1", family_id="test",
                                 purpose="Test", status=AgentStatus.ACTIVE,
                                 allowed_mcps=["ext_writer"])
         mcp = MCPDefinition(id="ext_writer", name="Writer", purpose="Write",
