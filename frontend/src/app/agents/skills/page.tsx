@@ -139,7 +139,6 @@ export default function SkillsAdminPage() {
                 <th className="p-3 text-left">category</th>
                 <th className="p-3 text-left">version</th>
                 <th className="p-3 text-left">status</th>
-                <th className="p-3 text-left">owner</th>
                 <th className="p-3 text-left">allowed_families</th>
                 <th className="p-3 text-left">agents</th>
                 <th className="p-3 text-left">actions</th>
@@ -155,7 +154,6 @@ export default function SkillsAdminPage() {
                   <td className="p-3">
                     <StatusBadge status={skill.status ?? "active"} />
                   </td>
-                  <td className="p-3 text-ork-muted">{skill.owner || "-"}</td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">
                       {skill.allowed_families.length > 0 ? (
