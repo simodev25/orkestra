@@ -99,7 +99,7 @@ async def update_family(db: AsyncSession, family_id: str, data: FamilyUpdate) ->
         default_forbidden_effects=family.default_forbidden_effects or [],
         default_output_expectations=family.default_output_expectations or [],
         version=family.version or "1.0.0",
-        status=family.status or "active",
+        status="superseded",
         owner=family.owner,
         original_created_at=family.created_at,
         original_updated_at=family.updated_at,

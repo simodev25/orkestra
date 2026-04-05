@@ -105,7 +105,7 @@ async def update_skill(db: AsyncSession, skill_id: str, data: SkillUpdate) -> di
         behavior_templates=skill.behavior_templates or [],
         output_guidelines=skill.output_guidelines or [],
         version=skill.version or "1.0.0",
-        status=skill.status or "active",
+        status="superseded",
         owner=skill.owner,
         allowed_families_snapshot=current_families_snapshot,
         original_created_at=skill.created_at,

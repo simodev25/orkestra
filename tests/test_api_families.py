@@ -101,11 +101,13 @@ async def test_update_family_creates_history(client):
     assert len(history) == 1
     assert history[0]["label"] == "V1"
     assert history[0]["version"] == "1.0.0"
+    assert history[0]["status"] == "superseded"
 
-    # Check the current family has bumped version
+    # Check the current family has bumped version and is active
     current = await client.get("/api/families/hist_fam")
     assert current.json()["label"] == "V2"
     assert current.json()["version"] == "1.0.1"
+    assert current.json()["status"] == "active"
 
 
 async def test_multiple_updates_create_history_chain(client):
