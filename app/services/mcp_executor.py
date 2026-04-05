@@ -23,11 +23,13 @@ def _get_mcp_tools() -> dict:
             from app.mcp_servers.document_parser import parse_document, classify_document
             from app.mcp_servers.consistency_checker import check_consistency, validate_fields
             from app.mcp_servers.search_engine import search_knowledge
+            from app.mcp_servers.weather import get_weather
 
             _MCP_TOOLS = {
                 "document_parser": {"parse": parse_document, "classify": classify_document},
                 "consistency_checker": {"check": check_consistency, "validate": validate_fields},
                 "search_engine": {"search": search_knowledge},
+                "weather": {"get_weather": get_weather},
             }
         except ImportError:
             _MCP_TOOLS = {}
@@ -141,6 +143,11 @@ async def _execute_mcp_tool(mcp_id: str, action: str | None, kwargs: dict) -> st
 
     # Extract text from ToolResponse
     if hasattr(result, "content"):
-        texts = [block.text for block in result.content if hasattr(block, "text")]
-        return "\n".join(texts)
+        texts = []
+        for block in result.content:
+            if isinstance(block, dict):
+                texts.append(block.get("text", ""))
+            elif hasattr(block, "text"):
+                texts.append(block.text)
+        return "\n".join(texts) if texts else str(result)
     return str(result)

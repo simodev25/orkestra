@@ -3,8 +3,9 @@
 
 async def _setup_full_run(client):
     """Create agents, request, case, plan, run, start it."""
+    await client.post("/api/families", json={"id": "analysis", "label": "Analysis"})
     await client.post("/api/agents", json={
-        "id": "sup_agent", "name": "Sup Agent", "family": "analysis",
+        "id": "sup_agent", "name": "Sup Agent", "family_id": "analysis",
         "purpose": "Supervision test agent",
     })
     for s in ["tested", "registered", "active"]:

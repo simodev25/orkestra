@@ -1,204 +1,427 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import Link from "next/link";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { api } from "@/lib/api";
-import type { Agent } from "@/lib/types";
+import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
+import { GenerateAgentModal } from "@/components/agents/generate-agent-modal";
+import {
+  deleteAgent,
+  getAgentHistory,
+  getAgentRegistryStats,
+  listAgents,
+  listMcpCatalogForAgentDesign,
+  restoreAgent,
+} from "@/lib/agent-registry/service";
+import type {
+  AgentDefinition,
+  AgentRegistryFilters,
+  AgentRegistryStats,
+  McpCatalogSummary,
+} from "@/lib/agent-registry/types";
+import { listFamilies } from "@/lib/families/service";
+import type { FamilyDefinition } from "@/lib/families/types";
 
-const FAMILY_COLORS: Record<string, string> = {
-  analyst: "bg-ork-cyan/15 text-ork-cyan border-ork-cyan/25",
-  executor: "bg-ork-green/15 text-ork-green border-ork-green/25",
-  reviewer: "bg-ork-purple/15 text-ork-purple border-ork-purple/25",
-  planner: "bg-ork-amber/15 text-ork-amber border-ork-amber/25",
-  monitor: "bg-ork-red/15 text-ork-red border-ork-red/25",
+const DEFAULT_STATS: AgentRegistryStats = {
+  total_agents: 0,
+  active_agents: 0,
+  tested_agents: 0,
+  deprecated_agents: 0,
+  current_workflow_agents: 0,
 };
 
-const FAMILY_DEFAULT = "bg-ork-dim/20 text-ork-muted border-ork-dim/30";
+export default function AgentRegistryPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm font-mono text-ork-cyan">Loading Agent Registry...</div>}>
+      <AgentRegistryPageContent />
+    </Suspense>
+  );
+}
 
-const STATUS_OPTIONS = ["all", "active", "registered", "tested", "deprecated", "disabled", "archived"];
+function AgentRegistryPageContent() {
+  const searchParams = useSearchParams();
+  const workflowId = searchParams.get("workflow") || "";
 
-export default function AgentsPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [filters, setFilters] = useState<AgentRegistryFilters>({
+    q: "",
+    family: "all",
+    status: "all",
+    criticality: "all",
+    cost_profile: "all",
+    mcp_id: "",
+    workflow_id: workflowId || undefined,
+    used_in_workflow_only: false,
+  });
+  const [agents, setAgents] = useState<AgentDefinition[]>([]);
+  const [stats, setStats] = useState<AgentRegistryStats>(DEFAULT_STATS);
+  const [catalogMcps, setCatalogMcps] = useState<McpCatalogSummary[]>([]);
+  const [families, setFamilies] = useState<FamilyDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [familyFilter, setFamilyFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
+  const [agentPendingDelete, setAgentPendingDelete] = useState<AgentDefinition | null>(null);
+  const [historyAgent, setHistoryAgent] = useState<AgentDefinition | null>(null);
+  const [agentHistory, setAgentHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  useEffect(() => {
+  async function loadAll(nextFilters: AgentRegistryFilters) {
     setLoading(true);
     setError(null);
-    api
-      .listAgents()
-      .then(setAgents)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+    try {
+      const [nextAgents, nextStats, nextMcps, nextFamilies] = await Promise.all([
+        listAgents(nextFilters),
+        getAgentRegistryStats(nextFilters.workflow_id),
+        listMcpCatalogForAgentDesign(),
+        listFamilies(),
+      ]);
+      setAgents(nextAgents);
+      setStats(nextStats);
+      setCatalogMcps(nextMcps);
+      setFamilies(nextFamilies);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load Agent Registry");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const families = ["all", ...Array.from(new Set(agents.map((a) => a.family)))];
+  useEffect(() => {
+    const merged = { ...filters, workflow_id: workflowId || undefined };
+    setFilters(merged);
+    void loadAll(merged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId]);
 
-  const filtered = agents.filter((a) => {
-    if (familyFilter !== "all" && a.family !== familyFilter) return false;
-    if (statusFilter !== "all" && a.status !== statusFilter) return false;
-    return true;
-  });
+  async function applyFilters() {
+    await loadAll(filters);
+  }
+
+  function updateFilter<K extends keyof AgentRegistryFilters>(key: K, value: AgentRegistryFilters[K]) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function openAgentHistory(agent: AgentDefinition) {
+    setHistoryAgent(agent);
+    setHistoryLoading(true);
+    try {
+      const history = await getAgentHistory(agent.id);
+      setAgentHistory(history);
+    } catch {
+      setAgentHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function confirmDeleteAgent() {
+    if (!agentPendingDelete) return;
+    setDeletingAgentId(agentPendingDelete.id);
+    setError(null);
+    try {
+      await deleteAgent(agentPendingDelete.id);
+      setAgentPendingDelete(null);
+      await loadAll(filters);
+    } catch (err: unknown) {
+      setAgentPendingDelete(null);
+      setError(err instanceof Error ? err.message : "Failed to delete agent");
+    } finally {
+      setDeletingAgentId(null);
+    }
+  }
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-6 max-w-[1500px] mx-auto space-y-5 animate-fade-in">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-lg font-semibold tracking-wide">AGENT REGISTRY</h1>
-          <p className="text-xs text-ork-dim font-mono mt-0.5">
-            Registered AI agents and their capabilities
+          <h1 className="text-xl font-semibold text-ork-text tracking-wide">Agent Registry</h1>
+          <p className="text-xs text-ork-dim font-mono mt-1">
+            Governed registry of specialized agents with mission, MCP permissions, contracts, lifecycle, and
+            reliability metadata.
           </p>
         </div>
-        <div className="text-xs font-mono text-ork-dim">
-          {filtered.length} agent{filtered.length !== 1 ? "s" : ""}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href="/agents/new"
+            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
+          >
+            Add Agent
+          </Link>
+          <button
+            onClick={() => setAiModalOpen(true)}
+            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-purple/30 text-ork-purple bg-ork-purple/10"
+          >
+            Generate Agent with AI
+          </button>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div>
-          <span className="data-label mr-2">Family</span>
-          <div className="inline-flex gap-1">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Agents actifs" value={stats.active_agents} tone="text-ork-green" />
+        <StatCard label="Agents testés" value={stats.tested_agents} tone="text-ork-cyan" />
+        <StatCard label="Agents dépréciés" value={stats.deprecated_agents} tone="text-ork-amber" />
+        <StatCard
+          label={workflowId ? `Agents workflow ${workflowId}` : "Agents workflow courant"}
+          value={workflowId ? stats.current_workflow_agents : 0}
+          tone="text-ork-purple"
+        />
+      </div>
+
+      <div className="glass-panel p-4 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <input
+            value={filters.q ?? ""}
+            onChange={(e) => updateFilter("q", e.target.value)}
+            placeholder="Search name, id, purpose, skill"
+            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          />
+          <select
+            value={filters.family ?? "all"}
+            onChange={(e) => updateFilter("family", e.target.value)}
+            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          >
+            <option value="all">family: all</option>
             {families.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFamilyFilter(f)}
-                className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider rounded border transition-colors duration-150 ${
-                  familyFilter === f
-                    ? "bg-ork-cyan/15 text-ork-cyan border-ork-cyan/30"
-                    : "bg-ork-surface text-ork-muted border-ork-border hover:border-ork-cyan/20 hover:text-ork-text"
-                }`}
-              >
-                {f}
-              </button>
+              <option key={f.id} value={f.id}>
+                {f.label} ({f.id})
+              </option>
             ))}
-          </div>
-        </div>
-        <div>
-          <span className="data-label mr-2">Status</span>
-          <div className="inline-flex gap-1">
-            {STATUS_OPTIONS.map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider rounded border transition-colors duration-150 ${
-                  statusFilter === s
-                    ? "bg-ork-cyan/15 text-ork-cyan border-ork-cyan/30"
-                    : "bg-ork-surface text-ork-muted border-ork-border hover:border-ork-cyan/20 hover:text-ork-text"
-                }`}
-              >
-                {s}
-              </button>
+          </select>
+          <select
+            value={filters.status ?? "all"}
+            onChange={(e) => updateFilter("status", e.target.value)}
+            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          >
+            <option value="all">status: all</option>
+            <option value="draft">draft</option>
+            <option value="designed">designed</option>
+            <option value="tested">tested</option>
+            <option value="registered">registered</option>
+            <option value="active">active</option>
+            <option value="deprecated">deprecated</option>
+            <option value="disabled">disabled</option>
+            <option value="archived">archived</option>
+          </select>
+          <select
+            value={filters.criticality ?? "all"}
+            onChange={(e) => updateFilter("criticality", e.target.value)}
+            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          >
+            <option value="all">criticality: all</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="critical">critical</option>
+          </select>
+          <select
+            value={filters.cost_profile ?? "all"}
+            onChange={(e) => updateFilter("cost_profile", e.target.value)}
+            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          >
+            <option value="all">cost_profile: all</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="variable">variable</option>
+          </select>
+          <select
+            value={filters.mcp_id ?? ""}
+            onChange={(e) => updateFilter("mcp_id", e.target.value)}
+            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          >
+            <option value="">MCP autorisé: all</option>
+            {catalogMcps.map((mcp) => (
+              <option key={mcp.id} value={mcp.id}>
+                {mcp.name} ({mcp.id})
+              </option>
             ))}
-          </div>
+          </select>
+          <input
+            value={filters.workflow_id ?? ""}
+            onChange={(e) => updateFilter("workflow_id", e.target.value || undefined)}
+            placeholder="workflow id"
+            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          />
+          <label className="flex items-center gap-2 px-3 py-2 border border-ork-border rounded text-xs font-mono">
+            <input
+              type="checkbox"
+              checked={Boolean(filters.used_in_workflow_only)}
+              onChange={(e) => updateFilter("used_in_workflow_only", e.target.checked)}
+            />
+            used in current workflow only
+          </label>
+          <button
+            onClick={applyFilters}
+            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
+          >
+            Apply filters
+          </button>
         </div>
       </div>
 
-      {/* Content */}
       {loading ? (
-        <div className="glass-panel p-12 text-center">
-          <div className="text-ork-cyan font-mono text-sm animate-pulse">
-            Loading agents...
-          </div>
-        </div>
+        <div className="glass-panel p-16 text-center text-sm font-mono text-ork-cyan">Loading Agent Registry...</div>
       ) : error ? (
-        <div className="glass-panel p-8 text-center">
-          <p className="text-ork-red font-mono text-sm">Error: {error}</p>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="glass-panel p-12 text-center">
-          <p className="text-ork-muted font-mono text-sm">No agents found</p>
-        </div>
+        <div className="glass-panel p-6 text-sm font-mono text-ork-red">{error}</div>
+      ) : agents.length === 0 ? (
+        <div className="glass-panel p-16 text-center text-sm font-mono text-ork-dim">No agents found.</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((agent) => (
-            <div
-              key={agent.id}
-              className="glass-panel-hover p-4 flex flex-col gap-3"
-            >
-              {/* Name + ID */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-sm font-semibold text-ork-text">
-                    {agent.name}
-                  </h3>
-                  <StatusBadge status={agent.status} />
-                </div>
-                <p className="font-mono text-[10px] text-ork-dim">
-                  {agent.id}
-                </p>
-              </div>
-
-              {/* Family Tag */}
-              <div>
-                <span
-                  className={`inline-flex items-center px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border rounded ${
-                    FAMILY_COLORS[agent.family] || FAMILY_DEFAULT
-                  }`}
-                >
-                  {agent.family}
-                </span>
-              </div>
-
-              {/* Purpose */}
-              <p className="text-xs text-ork-muted leading-relaxed line-clamp-2">
-                {agent.purpose}
-              </p>
-
-              {/* Skills */}
-              {agent.skills && agent.skills.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {agent.skills.map((skill) => (
-                    <span
-                      key={skill}
-                      className="text-[9px] font-mono text-ork-dim bg-ork-panel px-1.5 py-0.5 rounded border border-ork-border"
+        <div className="glass-panel overflow-x-auto">
+          <table className="w-full text-xs font-mono">
+            <thead className="border-b border-ork-border/60 text-ork-dim bg-ork-panel/60">
+              <tr>
+                <th className="p-3 text-left">name</th>
+                <th className="p-3 text-left">agent_id</th>
+                <th className="p-3 text-left">family</th>
+                <th className="p-3 text-left">purpose</th>
+                <th className="p-3 text-left">skills</th>
+                <th className="p-3 text-left">allowed_mcps</th>
+                <th className="p-3 text-left">criticality</th>
+                <th className="p-3 text-left">cost_profile</th>
+                <th className="p-3 text-left">version</th>
+                <th className="p-3 text-left">status</th>
+                <th className="p-3 text-left">last test</th>
+                <th className="p-3 text-left">actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {agents.map((agent) => (
+                <tr key={agent.id} className="border-b border-ork-border/40 align-top">
+                  <td className="p-3 text-ork-text font-semibold">{agent.name}</td>
+                  <td className="p-3 text-ork-cyan">{agent.id}</td>
+                  <td className="p-3">{agent.family?.label || agent.family_id}</td>
+                  <td className="p-3 max-w-[280px] text-ork-muted">{agent.purpose}</td>
+                  <td className="p-3">{(agent.skill_ids ?? []).slice(0, 3).join(", ") || "-"}</td>
+                  <td className="p-3">{agent.allowed_mcps?.length ?? 0}</td>
+                  <td className="p-3">{agent.criticality}</td>
+                  <td className="p-3">{agent.cost_profile}</td>
+                  <td className="p-3">{agent.version}</td>
+                  <td className="p-3">
+                    <StatusBadge status={agent.status} />
+                  </td>
+                  <td className="p-3">
+                    <StatusBadge status={agent.last_test_status || "not_tested"} />
+                  </td>
+                  <td className="p-3 space-y-1">
+                    <Link href={`/agents/${agent.id}`} className="text-ork-cyan hover:underline block">
+                      View details
+                    </Link>
+                    <Link href={`/agents/${agent.id}/edit`} className="text-ork-purple hover:underline block">
+                      Edit
+                    </Link>
+                    <button
+                      onClick={() => void openAgentHistory(agent)}
+                      className="text-ork-cyan hover:underline block"
                     >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Meta row */}
-              <div className="flex items-center gap-3 text-[10px] font-mono text-ork-dim border-t border-ork-border pt-3 mt-auto">
-                <span>
-                  v<span className="text-ork-muted">{agent.version}</span>
-                </span>
-                <span className="text-ork-border">|</span>
-                <span>
-                  crit:{" "}
-                  <span
-                    className={
-                      agent.criticality === "critical"
-                        ? "text-ork-red"
-                        : agent.criticality === "high"
-                        ? "text-ork-amber"
-                        : "text-ork-muted"
-                    }
-                  >
-                    {agent.criticality}
-                  </span>
-                </span>
-                <span className="text-ork-border">|</span>
-                <span>
-                  cost: <span className="text-ork-muted">{agent.cost_profile}</span>
-                </span>
-              </div>
-
-              {/* Allowed MCPs */}
-              <div className="text-[10px] font-mono text-ork-dim">
-                <span className="text-ork-muted">
-                  {agent.allowed_mcps?.length ?? 0}
-                </span>{" "}
-                allowed MCPs
-              </div>
-            </div>
-          ))}
+                      History
+                    </button>
+                    <button
+                      onClick={() => setAgentPendingDelete(agent)}
+                      disabled={deletingAgentId === agent.id}
+                      className="text-ork-red hover:underline block disabled:opacity-50"
+                    >
+                      {deletingAgentId === agent.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
+
+      <GenerateAgentModal
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onSaved={() => {
+          void loadAll(filters);
+        }}
+      />
+
+      <ConfirmDangerDialog
+        open={Boolean(agentPendingDelete)}
+        title="Delete Agent"
+        description="This removes the agent definition from Orkestra Registry. This action cannot be undone."
+        targetLabel={
+          agentPendingDelete ? `${agentPendingDelete.name} (${agentPendingDelete.id})` : undefined
+        }
+        confirmLabel="Delete Agent"
+        loading={Boolean(agentPendingDelete && deletingAgentId === agentPendingDelete.id)}
+        onCancel={() => {
+          if (deletingAgentId) return;
+          setAgentPendingDelete(null);
+        }}
+        onConfirm={() => void confirmDeleteAgent()}
+      />
+
+      {historyAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="glass-panel w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-mono font-semibold text-ork-text">
+                Version History — {historyAgent.name}
+              </h2>
+              <button
+                onClick={() => setHistoryAgent(null)}
+                className="text-xs font-mono text-ork-dim hover:text-ork-text"
+              >
+                Close
+              </button>
+            </div>
+            {historyLoading ? (
+              <p className="text-xs font-mono text-ork-cyan">Loading history...</p>
+            ) : agentHistory.length === 0 ? (
+              <p className="text-xs font-mono text-ork-dim">No history yet. History is recorded on each update.</p>
+            ) : (
+              <table className="w-full text-xs font-mono">
+                <thead className="border-b border-ork-border/60 text-ork-dim">
+                  <tr>
+                    <th className="p-2 text-left">version</th>
+                    <th className="p-2 text-left">name</th>
+                    <th className="p-2 text-left">family</th>
+                    <th className="p-2 text-left">status</th>
+                    <th className="p-2 text-left">replaced_at</th>
+                    <th className="p-2 text-left">action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentHistory.map((h) => (
+                    <tr key={h.id} className="border-b border-ork-border/30">
+                      <td className="p-2 text-ork-cyan">{h.version}</td>
+                      <td className="p-2 text-ork-text">{h.name}</td>
+                      <td className="p-2 text-ork-muted">{h.family_id}</td>
+                      <td className="p-2 text-ork-muted">{h.status}</td>
+                      <td className="p-2 text-ork-dim">{new Date(h.replaced_at).toLocaleString()}</td>
+                      <td className="p-2">
+                        <button
+                          onClick={async () => {
+                            await restoreAgent(historyAgent.id, h.id);
+                            setHistoryAgent(null);
+                            void loadAll(filters);
+                          }}
+                          className="text-ork-cyan hover:underline text-[10px]"
+                        >
+                          Restore
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="glass-panel p-3 min-w-[150px]">
+      <p className="data-label">{label}</p>
+      <p className={`text-xl font-semibold mt-1 ${tone}`}>{value}</p>
     </div>
   );
 }

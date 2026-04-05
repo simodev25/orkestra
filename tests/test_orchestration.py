@@ -20,10 +20,11 @@ async def _create_case(client, req_id: str):
 
 async def _register_active_agent(client, agent_id: str, use_cases=None):
     hints = {"use_cases": use_cases} if use_cases else None
+    await client.post("/api/families", json={"id": "analysis", "label": "Analysis"})
     await client.post("/api/agents", json={
         "id": agent_id,
         "name": f"Agent {agent_id}",
-        "family": "analysis",
+        "family_id": "analysis",
         "purpose": f"Test agent {agent_id} for orchestration",
         "selection_hints": hints,
         "allowed_mcps": ["doc_parser"],

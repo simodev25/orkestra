@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     PROMETHEUS_ENABLED: bool = False
 
+    # Obot MCP source of truth
+    OBOT_BASE_URL: str = ""
+    OBOT_API_KEY: str = ""
+    OBOT_TIMEOUT_SECONDS: float = 8.0
+    OBOT_USE_MOCK: bool = True
+    OBOT_FALLBACK_TO_MOCK: bool = True
+
     class Config:
         env_file = ".env"
         env_prefix = "ORKESTRA_"

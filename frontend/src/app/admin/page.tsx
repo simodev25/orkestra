@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import type { PolicyProfile, BudgetProfile } from "@/lib/types";
+import type { PolicyProfile, BudgetProfile, PlatformSecret } from "@/lib/types";
 
 export default function AdminPage() {
   const [policies, setPolicies] = useState<PolicyProfile[]>([]);
@@ -23,11 +23,22 @@ export default function AdminPage() {
   const [budgetIsDefault, setBudgetIsDefault] = useState(false);
   const [creatingBudget, setCreatingBudget] = useState(false);
 
+  // Secrets
+  const [secrets, setSecrets] = useState<PlatformSecret[]>([]);
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [ollamaKey, setOllamaKey] = useState("");
+  const [savingSecret, setSavingSecret] = useState(false);
+
   const loadAll = useCallback(async () => {
     try {
-      const [p, b] = await Promise.all([api.listPolicies(), api.listBudgets()]);
+      const [p, b, s] = await Promise.all([
+        api.listPolicies(),
+        api.listBudgets(),
+        api.listSecrets(),
+      ]);
       setPolicies(p);
       setBudgets(b);
+      setSecrets(s);
     } catch (err: any) {
       setError(err.message || "Failed to load settings");
     } finally {
@@ -83,6 +94,20 @@ export default function AdminPage() {
     }
   }
 
+  async function handleSaveSecret(id: string, value: string, description: string) {
+    setSavingSecret(true);
+    try {
+      await api.upsertSecret(id, value, description);
+      setOpenaiKey("");
+      setOllamaKey("");
+      await loadAll();
+    } catch (err: any) {
+      setError(err.message || "Failed to save secret");
+    } finally {
+      setSavingSecret(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[60vh]">
@@ -109,6 +134,69 @@ export default function AdminPage() {
             {error}
           </span>
         )}
+      </div>
+
+      {/* Security — API Keys */}
+      <div className="glass-panel p-5 mb-6">
+        <h2 className="section-title mb-4 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-ork-red" />
+          SECURITY &mdash; API KEYS
+        </h2>
+        <p className="text-xs text-ork-dim font-mono mb-4">
+          Configure LLM provider API keys. Keys are stored securely in the database.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* OpenAI */}
+          <div className="bg-ork-bg rounded-lg p-4 border border-ork-border/50">
+            <div className="flex items-center justify-between mb-2">
+              <p className="data-label">OPENAI_API_KEY</p>
+              {secrets.find(s => s.id === "OPENAI_API_KEY") ? (
+                <span className="text-[9px] font-mono text-ork-green bg-ork-green/10 border border-ork-green/20 rounded px-1.5 py-0.5">CONFIGURED</span>
+              ) : (
+                <span className="text-[9px] font-mono text-ork-dim bg-ork-dim/10 border border-ork-dim/20 rounded px-1.5 py-0.5">NOT SET</span>
+              )}
+            </div>
+            <input
+              type="password"
+              value={openaiKey}
+              onChange={(e) => setOpenaiKey(e.target.value)}
+              placeholder="sk-..."
+              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono mb-2 text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+            />
+            <button
+              onClick={() => handleSaveSecret("OPENAI_API_KEY", openaiKey, "OpenAI API key")}
+              disabled={!openaiKey.trim() || savingSecret}
+              className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {savingSecret ? "Saving..." : "Save Key"}
+            </button>
+          </div>
+          {/* Ollama */}
+          <div className="bg-ork-bg rounded-lg p-4 border border-ork-border/50">
+            <div className="flex items-center justify-between mb-2">
+              <p className="data-label">OLLAMA_API_KEY</p>
+              {secrets.find(s => s.id === "OLLAMA_API_KEY") ? (
+                <span className="text-[9px] font-mono text-ork-green bg-ork-green/10 border border-ork-green/20 rounded px-1.5 py-0.5">CONFIGURED</span>
+              ) : (
+                <span className="text-[9px] font-mono text-ork-dim bg-ork-dim/10 border border-ork-dim/20 rounded px-1.5 py-0.5">NOT SET</span>
+              )}
+            </div>
+            <input
+              type="password"
+              value={ollamaKey}
+              onChange={(e) => setOllamaKey(e.target.value)}
+              placeholder="ollama-..."
+              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono mb-2 text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+            />
+            <button
+              onClick={() => handleSaveSecret("OLLAMA_API_KEY", ollamaKey, "Ollama API key")}
+              disabled={!ollamaKey.trim() || savingSecret}
+              className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {savingSecret ? "Saving..." : "Save Key"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Two column layout */}

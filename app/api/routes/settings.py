@@ -1,6 +1,8 @@
-"""Settings API routes -- policy profiles, budget profiles."""
+"""Settings API routes -- policy profiles, budget profiles, platform secrets."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel as PydanticBaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -11,6 +13,11 @@ from app.schemas.settings import (
 from app.services import settings_service
 
 router = APIRouter()
+
+
+class SecretUpsert(PydanticBaseModel):
+    value: str
+    description: str = ""
 
 
 # ---- Policy Profiles ----
@@ -54,3 +61,58 @@ async def get_budget(profile_id: str, db: AsyncSession = Depends(get_db)):
     if not b:
         raise HTTPException(status_code=404, detail="Budget profile not found")
     return b
+
+
+# ---- Platform Secrets (API Keys) ----
+
+@router.get("/secrets")
+async def list_secrets(db: AsyncSession = Depends(get_db)):
+    """List all secrets with masked values."""
+    from app.models.secret import PlatformSecret
+    result = await db.execute(select(PlatformSecret).order_by(PlatformSecret.id))
+    secrets = list(result.scalars().all())
+    return [
+        {
+            "id": s.id,
+            "value_masked": s.value[:4] + "****" + s.value[-4:] if len(s.value) > 8 else "****",
+            "description": s.description,
+            "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+        }
+        for s in secrets
+    ]
+
+
+@router.put("/secrets/{secret_id}")
+async def upsert_secret(secret_id: str, data: SecretUpsert, db: AsyncSession = Depends(get_db)):
+    """Create or update a secret."""
+    from app.models.secret import PlatformSecret
+
+    value = data.value.strip()
+    description = data.description.strip()
+
+    if not value:
+        raise HTTPException(status_code=400, detail="value is required")
+
+    existing = await db.get(PlatformSecret, secret_id)
+    if existing:
+        existing.value = value
+        if description:
+            existing.description = description
+    else:
+        secret = PlatformSecret(id=secret_id, value=value, description=description or None)
+        db.add(secret)
+
+    await db.flush()
+    return {"id": secret_id, "status": "saved"}
+
+
+@router.delete("/secrets/{secret_id}")
+async def delete_secret(secret_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a secret."""
+    from app.models.secret import PlatformSecret
+    existing = await db.get(PlatformSecret, secret_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Secret not found")
+    await db.delete(existing)
+    await db.flush()
+    return {"id": secret_id, "status": "deleted"}

@@ -1,0 +1,370 @@
+{
+  "schema_version": 2,
+  "seed_version": "2.0.0",
+  "skills": [
+    {
+      "skill_id": "user_need_reformulation",
+      "label": "User Need Reformulation",
+      "category": "preparation",
+      "allowed_families": ["preparation"],
+      "description": "Transform a raw user request into a clear, operational, and actionable need statement that can be used by downstream agents, workflows, or tools.",
+      "behavior_templates": [
+        "Reformulate the user request into a precise operational need.",
+        "Identify the explicit objective, implicit intent, and expected deliverable.",
+        "Clarify scope, assumptions, and ambiguities without inventing missing facts.",
+        "Convert vague phrasing into a structured and actionable requirement.",
+        "Preserve the user’s original intent while improving clarity and execution readiness."
+      ],
+      "output_guidelines": [
+        "Always preserve semantic fidelity to the original request.",
+        "Do not add constraints, facts, or goals not implied by the user.",
+        "Explicitly separate confirmed information from inferred assumptions.",
+        "Prefer concise and operational wording over conversational wording.",
+        "When ambiguity remains, surface it clearly as an open point."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "task_structuring",
+      "label": "Task Structuring",
+      "category": "preparation",
+      "allowed_families": ["preparation", "design", "execution"],
+      "description": "Break down a user need into a structured execution plan composed of logical sub-tasks, dependencies, and priorities.",
+      "behavior_templates": [
+        "Decompose the request into clear execution steps.",
+        "Identify dependencies, sequencing, and critical path items.",
+        "Separate analysis tasks, build tasks, validation tasks, and delivery tasks.",
+        "Group related actions into coherent work packages.",
+        "Produce a structure that can be used directly by an orchestrator or specialized agents."
+      ],
+      "output_guidelines": [
+        "Use atomic, non-overlapping steps where possible.",
+        "Keep the order logically executable.",
+        "Highlight blockers, prerequisites, and optional steps.",
+        "Do not produce overly generic phases when actionable sub-steps are possible.",
+        "Prefer implementation-oriented granularity."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "requirements_extraction",
+      "label": "Requirements Extraction",
+      "category": "analysis",
+      "allowed_families": ["analysis", "design", "governance"],
+      "description": "Extract functional, non-functional, technical, business, and governance requirements from a user request or source material.",
+      "behavior_templates": [
+        "Identify explicit and implicit requirements from the input.",
+        "Separate business goals from technical constraints.",
+        "Extract operational expectations, compliance needs, and delivery criteria.",
+        "Distinguish mandatory requirements from optional preferences.",
+        "Organize requirements into actionable categories."
+      ],
+      "output_guidelines": [
+        "Do not infer hard requirements unless strongly supported by context.",
+        "Mark uncertain requirements as assumptions or hypotheses.",
+        "Prefer categorized outputs: functional, non-functional, security, operations, UX, data, integration.",
+        "Keep wording implementation-relevant.",
+        "Avoid duplication across requirement categories."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "context_gap_detection",
+      "label": "Context Gap Detection",
+      "category": "analysis",
+      "allowed_families": ["analysis", "preparation", "governance", "validation"],
+      "description": "Detect missing information, unclear assumptions, underspecified constraints, and contextual gaps that may block reliable execution.",
+      "behavior_templates": [
+        "Identify what is missing to execute the request safely and correctly.",
+        "Detect underspecified scope, missing inputs, and unresolved dependencies.",
+        "Highlight assumptions that need validation.",
+        "Expose contradictions or ambiguities in the request.",
+        "Surface execution risks caused by incomplete context."
+      ],
+      "output_guidelines": [
+        "Focus on execution-relevant missing information.",
+        "Do not ask for unnecessary details if a reasonable best-effort path exists.",
+        "Separate blocking gaps from non-blocking gaps.",
+        "Frame gaps in a practical and concise way.",
+        "Avoid speculative issues unsupported by the input."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "document_analysis",
+      "label": "Document Analysis",
+      "category": "analysis",
+      "allowed_families": ["analysis", "validation", "decision"],
+      "description": "Analyze a document to extract structure, intent, key content, technical substance, inconsistencies, strengths, weaknesses, and improvement opportunities.",
+      "behavior_templates": [
+        "Read the document and identify its structure, objective, and target audience.",
+        "Extract the main technical and business messages.",
+        "Assess completeness, internal consistency, and implementation readiness.",
+        "Identify weak sections, missing details, and redundancy.",
+        "Produce actionable improvement recommendations."
+      ],
+      "output_guidelines": [
+        "Base conclusions on the document content only.",
+        "Differentiate factual observations from evaluative judgments.",
+        "Prioritize high-impact issues over cosmetic issues.",
+        "Use explicit section references when relevant.",
+        "Prefer practical recommendations over vague critique."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "technical_architecture_design",
+      "label": "Technical Architecture Design",
+      "category": "design",
+      "allowed_families": ["design"],
+      "description": "Design a target technical architecture that is coherent, scalable, maintainable, secure, observable, and aligned with business and operational constraints.",
+      "behavior_templates": [
+        "Translate requirements into an end-to-end technical architecture.",
+        "Define major components, responsibilities, interfaces, and boundaries.",
+        "Propose deployment, integration, observability, and security principles.",
+        "Justify structural choices based on constraints and trade-offs.",
+        "Produce implementation-oriented architecture guidance."
+      ],
+      "output_guidelines": [
+        "Keep component responsibilities explicit and non-overlapping.",
+        "State assumptions and trade-offs clearly.",
+        "Avoid buzzword-driven architecture with no execution path.",
+        "Favor production-oriented choices over purely conceptual designs.",
+        "Include operational realities: HA, monitoring, rollback, security, and ownership."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "agent_role_definition",
+      "label": "Agent Role Definition",
+      "category": "design",
+      "allowed_families": ["design", "governance"],
+      "description": "Define specialized agent roles, responsibilities, authority boundaries, tool access, inputs, outputs, and collaboration patterns within a multi-agent system.",
+      "behavior_templates": [
+        "Define the agent’s mission, scope, and decision boundaries.",
+        "Specify what the agent can do, cannot do, and when it must escalate.",
+        "Describe expected inputs, outputs, and success criteria.",
+        "Map allowed tools and prohibited tool usage.",
+        "Clarify interaction patterns with other agents and orchestration layers."
+      ],
+      "output_guidelines": [
+        "Each role must have a clear responsibility boundary.",
+        "Avoid role overlap unless explicitly justified.",
+        "Define both capability and limitation.",
+        "Make tool permissions explicit.",
+        "Favor governance-friendly definitions over vague autonomous behavior."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "tool_selection_strategy",
+      "label": "Tool Selection Strategy",
+      "category": "execution",
+      "allowed_families": ["execution", "design", "analysis"],
+      "description": "Determine the most appropriate tools, data sources, and execution sequence required to fulfill a task efficiently and safely.",
+      "behavior_templates": [
+        "Identify which tools are relevant for the request.",
+        "Sequence tool usage in a logical and efficient order.",
+        "Avoid unnecessary tool calls when direct reasoning is sufficient.",
+        "Choose authoritative tools when accuracy is critical.",
+        "Match tool selection to the task’s precision, cost, and safety requirements."
+      ],
+      "output_guidelines": [
+        "Prefer authoritative and deterministic tools for critical operations.",
+        "Minimize unnecessary calls and redundant steps.",
+        "Do not select tools outside the task scope.",
+        "Explicitly state when no tool is needed.",
+        "Account for reliability, latency, and validation needs."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "web_research",
+      "label": "Web Research",
+      "category": "execution",
+      "allowed_families": ["execution", "analysis", "decision"],
+      "description": "Search, collect, filter, and synthesize relevant web information from reliable and recent sources when current or external knowledge is required.",
+      "behavior_templates": [
+        "Search broadly first, then narrow down to high-quality sources.",
+        "Prioritize official, primary, or authoritative references.",
+        "Cross-check critical facts across multiple sources.",
+        "Extract the most relevant findings and discard noise.",
+        "Summarize findings in a concise and source-grounded way."
+      ],
+      "output_guidelines": [
+        "Always distinguish confirmed facts from interpretation.",
+        "Prioritize source quality and recency.",
+        "Avoid weak or low-signal sources when stronger ones exist.",
+        "Do not overstate conclusions when evidence is mixed.",
+        "Summaries should remain traceable to cited findings."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "source_comparison",
+      "label": "Source Comparison",
+      "category": "analysis",
+      "allowed_families": ["analysis", "decision", "validation"],
+      "description": "Compare multiple sources, options, documents, architectures, tools, or approaches across explicit evaluation criteria.",
+      "behavior_templates": [
+        "Define comparison axes aligned with the decision context.",
+        "Evaluate each option against the same criteria.",
+        "Highlight strengths, weaknesses, and trade-offs objectively.",
+        "Surface differentiators that materially affect the decision.",
+        "Conclude with a contextual recommendation."
+      ],
+      "output_guidelines": [
+        "Use consistent comparison criteria across all options.",
+        "Avoid biased or unequal treatment between compared items.",
+        "State when evidence is insufficient for a firm ranking.",
+        "Prioritize decision-relevant distinctions over superficial differences.",
+        "Recommendations must follow from the comparison, not precede it."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "risk_identification",
+      "label": "Risk Identification",
+      "category": "governance",
+      "allowed_families": ["governance", "analysis", "validation", "decision"],
+      "description": "Identify technical, operational, delivery, compliance, security, and business risks associated with a request, architecture, workflow, or decision.",
+      "behavior_templates": [
+        "Identify likely failure modes and operational risks.",
+        "Detect governance, security, and compliance concerns.",
+        "Highlight delivery risks, hidden complexity, and coupling issues.",
+        "Distinguish structural risks from execution mistakes.",
+        "Frame risks in a way that supports mitigation planning."
+      ],
+      "output_guidelines": [
+        "Focus on material risks, not hypothetical noise.",
+        "Differentiate severity, likelihood, and impact when possible.",
+        "Prefer concrete risk statements over generic warnings.",
+        "Link each major risk to a cause or trigger.",
+        "Do not present speculative risks as certainties."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "recommendation_synthesis",
+      "label": "Recommendation Synthesis",
+      "category": "decision",
+      "allowed_families": ["decision", "delivery"],
+      "description": "Synthesize findings, trade-offs, constraints, and evidence into a clear recommendation aligned with the user’s goals and context.",
+      "behavior_templates": [
+        "Combine analysis results into a coherent recommendation.",
+        "Resolve tension between competing options using explicit reasoning.",
+        "Propose a preferred path and explain why.",
+        "Include fallback or phased alternatives when relevant.",
+        "Keep the final recommendation action-oriented."
+      ],
+      "output_guidelines": [
+        "Recommendations must be grounded in prior evidence.",
+        "State trade-offs openly.",
+        "Avoid false certainty when multiple paths remain viable.",
+        "Prefer context-sensitive recommendations over generic best practices.",
+        "End with a directly usable decision statement."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "output_formatting",
+      "label": "Output Formatting",
+      "category": "delivery",
+      "allowed_families": ["delivery"],
+      "description": "Structure the final output so that it is readable, consistent, professional, and aligned with the expected delivery format.",
+      "behavior_templates": [
+        "Transform raw findings into a structured and clean deliverable.",
+        "Use headings, sections, bullets, or tables only where they improve clarity.",
+        "Adapt presentation style to the requested audience and artifact type.",
+        "Preserve information density while improving readability.",
+        "Ensure the output is ready for direct use."
+      ],
+      "output_guidelines": [
+        "Do not sacrifice clarity for formatting theatrics.",
+        "Keep structure consistent across sections.",
+        "Use concise labels and strong section names.",
+        "Avoid redundant restatement of the same point.",
+        "Match formatting to deliverable intent: analysis, spec, plan, DAT, prompt, etc."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "quality_review",
+      "label": "Quality Review",
+      "category": "validation",
+      "allowed_families": ["validation", "governance", "delivery"],
+      "description": "Review an output for consistency, completeness, correctness, ambiguity, structural quality, and production readiness before delivery.",
+      "behavior_templates": [
+        "Check whether the deliverable satisfies the original need.",
+        "Detect internal inconsistencies, omissions, and weak logic.",
+        "Verify that structure, clarity, and technical depth are sufficient.",
+        "Assess whether the result is executable by its intended audience.",
+        "Propose targeted improvements before finalization."
+      ],
+      "output_guidelines": [
+        "Review against the actual request, not an imagined one.",
+        "Flag both content defects and usability defects.",
+        "Prioritize critical issues before minor polish issues.",
+        "Use specific corrective feedback.",
+        "Do not approve outputs that remain structurally incomplete."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-05T00:00:00Z",
+      "updated_at": "2026-04-05T00:00:00Z"
+    }
+  ]
+}

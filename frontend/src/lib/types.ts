@@ -69,13 +69,26 @@ export interface Agent {
   purpose: string;
   description: string | null;
   skills: string[] | null;
+  selection_hints: Record<string, string | boolean | string[]> | null;
   allowed_mcps: string[] | null;
+  forbidden_effects: string[] | null;
+  input_contract_ref: string | null;
+  output_contract_ref: string | null;
   criticality: string;
   cost_profile: string;
+  limitations: string[] | null;
+  prompt_ref: string | null;
+  prompt_content: string | null;
+  skills_ref: string | null;
+  skills_content: string | null;
   version: string;
   status: string;
   owner: string | null;
+  last_test_status: string;
+  last_validated_at: string | null;
+  usage_count: number;
   created_at: string;
+  updated_at: string;
 }
 
 export interface MCP {
@@ -188,4 +201,11 @@ export interface PlatformMetrics {
   total_cost: number;
   control_decisions_by_type: Record<string, number>;
   audit_events_total: number;
+}
+
+export interface PlatformSecret {
+  id: string;
+  value_masked: string;
+  description: string | null;
+  updated_at: string | null;
 }
