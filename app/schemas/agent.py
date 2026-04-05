@@ -9,15 +9,16 @@ from pydantic import AliasChoices, Field
 
 from app.schemas.common import OrkBaseSchema
 from app.schemas.skill import SkillRef
+from app.schemas.family import FamilyOut
 
 
 class AgentCreate(OrkBaseSchema):
     id: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=255)
-    family: str = Field(..., min_length=1, max_length=50)
+    family_id: str = Field(..., min_length=1, max_length=50)
     purpose: str = Field(..., min_length=1)
     description: Optional[str] = None
-    skills: Optional[list[str]] = None
+    skill_ids: Optional[list[str]] = None
     selection_hints: Optional[dict[str, str | list[str] | bool]] = None
     allowed_mcps: Optional[list[str]] = None
     forbidden_effects: Optional[list[str]] = None
@@ -40,10 +41,10 @@ class AgentCreate(OrkBaseSchema):
 
 class AgentUpdate(OrkBaseSchema):
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    family: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    family_id: Optional[str] = Field(default=None, min_length=1, max_length=50)
     purpose: Optional[str] = Field(default=None, min_length=1)
     description: Optional[str] = None
-    skills: Optional[list[str]] = None
+    skill_ids: Optional[list[str]] = None
     selection_hints: Optional[dict[str, str | list[str] | bool]] = None
     allowed_mcps: Optional[list[str]] = None
     forbidden_effects: Optional[list[str]] = None
@@ -67,10 +68,11 @@ class AgentUpdate(OrkBaseSchema):
 class AgentOut(OrkBaseSchema):
     id: str
     name: str
-    family: str
+    family_id: str
+    family: Optional[FamilyOut] = None  # enriched at read time via family_rel
     purpose: str
     description: Optional[str]
-    skills: Optional[list[str]]
+    skill_ids: Optional[list[str]] = None  # resolved from agent_skills at read time
     skills_resolved: Optional[list[SkillRef]] = None  # enriched at read time
     selection_hints: Optional[dict[str, str | list[str] | bool]]
     allowed_mcps: Optional[list[str]]
@@ -133,10 +135,14 @@ class AgentGenerationRequest(OrkBaseSchema):
 class GeneratedAgentDraft(OrkBaseSchema):
     agent_id: str = Field(..., validation_alias=AliasChoices("agent_id", "id"))
     name: str
-    family: str
+    family_id: str = Field(
+        ..., validation_alias=AliasChoices("family_id", "family")
+    )
     purpose: str
     description: str
-    skills: list[str]
+    skill_ids: list[str] = Field(
+        default_factory=list, validation_alias=AliasChoices("skill_ids", "skills")
+    )
     selection_hints: dict[str, str | list[str] | bool]
     allowed_mcps: list[str]
     forbidden_effects: list[str]

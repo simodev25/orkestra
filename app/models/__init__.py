@@ -12,6 +12,8 @@ from app.models.audit import AuditEvent, EvidenceRecord, ReplayBundle
 from app.models.registry import AgentDefinition, MCPDefinition
 from app.models.mcp_catalog import OrkestraMCPBinding
 from app.models.settings import PolicyProfile, BudgetProfile
+from app.models.family import FamilyDefinition, SkillFamily, AgentSkill
+from app.models.skill import SkillDefinition
 
 __all__ = [
     "Request", "Case", "WorkflowDefinition", "OrchestrationPlan",
@@ -20,4 +22,5 @@ __all__ = [
     "ReplayBundle", "AgentDefinition", "MCPDefinition",
     "OrkestraMCPBinding",
     "PolicyProfile", "BudgetProfile",
+    "FamilyDefinition", "SkillFamily", "AgentSkill", "SkillDefinition",
 ]

@@ -2,9 +2,9 @@
 
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, Boolean, DateTime
+from sqlalchemy import ForeignKey, String, Text, Integer, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
 from app.models.enums import AgentStatus, MCPStatus
@@ -15,10 +15,9 @@ class AgentDefinition(BaseModel):
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
-    family: Mapped[str] = mapped_column(String(50))
+    family_id: Mapped[str] = mapped_column(String(50), ForeignKey("family_definitions.id"), nullable=False)
     purpose: Mapped[str] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    skills: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     selection_hints: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     allowed_mcps: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     forbidden_effects: Mapped[list | None] = mapped_column(JSONB, nullable=True)
@@ -37,6 +36,10 @@ class AgentDefinition(BaseModel):
     version: Mapped[str] = mapped_column(String(20), default="1.0.0")
     status: Mapped[str] = mapped_column(String(20), default=AgentStatus.DRAFT)
     owner: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Relationships
+    family_rel = relationship("FamilyDefinition", back_populates="agents")
+    agent_skills = relationship("AgentSkill", back_populates="agent", cascade="all, delete-orphan")
 
 
 class MCPDefinition(BaseModel):

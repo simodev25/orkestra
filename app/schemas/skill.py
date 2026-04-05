@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import Field, field_validator
@@ -26,15 +27,40 @@ class SkillRef(OrkBaseSchema):
     skills_content: SkillContent
 
 
+class SkillCreate(OrkBaseSchema):
+    """Schema for creating a new skill via the API."""
+
+    id: str = Field(..., min_length=1, max_length=100)
+    label: str = Field(..., min_length=1, max_length=255)
+    category: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    behavior_templates: list[str] = Field(default_factory=list)
+    output_guidelines: list[str] = Field(default_factory=list)
+    allowed_families: list[str] = Field(default_factory=list)
+
+
+class SkillUpdate(OrkBaseSchema):
+    """Schema for partial-updating a skill via the API."""
+
+    label: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    category: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    behavior_templates: Optional[list[str]] = None
+    output_guidelines: Optional[list[str]] = None
+    allowed_families: Optional[list[str]] = None
+
+
 class SkillOut(OrkBaseSchema):
     """Full skill as exposed by the API."""
 
     skill_id: str
     label: str
     category: str
-    description: str
+    description: Optional[str]
     behavior_templates: list[str]
     output_guidelines: list[str]
+    created_at: datetime
+    updated_at: datetime
 
 
 class AgentSummary(OrkBaseSchema):
@@ -50,7 +76,7 @@ class SkillWithAgents(OrkBaseSchema):
     skill_id: str
     label: str
     category: str
-    description: str
+    description: Optional[str]
     agents: list[AgentSummary]
 
 
@@ -63,6 +89,7 @@ class SkillSeedEntry(OrkBaseSchema):
     description: str
     behavior_templates: list[str] = Field(..., min_length=1)
     output_guidelines: list[str] = Field(..., min_length=1)
+    allowed_families: list[str] = Field(default_factory=list)
 
     @field_validator("behavior_templates", "output_guidelines")
     @classmethod
