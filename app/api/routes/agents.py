@@ -77,7 +77,7 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     agent = await agent_registry_service.get_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return agent_registry_service.enrich_agent_skills(agent)
+    return await agent_registry_service.enrich_agent_skills(db, agent)
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)

@@ -8,6 +8,7 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.family import AgentSkill, FamilyDefinition
 from app.models.registry import AgentDefinition
 from app.schemas.agent import (
     AgentCreate,
@@ -15,7 +16,7 @@ from app.schemas.agent import (
     AgentUpdate,
     GeneratedAgentDraft,
 )
-from app.services import obot_catalog_service, skill_registry_service
+from app.services import obot_catalog_service, skill_service
 from app.services.event_service import emit_event
 from app.state_machines.agent_lifecycle_sm import AgentLifecycleStateMachine
 
@@ -37,7 +38,7 @@ def _dedupe_str_list(values: Iterable[str] | None) -> list[str]:
     return out
 
 
-def validate_agent_definition(data: AgentCreate) -> list[str]:
+async def validate_agent_definition(db: AsyncSession, data: AgentCreate) -> list[str]:
     errors: list[str] = []
 
     if not _AGENT_ID_RE.match(data.id):
@@ -52,21 +53,35 @@ def validate_agent_definition(data: AgentCreate) -> list[str]:
     if data.skills_content is not None and not data.skills_content.strip():
         errors.append("skills_content cannot be empty when provided")
 
-    # Validate skill references against the registry
-    if data.skills:
-        _, unresolved = skill_registry_service.resolve_skills(data.skills)
+    # Validate family_id exists
+    if not await db.get(FamilyDefinition, data.family_id):
+        errors.append(f"family '{data.family_id}' does not exist")
+
+    # Validate skill references against the DB registry
+    if data.skill_ids:
+        skill_ids = _dedupe_str_list(data.skill_ids)
+        _, unresolved = await skill_service.resolve_skills(db, skill_ids)
         for sid in unresolved:
             errors.append(f"agent references unknown skill_id: '{sid}'")
+
+        # Validate skills are compatible with the declared family
+        if not errors:
+            incompatible = await skill_service.validate_skills_for_family(
+                db, skill_ids, data.family_id
+            )
+            for sid in incompatible:
+                errors.append(
+                    f"skill '{sid}' is not allowed for family '{data.family_id}'"
+                )
 
     return errors
 
 
-def _apply_create_payload(agent: AgentDefinition, payload: AgentCreate) -> None:
+async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payload: AgentCreate) -> None:
     agent.name = payload.name
-    agent.family = payload.family
+    agent.family_id = payload.family_id
     agent.purpose = payload.purpose
     agent.description = payload.description
-    agent.skills = _dedupe_str_list(payload.skills)
     agent.selection_hints = payload.selection_hints
     agent.allowed_mcps = _dedupe_str_list(payload.allowed_mcps)
     agent.forbidden_effects = _dedupe_str_list(payload.forbidden_effects)
@@ -79,8 +94,9 @@ def _apply_create_payload(agent: AgentDefinition, payload: AgentCreate) -> None:
     agent.prompt_content = payload.prompt_content
     agent.skills_ref = payload.skills_ref
     # Auto-generate skills_content from resolved skill_ids if not explicitly provided
-    if payload.skills and not payload.skills_content:
-        agent.skills_content = skill_registry_service.build_skills_content(payload.skills)
+    skill_ids = _dedupe_str_list(payload.skill_ids)
+    if skill_ids and not payload.skills_content:
+        agent.skills_content = await skill_service.build_skills_content(db, skill_ids)
     else:
         agent.skills_content = payload.skills_content
     agent.version = payload.version
@@ -91,8 +107,26 @@ def _apply_create_payload(agent: AgentDefinition, payload: AgentCreate) -> None:
     agent.usage_count = payload.usage_count
 
 
+async def _sync_agent_skills(db: AsyncSession, agent_id: str, skill_ids: list[str]) -> None:
+    """Replace agent's AgentSkill rows with the given skill_ids list."""
+    await db.execute(
+        select(AgentSkill).where(AgentSkill.agent_id == agent_id)
+    )
+    # Delete existing entries via ORM
+    existing_result = await db.execute(
+        select(AgentSkill).where(AgentSkill.agent_id == agent_id)
+    )
+    for row in existing_result.scalars().all():
+        await db.delete(row)
+    await db.flush()
+
+    for sid in skill_ids:
+        db.add(AgentSkill(agent_id=agent_id, skill_id=sid))
+    await db.flush()
+
+
 async def create_agent(db: AsyncSession, data: AgentCreate) -> AgentDefinition:
-    errors = validate_agent_definition(data)
+    errors = await validate_agent_definition(db, data)
     if errors:
         raise ValueError(f"Validation errors: {'; '.join(errors)}")
 
@@ -101,10 +135,16 @@ async def create_agent(db: AsyncSession, data: AgentCreate) -> AgentDefinition:
         raise ValueError(f"Agent {data.id} already exists")
 
     agent = AgentDefinition(id=data.id)
-    _apply_create_payload(agent, data)
+    await _apply_create_payload(db, agent, data)
 
     db.add(agent)
     await db.flush()
+
+    # Sync AgentSkill join rows
+    skill_ids = _dedupe_str_list(data.skill_ids)
+    if skill_ids:
+        await _sync_agent_skills(db, agent.id, skill_ids)
+
     await emit_event(
         db,
         "agent.registered",
@@ -126,26 +166,42 @@ async def update_agent(db: AsyncSession, agent_id: str, data: AgentUpdate) -> Ag
     if "purpose" in updates and len(updates["purpose"].strip()) < 10:
         raise ValueError("purpose must be at least 10 characters")
 
-    # Validate skill references against the registry on update
-    if "skills" in updates:
-        _, unresolved = skill_registry_service.resolve_skills(updates["skills"])
+    # Validate new family_id if provided
+    new_family_id = updates.get("family_id", agent.family_id)
+    if "family_id" in updates:
+        if not await db.get(FamilyDefinition, updates["family_id"]):
+            raise ValueError(f"family '{updates['family_id']}' does not exist")
+
+    # Validate skill_ids on update
+    new_skill_ids: list[str] | None = None
+    if "skill_ids" in updates:
+        new_skill_ids = _dedupe_str_list(updates.pop("skill_ids"))
+        _, unresolved = await skill_service.resolve_skills(db, new_skill_ids)
         if unresolved:
             raise ValueError(f"agent references unknown skill_ids: {unresolved}")
+        # Validate skills are compatible with the family
+        incompatible = await skill_service.validate_skills_for_family(
+            db, new_skill_ids, new_family_id
+        )
+        if incompatible:
+            raise ValueError(
+                f"skills not allowed for family '{new_family_id}': {incompatible}"
+            )
 
-    list_fields = {"skills", "allowed_mcps", "forbidden_effects", "limitations"}
+    list_fields = {"allowed_mcps", "forbidden_effects", "limitations"}
     for field, value in updates.items():
         if field in list_fields:
             setattr(agent, field, _dedupe_str_list(value))
-            if field == "skills":
-                # Auto-regenerate skills_content when skills change
-                skills = _dedupe_str_list(value)
-                if skills:
-                    setattr(agent, "skills_content", skill_registry_service.build_skills_content(skills))
             continue
         if field in {"prompt_content", "skills_content"} and isinstance(value, str):
             if not value.strip():
                 raise ValueError(f"{field} cannot be empty")
         setattr(agent, field, value)
+
+    # Sync AgentSkill join rows and regenerate skills_content
+    if new_skill_ids is not None:
+        await _sync_agent_skills(db, agent_id, new_skill_ids)
+        agent.skills_content = await skill_service.build_skills_content(db, new_skill_ids)
 
     await db.flush()
     await emit_event(
@@ -198,10 +254,9 @@ def _matches_text(agent: AgentDefinition, q: str) -> bool:
     haystacks = [
         agent.id,
         agent.name,
-        agent.family,
+        agent.family_id,
         agent.purpose,
         agent.description or "",
-        " ".join(agent.skills or []),
         " ".join(agent.allowed_mcps or []),
     ]
     low_q = q.lower()
@@ -224,7 +279,7 @@ async def list_agents(
 ) -> list[AgentDefinition]:
     stmt = select(AgentDefinition)
     if family and family != "all":
-        stmt = stmt.where(AgentDefinition.family == family)
+        stmt = stmt.where(AgentDefinition.family_id == family)
     if status and status != "all":
         stmt = stmt.where(AgentDefinition.status == status)
     if criticality and criticality != "all":
@@ -310,29 +365,62 @@ async def available_mcp_summaries(db: AsyncSession) -> list[dict[str, str | bool
 
 
 async def available_skills(db: AsyncSession) -> list[str]:
-    """Return a sorted list of unique skill names across all registered agents."""
-    result = await db.execute(select(AgentDefinition.skills))
-    all_skills: set[str] = set()
-    for row in result.all():
-        skills = row[0] or []
-        for skill in skills:
-            if skill.strip():
-                all_skills.add(skill.strip())
-    return sorted(all_skills)
+    """Return a sorted list of unique skill_ids across all AgentSkill entries."""
+    result = await db.execute(
+        select(AgentSkill.skill_id).distinct()
+    )
+    return sorted(row[0] for row in result.all())
 
 
-def enrich_agent_skills(agent: AgentDefinition) -> AgentDefinition:
-    """Populate agent.skills_resolved from the skill registry.
+async def enrich_agent(db: AsyncSession, agent: AgentDefinition) -> dict:
+    """Return a dict with full agent data including family object and resolved skills."""
+    # Load family
+    family = await db.get(FamilyDefinition, agent.family_id)
 
-    This is called when returning agents via the API so the caller gets
-    the fully-resolved skill metadata without duplicating it in the DB.
-    """
-    if not agent.skills:
-        return agent
-    resolved, _ = skill_registry_service.resolve_skills(agent.skills)
-    # Attach as a transient attribute (not persisted)
-    object.__setattr__(agent, "skills_resolved", resolved)
-    return agent
+    # Load skill_ids from join table
+    sk_result = await db.execute(
+        select(AgentSkill.skill_id).where(AgentSkill.agent_id == agent.id)
+    )
+    skill_ids = [row[0] for row in sk_result.all()]
+
+    # Resolve skills
+    resolved, _ = await skill_service.resolve_skills(db, skill_ids)
+
+    return {
+        "id": agent.id,
+        "name": agent.name,
+        "family_id": agent.family_id,
+        "family": family,
+        "purpose": agent.purpose,
+        "description": agent.description,
+        "skill_ids": skill_ids,
+        "skills_resolved": resolved,
+        "selection_hints": agent.selection_hints,
+        "allowed_mcps": agent.allowed_mcps,
+        "forbidden_effects": agent.forbidden_effects,
+        "input_contract_ref": agent.input_contract_ref,
+        "output_contract_ref": agent.output_contract_ref,
+        "criticality": agent.criticality,
+        "cost_profile": agent.cost_profile,
+        "limitations": agent.limitations,
+        "prompt_ref": agent.prompt_ref,
+        "prompt_content": agent.prompt_content,
+        "skills_ref": agent.skills_ref,
+        "skills_content": agent.skills_content,
+        "version": agent.version,
+        "status": agent.status,
+        "owner": agent.owner,
+        "last_test_status": agent.last_test_status,
+        "last_validated_at": agent.last_validated_at,
+        "usage_count": agent.usage_count,
+        "created_at": agent.created_at,
+        "updated_at": agent.updated_at,
+    }
+
+
+async def enrich_agent_skills(db: AsyncSession, agent: AgentDefinition) -> dict:
+    """Alias for enrich_agent — returns enriched agent dict with skill_ids and family."""
+    return await enrich_agent(db, agent)
 
 
 async def save_generated_draft(db: AsyncSession, draft: GeneratedAgentDraft) -> AgentDefinition:
@@ -346,7 +434,7 @@ async def save_generated_draft(db: AsyncSession, draft: GeneratedAgentDraft) -> 
         errors.append("name is required")
     if not draft.purpose.strip():
         errors.append("purpose is required")
-    if not draft.skills:
+    if not draft.skill_ids:
         errors.append("at least one skill is required")
     if not draft.prompt_content.strip():
         errors.append("prompt_content is required")
@@ -367,10 +455,10 @@ async def save_generated_draft(db: AsyncSession, draft: GeneratedAgentDraft) -> 
     payload = AgentCreate(
         id=draft.agent_id,
         name=draft.name,
-        family=draft.family,
+        family_id=draft.family_id,
         purpose=draft.purpose,
         description=draft.description,
-        skills=draft.skills,
+        skill_ids=draft.skill_ids,
         selection_hints=draft.selection_hints,
         allowed_mcps=draft.allowed_mcps,
         forbidden_effects=draft.forbidden_effects,
