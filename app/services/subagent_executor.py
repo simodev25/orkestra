@@ -53,7 +53,7 @@ async def execute_subagent(
 
     # Try real AgentScope execution
     try:
-        result = await _execute_with_agentscope(agent, agent_id)
+        result = await _execute_with_agentscope(agent, agent_id, db)
         if result is not None:
             invocation.status = "completed"
             invocation.confidence_score = result.get("confidence", 0.85)
@@ -91,7 +91,11 @@ async def execute_subagent(
     return invocation
 
 
-async def _execute_with_agentscope(agent_def: AgentDefinition, agent_id: str) -> dict | None:
+async def _execute_with_agentscope(
+    agent_def: AgentDefinition,
+    agent_id: str,
+    db: AsyncSession,
+) -> dict | None:
     """Try to execute using AgentScope. Returns result dict or None."""
     from app.llm.provider import is_agentscope_available
     if not is_agentscope_available():
@@ -100,7 +104,7 @@ async def _execute_with_agentscope(agent_def: AgentDefinition, agent_id: str) ->
     from app.services.agent_factory import create_agentscope_agent, get_tools_for_agent
 
     tools = get_tools_for_agent(agent_def)
-    agent = await create_agentscope_agent(agent_def, tools_to_register=tools)
+    agent = await create_agentscope_agent(agent_def, db=db, tools_to_register=tools)
     if agent is None:
         return None
 

@@ -1,7 +1,6 @@
 """Agent factory -- creates AgentScope ReActAgent from Orkestra agent definitions."""
 
 import logging
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 async def create_agentscope_agent(
     agent_def: AgentDefinition,
+    db: AsyncSession,
     tools_to_register: list | None = None,
 ):
     """Create an AgentScope ReActAgent from an Orkestra AgentDefinition.
@@ -37,14 +37,16 @@ async def create_agentscope_agent(
         from agentscope.tool import Toolkit
         from agentscope.memory import InMemoryMemory
 
+        from app.services.prompt_builder import build_agent_prompt
+
         # Build toolkit with registered tools
         toolkit = Toolkit()
         if tools_to_register:
             for tool_func in tools_to_register:
                 toolkit.register_tool_function(tool_func)
 
-        # Build system prompt from agent definition
-        sys_prompt = _build_system_prompt(agent_def)
+        # Build multi-layer system prompt from agent definition
+        sys_prompt = await build_agent_prompt(db, agent_def)
 
         agent = ReActAgent(
             name=agent_def.id,
@@ -64,48 +66,44 @@ async def create_agentscope_agent(
         return None
 
 
-def _build_system_prompt(agent_def: AgentDefinition) -> str:
-    """Build a system prompt from agent definition metadata."""
-    parts = [
-        f"You are {agent_def.name}.",
-        f"\nYour mission: {agent_def.purpose}",
-    ]
-
-    if agent_def.description:
-        parts.append(f"\n{agent_def.description}")
-
-    if agent_def.skills:
-        parts.append(f"\nYour skills: {', '.join(agent_def.skills)}")
-
-    if agent_def.limitations:
-        parts.append(f"\nLimitations: {', '.join(agent_def.limitations)}")
-
-    parts.append(
-        "\n\nYou must produce structured, factual output. "
-        "Always include confidence levels and cite sources when possible. "
-        "If you are uncertain, say so explicitly."
-    )
-
-    return "\n".join(parts)
-
-
 def get_tools_for_agent(agent_def: AgentDefinition) -> list:
-    """Get the MCP tool functions that this agent is allowed to use."""
-    from app.mcp_servers.document_parser import parse_document, classify_document
-    from app.mcp_servers.consistency_checker import check_consistency, validate_fields
-    from app.mcp_servers.search_engine import search_knowledge
-    from app.mcp_servers.weather import get_weather
+    """Get the MCP tool functions that this agent is allowed to use.
 
-    # Map MCP IDs to tool functions
-    MCP_TOOL_MAP = {
-        "document_parser": [parse_document, classify_document],
-        "consistency_checker": [check_consistency, validate_fields],
-        "search_engine": [search_knowledge],
-        "weather": [get_weather],
-    }
+    Returns an empty list if tool modules are unavailable (resilient by design).
+    """
+    allowed = agent_def.allowed_mcps or []
+    if not allowed:
+        return []
+
+    # Attempt to import each tool module individually so missing modules don't
+    # prevent other tools from being loaded.
+    MCP_TOOL_MAP: dict[str, list] = {}
+
+    try:
+        from app.mcp_servers.document_parser import parse_document, classify_document
+        MCP_TOOL_MAP["document_parser"] = [parse_document, classify_document]
+    except ImportError:
+        pass
+
+    try:
+        from app.mcp_servers.consistency_checker import check_consistency, validate_fields
+        MCP_TOOL_MAP["consistency_checker"] = [check_consistency, validate_fields]
+    except ImportError:
+        pass
+
+    try:
+        from app.mcp_servers.search_engine import search_knowledge
+        MCP_TOOL_MAP["search_engine"] = [search_knowledge]
+    except ImportError:
+        pass
+
+    try:
+        from app.mcp_servers.weather import get_weather
+        MCP_TOOL_MAP["weather"] = [get_weather]
+    except ImportError:
+        pass
 
     tools = []
-    allowed = agent_def.allowed_mcps or []
     for mcp_id in allowed:
         if mcp_id in MCP_TOOL_MAP:
             tools.extend(MCP_TOOL_MAP[mcp_id])
