@@ -34,7 +34,6 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
   const [defaultOutputExpectations, setDefaultOutputExpectations] = useState(
     toLines(initial?.default_output_expectations),
   );
-  const [version, setVersion] = useState(initial?.version ?? "");
   const [owner, setOwner] = useState(initial?.owner ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +67,6 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
           default_system_rules: parseLines(defaultSystemRules),
           default_forbidden_effects: parseLines(defaultForbiddenEffects),
           default_output_expectations: parseLines(defaultOutputExpectations),
-          version: version.trim() || undefined,
           owner: owner.trim() || undefined,
         };
         saved = await updateFamily(initial.id, payload);
@@ -80,7 +78,6 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
           default_system_rules: parseLines(defaultSystemRules),
           default_forbidden_effects: parseLines(defaultForbiddenEffects),
           default_output_expectations: parseLines(defaultOutputExpectations),
-          version: version.trim() || undefined,
           owner: owner.trim() || undefined,
         };
         saved = await createFamily(payload);
@@ -148,15 +145,14 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <p className="data-label">version</p>
-              <input
-                value={version}
-                onChange={(e) => setVersion(e.target.value)}
-                placeholder="1.0.0"
-                className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-              />
-            </div>
+            {isEdit && initial?.version && (
+              <div>
+                <p className="data-label">version (auto-managed)</p>
+                <p className="px-3 py-2 text-sm font-mono text-ork-cyan bg-ork-bg border border-ork-border rounded opacity-70">
+                  {initial.version} → next on save
+                </p>
+              </div>
+            )}
             <div>
               <p className="data-label">owner</p>
               <input

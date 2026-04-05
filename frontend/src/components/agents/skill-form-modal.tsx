@@ -27,7 +27,6 @@ export function SkillFormModal({ open, onClose, onSaved, initial }: SkillFormMod
     (initial?.output_guidelines ?? []).join("\n"),
   );
   const [allowedFamilies, setAllowedFamilies] = useState<string[]>(initial?.allowed_families ?? []);
-  const [version, setVersion] = useState(initial?.version ?? "");
   const [owner, setOwner] = useState(initial?.owner ?? "");
   const [families, setFamilies] = useState<FamilyDefinition[]>([]);
   const [saving, setSaving] = useState(false);
@@ -82,7 +81,6 @@ export function SkillFormModal({ open, onClose, onSaved, initial }: SkillFormMod
           behavior_templates: parseLines(behaviorTemplates),
           output_guidelines: parseLines(outputGuidelines),
           allowed_families: allowedFamilies,
-          version: version.trim() || undefined,
           owner: owner.trim() || undefined,
         };
         saved = await updateSkill(initial.skill_id, payload);
@@ -95,7 +93,6 @@ export function SkillFormModal({ open, onClose, onSaved, initial }: SkillFormMod
           behavior_templates: parseLines(behaviorTemplates),
           output_guidelines: parseLines(outputGuidelines),
           allowed_families: allowedFamilies,
-          version: version.trim() || undefined,
           owner: owner.trim() || undefined,
         };
         saved = await createSkill(payload);
@@ -156,15 +153,14 @@ export function SkillFormModal({ open, onClose, onSaved, initial }: SkillFormMod
                 className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
               />
             </div>
-            <div>
-              <p className="data-label">version</p>
-              <input
-                value={version}
-                onChange={(e) => setVersion(e.target.value)}
-                placeholder="1.0.0"
-                className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-              />
-            </div>
+            {isEdit && initial?.version && (
+              <div>
+                <p className="data-label">version (auto-managed)</p>
+                <p className="px-3 py-2 text-sm font-mono text-ork-cyan bg-ork-bg border border-ork-border rounded opacity-70">
+                  {initial.version} → next on save
+                </p>
+              </div>
+            )}
             <div>
               <p className="data-label">owner</p>
               <input

@@ -108,9 +108,9 @@ async def update_family(db: AsyncSession, family_id: str, data: FamilyUpdate) ->
 
     updates = data.model_dump(exclude_none=True)
 
-    # Auto-bump version if not explicitly provided
-    if "version" not in updates:
-        family.version = bump_patch(family.version or "1.0.0")
+    # Version is always auto-managed — ignore any client-provided value
+    updates.pop("version", None)
+    family.version = bump_patch(family.version or "1.0.0")
 
     for field, value in updates.items():
         setattr(family, field, value)

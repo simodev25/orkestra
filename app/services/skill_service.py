@@ -113,9 +113,9 @@ async def update_skill(db: AsyncSession, skill_id: str, data: SkillUpdate) -> di
     )
     db.add(history)
 
-    # Auto-bump version if not explicitly provided
-    if "version" not in updates:
-        skill.version = bump_patch(skill.version or "1.0.0")
+    # Version is always auto-managed — ignore any client-provided value
+    updates.pop("version", None)
+    skill.version = bump_patch(skill.version or "1.0.0")
 
     for field, value in updates.items():
         setattr(skill, field, value)
