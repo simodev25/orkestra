@@ -30,6 +30,7 @@ class AgentDefinition(BaseModel):
     prompt_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     skills_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     skills_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    soul_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_test_status: Mapped[str] = mapped_column(String(30), default="not_tested")
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)

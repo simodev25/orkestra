@@ -16,6 +16,9 @@ class SkillDefinition(BaseModel):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     behavior_templates: Mapped[list] = mapped_column(JSONB, default=list)
     output_guidelines: Mapped[list] = mapped_column(JSONB, default=list)
+    version: Mapped[str] = mapped_column(String(20), default="1.0.0")
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    owner: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Relationships
     skill_families = relationship("SkillFamily", back_populates="skill", cascade="all, delete-orphan")
