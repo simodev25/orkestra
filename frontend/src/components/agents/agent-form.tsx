@@ -69,7 +69,8 @@ export function AgentForm({
   const [family, setFamily] = useState(initial?.family ?? "analyst");
   const [purpose, setPurpose] = useState(initial?.purpose ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [skills, setSkills] = useState(toCsv(initial?.skills));
+  const [skills, setSkills] = useState<string[]>(initial?.skills ?? []);
+  const [skillsInput, setSkillsInput] = useState("");
   const [routingKeywords, setRoutingKeywords] = useState(
     toCsv((initial?.selection_hints?.routing_keywords as string[] | undefined) ?? []),
   );
@@ -123,7 +124,7 @@ export function AgentForm({
     }
     if (!name.trim()) issues.push("`name` is required");
     if (purpose.trim().length < 10) issues.push("`purpose` must be at least 10 chars");
-    if (parseCsv(skills).length < 1) issues.push("at least one `skill` is required");
+    if (skills.length < 1) issues.push("at least one `skill` is required");
     if (!promptContent.trim()) issues.push("`prompt_content` is required");
     if (!skillsContent.trim()) issues.push("`skills_content` is required");
     if (parseCsv(limitations).length < 1) issues.push("at least one `limitation` is required");
@@ -154,7 +155,7 @@ export function AgentForm({
       family: family.trim(),
       purpose: purpose.trim(),
       description: description.trim() || null,
-      skills: parseCsv(skills),
+      skills: skills,
       selection_hints,
       allowed_mcps: allowedMcps,
       forbidden_effects: forbiddenEffects,
@@ -285,9 +286,19 @@ export function AgentForm({
         <h2 className="section-title text-sm">3. Skills</h2>
         <p className="data-label">skills (comma separated)</p>
         <input
-          value={skills}
-          onChange={(e) => setSkills(e.target.value)}
-          placeholder="evidence_collection, entity_resolution, source_cross_check"
+          value={skillsInput}
+          onChange={(e) => setSkillsInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const val = skillsInput.trim();
+              if (val && !skills.includes(val)) {
+                setSkills([...skills, val]);
+              }
+              setSkillsInput("");
+            }
+          }}
+          placeholder="type or select a skill…"
           className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
           list="available-skills-list"
         />
@@ -298,6 +309,19 @@ export function AgentForm({
             ))}
           </datalist>
         )}
+        <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
+          {skills.map((skill) => (
+            <button
+              key={skill}
+              type="button"
+              onClick={() => setSkills(skills.filter((s) => s !== skill))}
+              className="inline-flex items-center gap-1 bg-ork-accent/20 border border-ork-accent/40 text-ork-accent text-xs px-2 py-0.5 rounded hover:bg-ork-accent/30 font-mono"
+            >
+              {skill}
+              <span aria-hidden="true">×</span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="glass-panel p-4 space-y-3">

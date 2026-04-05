@@ -98,6 +98,18 @@ export async function saveGeneratedDraft(draft: GeneratedAgentDraft): Promise<Ag
   });
 }
 
+export async function listAvailableSkills(): Promise<string[]> {
+  const res = await fetch("/api/skills", {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || res.statusText);
+  }
+  const skills = await res.json();
+  return skills.map((s: { skill_id: string }) => s.skill_id);
+}
+
 export async function listMcpCatalogForAgentDesign(): Promise<McpCatalogSummary[]> {
   const items = await request<
     Array<{

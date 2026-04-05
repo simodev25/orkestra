@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "families": [
+    {
+      "family_id": "preparation",
+      "label": "Preparation",
+      "description": "Agents focused on clarifying, reformulating, structuring, and preparing a request before deeper analysis or execution begins."
+    },
+    {
+      "family_id": "analysis",
+      "label": "Analysis",
+      "description": "Agents focused on understanding, examining, comparing, and extracting meaning, requirements, gaps, or findings from inputs, documents, and context."
+    },
+    {
+      "family_id": "design",
+      "label": "Design",
+      "description": "Agents focused on defining target solutions, architectures, roles, structures, workflows, and implementation-oriented designs."
+    },
+    {
+      "family_id": "execution",
+      "label": "Execution",
+      "description": "Agents focused on selecting tools, planning operational steps, gathering external information, and driving practical task execution."
+    },
+    {
+      "family_id": "governance",
+      "label": "Governance",
+      "description": "Agents focused on control, risk identification, policy alignment, authority boundaries, and safe decision framing."
+    },
+    {
+      "family_id": "decision",
+      "label": "Decision",
+      "description": "Agents focused on synthesizing trade-offs, combining evidence, and producing a justified recommendation or directional decision."
+    },
+    {
+      "family_id": "delivery",
+      "label": "Delivery",
+      "description": "Agents focused on packaging, formatting, refining, and preparing outputs so they are directly usable by the intended audience."
+    },
+    {
+      "family_id": "validation",
+      "label": "Validation",
+      "description": "Agents focused on reviewing quality, checking completeness, detecting defects, and verifying whether an output is ready for delivery or production use."
+    }
+  ]
+}
