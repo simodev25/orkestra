@@ -15,10 +15,11 @@ from app.schemas.family import FamilyCreate, FamilyUpdate
 logger = logging.getLogger("orkestra.families")
 
 
-async def list_families(db: AsyncSession) -> list[FamilyDefinition]:
-    result = await db.execute(
-        select(FamilyDefinition).order_by(FamilyDefinition.label)
-    )
+async def list_families(db: AsyncSession, *, include_archived: bool = False) -> list[FamilyDefinition]:
+    stmt = select(FamilyDefinition).order_by(FamilyDefinition.label)
+    if not include_archived:
+        stmt = stmt.where(FamilyDefinition.status != "archived")
+    result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
@@ -95,29 +96,48 @@ async def update_family(db: AsyncSession, family_id: str, data: FamilyUpdate) ->
     return family
 
 
-async def delete_family(db: AsyncSession, family_id: str) -> None:
+async def archive_family(db: AsyncSession, family_id: str) -> FamilyDefinition:
+    """Always set the family status to 'archived'."""
+    family = await db.get(FamilyDefinition, family_id)
+    if not family:
+        raise ValueError(f"Family '{family_id}' not found")
+    family.status = "archived"
+    await db.flush()
+    return family
+
+
+async def is_family_active(db: AsyncSession, family_id: str) -> bool:
+    """Return True if the family exists and has status 'active'."""
+    family = await db.get(FamilyDefinition, family_id)
+    return family is not None and family.status == "active"
+
+
+async def delete_family(db: AsyncSession, family_id: str) -> FamilyDefinition | None:
+    """Delete the family if unreferenced; archive it if referenced by agents or skills.
+
+    Returns the updated FamilyDefinition when archived, None when hard-deleted.
+    """
     family = await db.get(FamilyDefinition, family_id)
     if not family:
         raise ValueError(f"Family '{family_id}' not found")
 
     agent_result = await db.execute(
-        select(AgentDefinition.id, AgentDefinition.name)
+        select(AgentDefinition.id)
         .where(AgentDefinition.family_id == family_id)
-        .limit(10)
+        .limit(1)
     )
-    agents = agent_result.all()
-    if agents:
-        names = ", ".join(f"{a.name} ({a.id})" for a in agents)
-        raise ValueError(f"Cannot delete family '{family_id}': used by agents: {names}")
+    has_agents = agent_result.scalar_one_or_none() is not None
 
     sf_result = await db.execute(
-        select(SkillFamily.skill_id).where(SkillFamily.family_id == family_id).limit(10)
+        select(SkillFamily.skill_id).where(SkillFamily.family_id == family_id).limit(1)
     )
-    skill_ids = [row[0] for row in sf_result.all()]
-    if skill_ids:
-        raise ValueError(
-            f"Cannot delete family '{family_id}': referenced by skills: {', '.join(skill_ids)}"
-        )
+    has_skills = sf_result.scalar_one_or_none() is not None
+
+    if has_agents or has_skills:
+        family.status = "archived"
+        await db.flush()
+        return family
 
     await db.delete(family)
     await db.flush()
+    return None

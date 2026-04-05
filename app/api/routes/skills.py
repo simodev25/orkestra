@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -19,8 +19,12 @@ router = APIRouter()
 
 
 @router.get("/by-family/{family_id}", response_model=list[SkillOut])
-async def list_skills_by_family(family_id: str, db: AsyncSession = Depends(get_db)):
-    return await skill_service.get_skills_for_family(db, family_id)
+async def list_skills_by_family(
+    family_id: str,
+    include_archived: bool = Query(False, alias="include_archived"),
+    db: AsyncSession = Depends(get_db),
+):
+    return await skill_service.get_skills_for_family(db, family_id, include_archived=include_archived)
 
 
 @router.get("/with-agents", response_model=list[SkillWithAgents])
@@ -60,8 +64,11 @@ async def list_skills_with_agents(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("", response_model=list[SkillOut])
-async def list_skills(db: AsyncSession = Depends(get_db)):
-    return await skill_service.list_skills(db)
+async def list_skills(
+    include_archived: bool = Query(False, alias="include_archived"),
+    db: AsyncSession = Depends(get_db),
+):
+    return await skill_service.list_skills(db, include_archived=include_archived)
 
 
 @router.get("/{skill_id}", response_model=SkillOut)
@@ -80,6 +87,14 @@ async def create_skill(data: SkillCreate, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.patch("/{skill_id}/archive", response_model=SkillOut)
+async def archive_skill(skill_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        return await skill_service.archive_skill(db, skill_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 @router.patch("/{skill_id}", response_model=SkillOut)
 async def update_skill(skill_id: str, data: SkillUpdate, db: AsyncSession = Depends(get_db)):
     try:
@@ -90,12 +105,17 @@ async def update_skill(skill_id: str, data: SkillUpdate, db: AsyncSession = Depe
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.delete("/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{skill_id}", response_model=SkillOut | None)
 async def delete_skill(skill_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete (if unreferenced) or archive (if referenced by agents) the skill.
+
+    Returns 200 with archived skill body when references exist, 204 when hard-deleted.
+    """
     try:
-        await skill_service.delete_skill(db, skill_id)
+        result = await skill_service.delete_skill(db, skill_id)
     except ValueError as exc:
-        if "Cannot delete" in str(exc):
-            raise HTTPException(status_code=409, detail=str(exc))
         raise HTTPException(status_code=404, detail=str(exc))
+    if result is not None:
+        # Was archived — return 200 with the skill body
+        return result
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -43,7 +43,8 @@ async def test_get_skills_by_family(client):
     assert any(s["skill_id"] == "fam_skill" for s in resp.json())
 
 
-async def test_delete_skill_used_by_agent_blocked(client):
+async def test_delete_skill_used_by_agent_archives(client):
+    """Deleting a skill referenced by an agent should archive it instead."""
     await _seed_family(client, "block_fam")
     await client.post("/api/skills", json={
         "skill_id": "blocked_sk", "label": "BS", "category": "c", "description": "d",
@@ -54,5 +55,17 @@ async def test_delete_skill_used_by_agent_blocked(client):
         "purpose": "Uses blocked skill", "skill_ids": ["blocked_sk"],
     })
     resp = await client.delete("/api/skills/blocked_sk")
-    assert resp.status_code == 409
-    assert "Cannot delete" in resp.json()["detail"]
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "archived"
+
+
+async def test_archive_skill(client):
+    """Archiving a skill should set status to archived."""
+    await _seed_family(client)
+    await client.post("/api/skills", json={
+        "skill_id": "arch_skill", "label": "AS", "category": "c", "description": "d",
+        "behavior_templates": ["b"], "output_guidelines": ["o"], "allowed_families": ["analysis"],
+    })
+    resp = await client.patch("/api/skills/arch_skill/archive")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "archived"

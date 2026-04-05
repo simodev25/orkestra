@@ -53,16 +53,27 @@ async def validate_agent_definition(db: AsyncSession, data: AgentCreate) -> list
     if data.skills_content is not None and not data.skills_content.strip():
         errors.append("skills_content cannot be empty when provided")
 
-    # Validate family_id exists
-    if not await db.get(FamilyDefinition, data.family_id):
+    # Validate family_id exists and is active
+    family = await db.get(FamilyDefinition, data.family_id)
+    if not family:
         errors.append(f"family '{data.family_id}' does not exist")
+    elif family.status != "active":
+        errors.append(f"family '{data.family_id}' is not active (status: {family.status})")
 
     # Validate skill references against the DB registry
     if data.skill_ids:
+        from app.models.skill import SkillDefinition
         skill_ids = _dedupe_str_list(data.skill_ids)
         _, unresolved = await skill_service.resolve_skills(db, skill_ids)
         for sid in unresolved:
             errors.append(f"agent references unknown skill_id: '{sid}'")
+
+        # Validate that referenced skills are active
+        for sid in skill_ids:
+            if sid not in unresolved:
+                skill_obj = await db.get(SkillDefinition, sid)
+                if skill_obj and skill_obj.status != "active":
+                    errors.append(f"skill '{sid}' is not active (status: {skill_obj.status})")
 
         # Validate skills are compatible with the declared family
         if not errors:
@@ -92,6 +103,7 @@ async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payloa
     agent.limitations = _dedupe_str_list(payload.limitations)
     agent.prompt_ref = payload.prompt_ref
     agent.prompt_content = payload.prompt_content
+    agent.soul_content = payload.soul_content
     agent.skills_ref = payload.skills_ref
     # Auto-generate skills_content from resolved skill_ids if not explicitly provided
     skill_ids = _dedupe_str_list(payload.skill_ids)
@@ -407,6 +419,7 @@ async def enrich_agent(db: AsyncSession, agent: AgentDefinition) -> dict:
         "prompt_content": agent.prompt_content,
         "skills_ref": agent.skills_ref,
         "skills_content": agent.skills_content,
+        "soul_content": agent.soul_content,
         "version": agent.version,
         "status": agent.status,
         "owner": agent.owner,

@@ -16,8 +16,11 @@ from app.schemas.skill import SkillContent, SkillCreate, SkillRef, SkillUpdate
 logger = logging.getLogger("orkestra.skills")
 
 
-async def list_skills(db: AsyncSession) -> list[dict]:
-    result = await db.execute(select(SkillDefinition).order_by(SkillDefinition.label))
+async def list_skills(db: AsyncSession, *, include_archived: bool = False) -> list[dict]:
+    stmt = select(SkillDefinition).order_by(SkillDefinition.label)
+    if not include_archived:
+        stmt = stmt.where(SkillDefinition.status != "archived")
+    result = await db.execute(stmt)
     skills = list(result.scalars().all())
     out = []
     for s in skills:
@@ -34,13 +37,16 @@ async def get_skill(db: AsyncSession, skill_id: str) -> dict | None:
     return _skill_to_dict(skill, families)
 
 
-async def get_skills_for_family(db: AsyncSession, family_id: str) -> list[dict]:
-    result = await db.execute(
+async def get_skills_for_family(db: AsyncSession, family_id: str, *, include_archived: bool = False) -> list[dict]:
+    stmt = (
         select(SkillDefinition)
         .join(SkillFamily, SkillFamily.skill_id == SkillDefinition.id)
         .where(SkillFamily.family_id == family_id)
         .order_by(SkillDefinition.label)
     )
+    if not include_archived:
+        stmt = stmt.where(SkillDefinition.status != "archived")
+    result = await db.execute(stmt)
     skills = list(result.scalars().all())
     out = []
     for s in skills:
@@ -121,24 +127,43 @@ async def update_skill(db: AsyncSession, skill_id: str, data: SkillUpdate) -> di
     return _skill_to_dict(skill, families)
 
 
-async def delete_skill(db: AsyncSession, skill_id: str) -> None:
+async def archive_skill(db: AsyncSession, skill_id: str) -> dict:
+    """Always set the skill status to 'archived'."""
+    skill = await db.get(SkillDefinition, skill_id)
+    if not skill:
+        raise ValueError(f"Skill '{skill_id}' not found")
+    skill.status = "archived"
+    await db.flush()
+    families = await _get_allowed_families(db, skill_id)
+    return _skill_to_dict(skill, families)
+
+
+async def delete_skill(db: AsyncSession, skill_id: str) -> dict | None:
+    """Delete the skill if unreferenced by agents; archive it if referenced.
+
+    Returns the updated skill dict when archived, None when hard-deleted.
+    """
     skill = await db.get(SkillDefinition, skill_id)
     if not skill:
         raise ValueError(f"Skill '{skill_id}' not found")
 
     result = await db.execute(
-        select(AgentDefinition.id, AgentDefinition.name)
+        select(AgentDefinition.id)
         .join(AgentSkill, AgentSkill.agent_id == AgentDefinition.id)
         .where(AgentSkill.skill_id == skill_id)
-        .limit(10)
+        .limit(1)
     )
-    agents = result.all()
-    if agents:
-        names = ", ".join(f"{a.name} ({a.id})" for a in agents)
-        raise ValueError(f"Cannot delete skill '{skill_id}': used by agents: {names}")
+    has_agents = result.scalar_one_or_none() is not None
+
+    if has_agents:
+        skill.status = "archived"
+        await db.flush()
+        families = await _get_allowed_families(db, skill_id)
+        return _skill_to_dict(skill, families)
 
     await db.delete(skill)
     await db.flush()
+    return None
 
 
 async def resolve_skills(db: AsyncSession, skill_ids: list[str]) -> tuple[list[SkillRef], list[str]]:

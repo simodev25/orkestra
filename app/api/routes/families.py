@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -13,8 +13,11 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[FamilyOut])
-async def list_families(db: AsyncSession = Depends(get_db)):
-    return await family_service.list_families(db)
+async def list_families(
+    include_archived: bool = Query(False, alias="include_archived"),
+    db: AsyncSession = Depends(get_db),
+):
+    return await family_service.list_families(db, include_archived=include_archived)
 
 
 @router.get("/{family_id}", response_model=FamilyDetail)
@@ -33,6 +36,14 @@ async def create_family(data: FamilyCreate, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.patch("/{family_id}/archive", response_model=FamilyOut)
+async def archive_family(family_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        return await family_service.archive_family(db, family_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 @router.patch("/{family_id}", response_model=FamilyOut)
 async def update_family(family_id: str, data: FamilyUpdate, db: AsyncSession = Depends(get_db)):
     try:
@@ -41,12 +52,17 @@ async def update_family(family_id: str, data: FamilyUpdate, db: AsyncSession = D
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.delete("/{family_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{family_id}", response_model=FamilyOut | None)
 async def delete_family(family_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete (if unreferenced) or archive (if referenced) the family.
+
+    Returns 200 with archived family body when references exist, 204 when hard-deleted.
+    """
     try:
-        await family_service.delete_family(db, family_id)
+        result = await family_service.delete_family(db, family_id)
     except ValueError as exc:
-        if "Cannot delete" in str(exc):
-            raise HTTPException(status_code=409, detail=str(exc))
         raise HTTPException(status_code=404, detail=str(exc))
+    if result is not None:
+        # Was archived — return 200 with the family body
+        return result
     return Response(status_code=status.HTTP_204_NO_CONTENT)
