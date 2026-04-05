@@ -137,6 +137,14 @@ async def _sync_agent_skills(db: AsyncSession, agent_id: str, skill_ids: list[st
     await db.flush()
 
 
+async def _get_agent_skill_ids(db: AsyncSession, agent_id: str) -> list[str]:
+    """Return the list of skill_ids for an agent from the AgentSkill join table."""
+    result = await db.execute(
+        select(AgentSkill.skill_id).where(AgentSkill.agent_id == agent_id)
+    )
+    return [row[0] for row in result.all()]
+
+
 async def create_agent(db: AsyncSession, data: AgentCreate) -> AgentDefinition:
     errors = await validate_agent_definition(db, data)
     if errors:
