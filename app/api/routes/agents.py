@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.models.family import AgentSkill
 from app.schemas.agent import (
     AgentCreate,
     AgentGenerationRequest,
@@ -18,6 +19,7 @@ from app.schemas.agent import (
     SaveGeneratedDraftRequest,
 )
 from app.services import agent_generation_service, agent_registry_service
+from sqlalchemy import select
 
 router = APIRouter()
 
@@ -32,13 +34,15 @@ async def get_agent_registry_stats(
 
 @router.get("/available-skills")
 async def get_available_skills(db: AsyncSession = Depends(get_db)):
-    return await agent_registry_service.available_skills(db)
+    result = await db.execute(select(AgentSkill.skill_id).distinct())
+    return sorted(row[0] for row in result.all())
 
 
 @router.post("", response_model=AgentOut, status_code=201)
 async def create_agent(data: AgentCreate, db: AsyncSession = Depends(get_db)):
     try:
-        return await agent_registry_service.create_agent(db, data)
+        agent = await agent_registry_service.create_agent(db, data)
+        return await agent_registry_service.enrich_agent(db, agent)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -57,7 +61,7 @@ async def list_agents(
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
 ):
-    return await agent_registry_service.list_agents(
+    agents = await agent_registry_service.list_agents(
         db,
         q=q,
         family=family,
@@ -70,6 +74,7 @@ async def list_agents(
         limit=limit,
         offset=offset,
     )
+    return [await agent_registry_service.enrich_agent(db, a) for a in agents]
 
 
 @router.get("/{agent_id}", response_model=AgentOut)
@@ -77,15 +82,19 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     agent = await agent_registry_service.get_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return await agent_registry_service.enrich_agent_skills(db, agent)
+    return await agent_registry_service.enrich_agent(db, agent)
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)
 async def update_agent(agent_id: str, data: AgentUpdate, db: AsyncSession = Depends(get_db)):
     try:
-        return await agent_registry_service.update_agent(db, agent_id, data)
+        agent = await agent_registry_service.update_agent(db, agent_id, data)
+        return await agent_registry_service.enrich_agent(db, agent)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        exc_str = str(exc)
+        if "not allowed for family" in exc_str or "skills not allowed" in exc_str:
+            raise HTTPException(status_code=422, detail=exc_str)
+        raise HTTPException(status_code=400, detail=exc_str)
 
 
 @router.patch("/{agent_id}/status", response_model=AgentOut)
@@ -95,7 +104,8 @@ async def update_agent_status(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await agent_registry_service.update_agent_status(db, agent_id, data.status, data.reason or "")
+        agent = await agent_registry_service.update_agent_status(db, agent_id, data.status, data.reason or "")
+        return await agent_registry_service.enrich_agent(db, agent)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -132,6 +142,7 @@ async def save_generated_draft(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await agent_registry_service.save_generated_draft(db, data.draft)
+        agent = await agent_registry_service.save_generated_draft(db, data.draft)
+        return await agent_registry_service.enrich_agent(db, agent)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

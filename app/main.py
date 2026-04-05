@@ -12,8 +12,10 @@ from app.api.routes import (
     control, supervision, approvals, audit, workflows, mcp_catalog,
 )
 from app.api.routes import settings as settings_routes
+from app.api.routes.families import router as families_router
 from app.api.routes.skills import router as skills_router
-from app.services import skill_registry_service
+from app.core.database import get_async_session_factory
+from app.services import seed_service
 
 settings = get_settings()
 logger = logging.getLogger("orkestra")
@@ -23,9 +25,11 @@ logger = logging.getLogger("orkestra")
 async def lifespan(app: FastAPI):
     logger.info(f"Orkestra {settings.APP_VERSION} starting")
     try:
-        skill_registry_service.load_skills()
+        factory = get_async_session_factory()
+        async with factory() as db:
+            await seed_service.seed_all(db)
     except Exception as exc:
-        logger.error(f"Failed to load skills.seed.json: {exc}")
+        logger.error(f"Failed to seed families/skills: {exc}")
         raise
     yield
     logger.info("Orkestra shutting down")
@@ -49,6 +53,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(requests.router, prefix="/api/requests", tags=["requests"])
 app.include_router(cases.router, prefix="/api/cases", tags=["cases"])
+app.include_router(families_router, prefix="/api/families", tags=["families"])
 app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(mcps.router, prefix="/api/mcps", tags=["mcps"])
