@@ -318,46 +318,67 @@ export function AgentForm({
             {skillWarning}
           </div>
         )}
-        <p className="data-label">skills (select or type a skill ID)</p>
-        <input
-          value={skillsInput}
-          onChange={(e) => setSkillsInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              const val = skillsInput.trim();
-              if (val && !skillIds.includes(val)) {
-                setSkillIds([...skillIds, val]);
-              }
-              setSkillsInput("");
-            }
-          }}
-          placeholder="type or select a skill…"
-          className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-          list="available-skills-list"
-        />
-        {familySkills.length > 0 && (
-          <datalist id="available-skills-list">
-            {familySkills.map((skill) => (
-              <option key={skill.skill_id} value={skill.skill_id}>
-                {skill.label}
-              </option>
-            ))}
-          </datalist>
+        {!familyId ? (
+          <p className="text-xs font-mono text-ork-dim">Select a family first to see available skills.</p>
+        ) : familySkills.length === 0 ? (
+          <p className="text-xs font-mono text-ork-dim">No skills available for this family.</p>
+        ) : (
+          <>
+            <p className="data-label">available skills for {familyId}</p>
+            <input
+              value={skillsInput}
+              onChange={(e) => setSkillsInput(e.target.value)}
+              placeholder="Filter skills…"
+              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 max-h-52 overflow-y-auto border border-ork-border rounded p-2">
+              {familySkills
+                .filter((s) => {
+                  const q = skillsInput.toLowerCase();
+                  if (!q) return true;
+                  return s.skill_id.toLowerCase().includes(q) || s.label.toLowerCase().includes(q);
+                })
+                .map((skill) => {
+                  const checked = skillIds.includes(skill.skill_id);
+                  return (
+                    <label
+                      key={skill.skill_id}
+                      className={`flex items-start gap-2 text-xs font-mono p-1.5 rounded cursor-pointer transition-colors ${
+                        checked ? "bg-ork-cyan/10 text-ork-cyan" : "text-ork-muted hover:bg-ork-hover"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          if (checked) {
+                            setSkillIds(skillIds.filter((s) => s !== skill.skill_id));
+                          } else {
+                            setSkillIds([...skillIds, skill.skill_id]);
+                          }
+                        }}
+                        className="mt-0.5 accent-ork-cyan"
+                      />
+                      <span>
+                        <span className="text-ork-text font-semibold">{skill.label}</span>
+                        <span className="text-ork-dim"> ({skill.skill_id})</span>
+                        {skill.description && (
+                          <span className="block text-[10px] text-ork-dim mt-0.5 leading-tight">
+                            {skill.description.length > 100
+                              ? skill.description.slice(0, 100) + "…"
+                              : skill.description}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+            </div>
+            <p className="text-[10px] font-mono text-ork-dim">
+              {skillIds.length} skill{skillIds.length !== 1 ? "s" : ""} selected
+            </p>
+          </>
         )}
-        <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
-          {skillIds.map((skill) => (
-            <button
-              key={skill}
-              type="button"
-              onClick={() => setSkillIds(skillIds.filter((s) => s !== skill))}
-              className="inline-flex items-center gap-1 bg-ork-accent/20 border border-ork-accent/40 text-ork-accent text-xs px-2 py-0.5 rounded hover:bg-ork-accent/30 font-mono"
-            >
-              {skill}
-              <span aria-hidden="true">×</span>
-            </button>
-          ))}
-        </div>
       </section>
 
       <section className="glass-panel p-4 space-y-3">
