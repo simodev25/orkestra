@@ -8,8 +8,10 @@ agent = {
     "description": "Specialized agent for resolving company identity with high confidence using French public data sources (INSEE/Sirene, data.gouv.fr, service-public.fr).",
     "skill_ids": ["requirements_extraction", "source_comparison", "context_gap_detection"],
     "selection_hints": {
-        "routing_keywords": ["company", "siren", "siret", "entreprise", "identity", "resolution", "insee", "siege"],
-        "workflow_ids": []
+        "routing_keywords": ["identity", "entity", "alias", "match", "matching", "deduplication", "duplicate", "ambiguity", "ambiguous", "normalize", "normalization", "resolve", "resolution", "company name", "legal entity", "registry match"],
+        "workflow_ids": ["credit_review_default", "due_diligence_v1", "supplier_review_v1", "company_intelligence_v1"],
+        "use_case_hint": "identity resolution",
+        "requires_grounded_evidence": True
     },
     "allowed_mcps": [],
     "forbidden_effects": ["act", "generate"],
