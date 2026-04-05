@@ -145,7 +145,7 @@ def upgrade() -> None:
             sa.text(
                 "INSERT INTO skill_definitions "
                 "(id, label, category, description, behavior_templates, output_guidelines) "
-                "VALUES (:id, :label, :category, :description, :bt::jsonb, :og::jsonb) "
+                "VALUES (:id, :label, :category, :description, CAST(:bt AS jsonb), CAST(:og AS jsonb)) "
                 "ON CONFLICT (id) DO NOTHING"
             ),
             {
