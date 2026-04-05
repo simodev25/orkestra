@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   AgentCreatePayload,
   AgentDefinition,
@@ -8,6 +8,8 @@ import type {
   AgentUpdatePayload,
   McpCatalogSummary,
 } from "@/lib/agent-registry/types";
+import type { FamilyDefinition, SkillDefinition } from "@/lib/families/types";
+import { listSkillsByFamily } from "@/lib/families/service";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 const EFFECT_TYPES = ["read", "search", "compute", "generate", "validate", "write", "act"] as const;
@@ -47,7 +49,7 @@ interface AgentFormProps {
   mode: "create" | "edit";
   initial?: AgentDefinition;
   availableMcps: McpCatalogSummary[];
-  availableSkills?: string[];
+  availableFamilies: FamilyDefinition[];
   submitLabel: string;
   saving: boolean;
   onSubmit: (payload: FormPayload) => Promise<void> | void;
@@ -57,7 +59,7 @@ export function AgentForm({
   mode,
   initial,
   availableMcps,
-  availableSkills = [],
+  availableFamilies,
   submitLabel,
   saving,
   onSubmit,
@@ -66,11 +68,13 @@ export function AgentForm({
 
   const [agentId, setAgentId] = useState(initial?.id ?? "");
   const [name, setName] = useState(initial?.name ?? "");
-  const [family, setFamily] = useState(initial?.family ?? "analyst");
+  const [familyId, setFamilyId] = useState(initial?.family_id ?? "");
   const [purpose, setPurpose] = useState(initial?.purpose ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [skills, setSkills] = useState<string[]>(initial?.skills ?? []);
+  const [skillIds, setSkillIds] = useState<string[]>(initial?.skill_ids ?? []);
   const [skillsInput, setSkillsInput] = useState("");
+  const [familySkills, setFamilySkills] = useState<SkillDefinition[]>([]);
+  const [skillWarning, setSkillWarning] = useState<string | null>(null);
   const [routingKeywords, setRoutingKeywords] = useState(
     toCsv((initial?.selection_hints?.routing_keywords as string[] | undefined) ?? []),
   );
@@ -100,6 +104,27 @@ export function AgentForm({
   const [lastTestStatus, setLastTestStatus] = useState(initial?.last_test_status ?? "not_tested");
   const [usageCount, setUsageCount] = useState(initial?.usage_count ?? 0);
 
+  useEffect(() => {
+    if (!familyId) {
+      setFamilySkills([]);
+      return;
+    }
+    listSkillsByFamily(familyId)
+      .then((data) => {
+        setFamilySkills(data);
+        const allowedIds = new Set(data.map((s) => s.skill_id));
+        const incompatible = skillIds.filter((s) => !allowedIds.has(s));
+        if (incompatible.length > 0) {
+          setSkillIds(skillIds.filter((s) => allowedIds.has(s)));
+          setSkillWarning(`Skills removed (incompatible with ${familyId}): ${incompatible.join(", ")}`);
+        } else {
+          setSkillWarning(null);
+        }
+      })
+      .catch(() => setFamilySkills([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyId]);
+
   const unknownAllowed = useMemo(() => {
     const knownIds = new Set(availableMcps.map((m) => m.id));
     return allowedMcps.filter((m) => !knownIds.has(m));
@@ -124,7 +149,7 @@ export function AgentForm({
     }
     if (!name.trim()) issues.push("`name` is required");
     if (purpose.trim().length < 10) issues.push("`purpose` must be at least 10 chars");
-    if (skills.length < 1) issues.push("at least one `skill` is required");
+    if (skillIds.length < 1) issues.push("at least one `skill` is required");
     if (!promptContent.trim()) issues.push("`prompt_content` is required");
     if (!skillsContent.trim()) issues.push("`skills_content` is required");
     if (parseCsv(limitations).length < 1) issues.push("at least one `limitation` is required");
@@ -152,10 +177,10 @@ export function AgentForm({
     const payloadBase: AgentCreatePayload = {
       id: mode === "create" ? agentId.trim() : initial?.id ?? agentId.trim(),
       name: name.trim(),
-      family: family.trim(),
+      family_id: familyId.trim(),
       purpose: purpose.trim(),
       description: description.trim() || null,
-      skills: skills,
+      skill_ids: skillIds,
       selection_hints,
       allowed_mcps: allowedMcps,
       forbidden_effects: forbiddenEffects,
@@ -221,12 +246,18 @@ export function AgentForm({
           </div>
           <div>
             <p className="data-label">family</p>
-            <input
-              value={family}
-              onChange={(e) => setFamily(e.target.value)}
-              placeholder="analyst"
+            <select
+              value={familyId}
+              onChange={(e) => setFamilyId(e.target.value)}
               className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-            />
+            >
+              <option value="">Select a family...</option>
+              {availableFamilies.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label} ({f.id})
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <p className="data-label">version</p>
@@ -284,7 +315,12 @@ export function AgentForm({
 
       <section className="glass-panel p-4 space-y-3">
         <h2 className="section-title text-sm">3. Skills</h2>
-        <p className="data-label">skills (comma separated)</p>
+        {skillWarning && (
+          <div className="p-2 border border-ork-amber/30 rounded text-xs font-mono text-ork-amber">
+            {skillWarning}
+          </div>
+        )}
+        <p className="data-label">skills (select or type a skill ID)</p>
         <input
           value={skillsInput}
           onChange={(e) => setSkillsInput(e.target.value)}
@@ -292,8 +328,8 @@ export function AgentForm({
             if (e.key === "Enter") {
               e.preventDefault();
               const val = skillsInput.trim();
-              if (val && !skills.includes(val)) {
-                setSkills([...skills, val]);
+              if (val && !skillIds.includes(val)) {
+                setSkillIds([...skillIds, val]);
               }
               setSkillsInput("");
             }
@@ -302,19 +338,21 @@ export function AgentForm({
           className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
           list="available-skills-list"
         />
-        {availableSkills.length > 0 && (
+        {familySkills.length > 0 && (
           <datalist id="available-skills-list">
-            {availableSkills.map((skill) => (
-              <option key={skill} value={skill} />
+            {familySkills.map((skill) => (
+              <option key={skill.skill_id} value={skill.skill_id}>
+                {skill.label}
+              </option>
             ))}
           </datalist>
         )}
         <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
-          {skills.map((skill) => (
+          {skillIds.map((skill) => (
             <button
               key={skill}
               type="button"
-              onClick={() => setSkills(skills.filter((s) => s !== skill))}
+              onClick={() => setSkillIds(skillIds.filter((s) => s !== skill))}
               className="inline-flex items-center gap-1 bg-ork-accent/20 border border-ork-accent/40 text-ork-accent text-xs px-2 py-0.5 rounded hover:bg-ork-accent/30 font-mono"
             >
               {skill}

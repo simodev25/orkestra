@@ -9,13 +9,23 @@ export type AgentStatus =
   | "archived"
   | string;
 
+export interface FamilyRef {
+  id: string;
+  label: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;
-  family: string;
+  family_id: string;
+  family: FamilyRef | null;
   purpose: string;
   description: string | null;
-  skills: string[] | null;
+  skill_ids: string[] | null;
+  skills_resolved: { skill_id: string; label: string; category: string }[] | null;
   selection_hints: Record<string, string | boolean | string[]> | null;
   allowed_mcps: string[] | null;
   forbidden_effects: string[] | null;
@@ -83,10 +93,10 @@ export interface AgentGenerationRequest {
 export interface GeneratedAgentDraft {
   agent_id: string;
   name: string;
-  family: string;
+  family_id: string;
   purpose: string;
   description: string;
-  skills: string[];
+  skill_ids: string[];
   selection_hints: Record<string, string | boolean | string[]>;
   allowed_mcps: string[];
   forbidden_effects: string[];
@@ -119,10 +129,10 @@ export interface AgentGenerationReviewState {
 export interface AgentCreatePayload {
   id: string;
   name: string;
-  family: string;
+  family_id: string;
   purpose: string;
   description?: string | null;
-  skills?: string[];
+  skill_ids?: string[];
   selection_hints?: Record<string, string | boolean | string[]>;
   allowed_mcps?: string[];
   forbidden_effects?: string[];
@@ -144,10 +154,10 @@ export interface AgentCreatePayload {
 
 export interface AgentUpdatePayload {
   name?: string;
-  family?: string;
+  family_id?: string;
   purpose?: string;
   description?: string | null;
-  skills?: string[];
+  skill_ids?: string[];
   selection_hints?: Record<string, string | boolean | string[]>;
   allowed_mcps?: string[];
   forbidden_effects?: string[];

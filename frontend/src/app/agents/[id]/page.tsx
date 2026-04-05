@@ -66,7 +66,7 @@ export default function AgentDetailPage() {
     );
   }
 
-  const skills = agent.skills ?? [];
+  const skillIds = agent.skill_ids ?? [];
   const allowedMcps = agent.allowed_mcps ?? [];
   const forbiddenEffects = agent.forbidden_effects ?? [];
   const limitations = agent.limitations ?? [];
@@ -93,7 +93,7 @@ export default function AgentDetailPage() {
           </Link>
           <h1 className="text-xl font-semibold mt-2">{agent.name}</h1>
           <p className="text-xs font-mono text-ork-dim mt-1">
-            {agent.id} · family={agent.family}
+            {agent.id} · family={agent.family?.label || agent.family_id}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -122,7 +122,8 @@ export default function AgentDetailPage() {
       <Section title="Identity">
         <KV label="name" value={agent.name} />
         <KV label="agent_id" value={agent.id} mono />
-        <KV label="family" value={agent.family} />
+        <KV label="family_id" value={agent.family_id} mono />
+        <KV label="family" value={agent.family ? `${agent.family.label} — ${agent.family.description || "no description"}` : "-"} />
         <KV label="version" value={agent.version} mono />
         <KV label="status" value={agent.status} mono />
         <KV label="owner" value={agent.owner || "-"} mono />
@@ -134,7 +135,19 @@ export default function AgentDetailPage() {
       </Section>
 
       <Section title="Skills">
-        <KV label="skills" value={skills.length > 0 ? skills.join(", ") : "-"} />
+        {agent.skills_resolved && agent.skills_resolved.length > 0 ? (
+          <div className="space-y-1">
+            {agent.skills_resolved.map((s) => (
+              <div key={s.skill_id} className="text-xs font-mono flex gap-2">
+                <span className="text-ork-cyan">{s.skill_id}</span>
+                <span className="text-ork-text">{s.label}</span>
+                <span className="text-ork-dim">[{s.category}]</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <KV label="skill_ids" value={skillIds.length > 0 ? skillIds.join(", ") : "-"} />
+        )}
       </Section>
 
       <Section title="Selection hints">

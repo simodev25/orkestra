@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
@@ -18,6 +18,8 @@ import type {
   AgentRegistryStats,
   McpCatalogSummary,
 } from "@/lib/agent-registry/types";
+import { listFamilies } from "@/lib/families/service";
+import type { FamilyDefinition } from "@/lib/families/types";
 
 const DEFAULT_STATS: AgentRegistryStats = {
   total_agents: 0,
@@ -52,29 +54,27 @@ function AgentRegistryPageContent() {
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [stats, setStats] = useState<AgentRegistryStats>(DEFAULT_STATS);
   const [catalogMcps, setCatalogMcps] = useState<McpCatalogSummary[]>([]);
+  const [families, setFamilies] = useState<FamilyDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
   const [agentPendingDelete, setAgentPendingDelete] = useState<AgentDefinition | null>(null);
 
-  const families = useMemo(() => {
-    const unique = new Set(agents.map((a) => a.family));
-    return ["all", ...Array.from(unique).sort()];
-  }, [agents]);
-
   async function loadAll(nextFilters: AgentRegistryFilters) {
     setLoading(true);
     setError(null);
     try {
-      const [nextAgents, nextStats, nextMcps] = await Promise.all([
+      const [nextAgents, nextStats, nextMcps, nextFamilies] = await Promise.all([
         listAgents(nextFilters),
         getAgentRegistryStats(nextFilters.workflow_id),
         listMcpCatalogForAgentDesign(),
+        listFamilies(),
       ]);
       setAgents(nextAgents);
       setStats(nextStats);
       setCatalogMcps(nextMcps);
+      setFamilies(nextFamilies);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load Agent Registry");
     } finally {
@@ -163,9 +163,10 @@ function AgentRegistryPageContent() {
             onChange={(e) => updateFilter("family", e.target.value)}
             className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
           >
-            {families.map((family) => (
-              <option key={family} value={family}>
-                family: {family}
+            <option value="all">family: all</option>
+            {families.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label} ({f.id})
               </option>
             ))}
           </select>
@@ -271,9 +272,9 @@ function AgentRegistryPageContent() {
                 <tr key={agent.id} className="border-b border-ork-border/40 align-top">
                   <td className="p-3 text-ork-text font-semibold">{agent.name}</td>
                   <td className="p-3 text-ork-cyan">{agent.id}</td>
-                  <td className="p-3">{agent.family}</td>
+                  <td className="p-3">{agent.family?.label || agent.family_id}</td>
                   <td className="p-3 max-w-[280px] text-ork-muted">{agent.purpose}</td>
-                  <td className="p-3">{(agent.skills ?? []).slice(0, 3).join(", ") || "-"}</td>
+                  <td className="p-3">{(agent.skill_ids ?? []).slice(0, 3).join(", ") || "-"}</td>
                   <td className="p-3">{agent.allowed_mcps?.length ?? 0}</td>
                   <td className="p-3">{agent.criticality}</td>
                   <td className="p-3">{agent.cost_profile}</td>

@@ -4,33 +4,35 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AgentForm } from "@/components/agents/agent-form";
-import { createAgent, listAvailableSkills, listMcpCatalogForAgentDesign } from "@/lib/agent-registry/service";
+import { createAgent, listMcpCatalogForAgentDesign } from "@/lib/agent-registry/service";
 import type {
   AgentCreatePayload,
   AgentUpdatePayload,
   McpCatalogSummary,
 } from "@/lib/agent-registry/types";
+import { listFamilies } from "@/lib/families/service";
+import type { FamilyDefinition } from "@/lib/families/types";
 
 export default function NewAgentPage() {
   const router = useRouter();
   const [catalogMcps, setCatalogMcps] = useState<McpCatalogSummary[]>([]);
-  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
+  const [families, setFamilies] = useState<FamilyDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listMcpCatalogForAgentDesign(), listAvailableSkills()])
-      .then(([mcps, skills]) => {
+    Promise.all([listMcpCatalogForAgentDesign(), listFamilies()])
+      .then(([mcps, fams]) => {
         if (!cancelled) {
           setCatalogMcps(mcps);
-          setAvailableSkills(skills);
+          setFamilies(fams);
         }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load MCP catalog");
+          setError(err instanceof Error ? err.message : "Failed to load form context");
         }
       })
       .finally(() => {
@@ -85,7 +87,7 @@ export default function NewAgentPage() {
       <AgentForm
         mode="create"
         availableMcps={catalogMcps}
-        availableSkills={availableSkills}
+        availableFamilies={families}
         submitLabel="Create agent"
         saving={saving}
         onSubmit={handleSubmit}

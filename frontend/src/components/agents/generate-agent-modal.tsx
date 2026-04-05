@@ -50,7 +50,7 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
   const [availableMcps, setAvailableMcps] = useState<McpCatalogSummary[]>([]);
   const [draft, setDraft] = useState<GeneratedAgentDraft | null>(null);
 
-  const [skillsCsv, setSkillsCsv] = useState("");
+  const [skillIdsCsv, setSkillIdsCsv] = useState("");
   const [forbiddenEffectsCsv, setForbiddenEffectsCsv] = useState("");
   const [limitationsCsv, setLimitationsCsv] = useState("");
   const [routingKeywordsCsv, setRoutingKeywordsCsv] = useState("");
@@ -61,7 +61,7 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
   if (!open) return null;
 
   function syncReviewFields(nextDraft: GeneratedAgentDraft) {
-    setSkillsCsv(toCsv(nextDraft.skills));
+    setSkillIdsCsv(toCsv(nextDraft.skill_ids));
     setForbiddenEffectsCsv(toCsv(nextDraft.forbidden_effects));
     setLimitationsCsv(toCsv(nextDraft.limitations));
     setRoutingKeywordsCsv(toCsv((nextDraft.selection_hints?.routing_keywords as string[]) ?? []));
@@ -101,7 +101,7 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
     if (!/^[a-z0-9][a-z0-9_-]{1,99}$/.test(current.agent_id)) issues.push("agent_id invalid");
     if (!current.name.trim()) issues.push("name required");
     if (!current.purpose.trim()) issues.push("purpose required");
-    if (parseCsv(skillsCsv).length === 0) issues.push("at least one skill required");
+    if (parseCsv(skillIdsCsv).length === 0) issues.push("at least one skill required");
     if (!current.prompt_content.trim()) issues.push("prompt_content required");
     if (!current.skills_content.trim()) issues.push("skills_content required");
     if (parseCsv(limitationsCsv).length === 0) issues.push("at least one limitation required");
@@ -121,7 +121,7 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
     };
     const normalized: GeneratedAgentDraft = {
       ...draft,
-      skills: parseCsv(skillsCsv),
+      skill_ids: parseCsv(skillIdsCsv),
       forbidden_effects: parseCsv(forbiddenEffectsCsv),
       limitations: parseCsv(limitationsCsv),
       selection_hints: normalizedSelectionHints,
@@ -257,10 +257,10 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <input value={draft.agent_id} onChange={(e) => updateDraft({ agent_id: e.target.value })} className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono" />
                 <input value={draft.name} onChange={(e) => updateDraft({ name: e.target.value })} className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm" />
-                <input value={draft.family} onChange={(e) => updateDraft({ family: e.target.value })} className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono" />
+                <input value={draft.family_id} onChange={(e) => updateDraft({ family_id: e.target.value })} placeholder="family_id" className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono" />
                 <input value={draft.purpose} onChange={(e) => updateDraft({ purpose: e.target.value })} className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm md:col-span-3" />
                 <textarea value={draft.description} onChange={(e) => updateDraft({ description: e.target.value })} rows={3} className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm md:col-span-3" />
-                <input value={skillsCsv} onChange={(e) => setSkillsCsv(e.target.value)} placeholder="skills csv" className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono md:col-span-3" />
+                <input value={skillIdsCsv} onChange={(e) => setSkillIdsCsv(e.target.value)} placeholder="skill_ids csv" className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono md:col-span-3" />
                 <input value={routingKeywordsCsv} onChange={(e) => setRoutingKeywordsCsv(e.target.value)} placeholder="selection_hints.routing_keywords" className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono md:col-span-2" />
                 <input value={workflowIdsCsv} onChange={(e) => setWorkflowIdsCsv(e.target.value)} placeholder="selection_hints.workflow_ids" className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono" />
               </div>
