@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 
 from app.schemas.common import OrkBaseSchema
 
@@ -30,7 +30,7 @@ class SkillRef(OrkBaseSchema):
 class SkillCreate(OrkBaseSchema):
     """Schema for creating a new skill via the API."""
 
-    id: str = Field(..., min_length=1, max_length=100)
+    id: str = Field(default=None, min_length=1, max_length=100, validation_alias=AliasChoices("id", "skill_id"))
     label: str = Field(..., min_length=1, max_length=255)
     category: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
@@ -59,6 +59,7 @@ class SkillOut(OrkBaseSchema):
     description: Optional[str]
     behavior_templates: list[str]
     output_guidelines: list[str]
+    allowed_families: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -77,6 +78,7 @@ class SkillWithAgents(OrkBaseSchema):
     label: str
     category: str
     description: Optional[str]
+    allowed_families: list[str] = Field(default_factory=list)
     agents: list[AgentSummary]
 
 
