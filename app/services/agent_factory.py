@@ -10,6 +10,35 @@ from app.llm.provider import get_chat_model, get_formatter, is_agentscope_availa
 logger = logging.getLogger(__name__)
 
 
+def _get_agent_specific_model(provider: str, model_name: str):
+    """Create a model instance for a specific provider/model combination."""
+    if not is_agentscope_available():
+        return None
+    try:
+        if provider == "ollama":
+            from agentscope.model import OllamaChatModel
+            from app.core.config import get_settings
+            settings = get_settings()
+            return OllamaChatModel(
+                model_name=model_name,
+                host=settings.OLLAMA_HOST,
+                stream=False,
+            )
+        elif provider == "openai":
+            from agentscope.model import OpenAIChatModel
+            from app.core.config import get_settings
+            settings = get_settings()
+            return OpenAIChatModel(
+                model_name=model_name,
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_BASE_URL or "https://api.openai.com/v1",
+            )
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to create agent-specific model {provider}/{model_name}: {e}")
+        return None
+
+
 async def create_agentscope_agent(
     agent_def: AgentDefinition,
     db: AsyncSession,
@@ -23,7 +52,10 @@ async def create_agentscope_agent(
         logger.info(f"AgentScope not available, cannot create agent {agent_def.id}")
         return None
 
-    model = get_chat_model()
+    if agent_def.llm_provider and agent_def.llm_model:
+        model = _get_agent_specific_model(agent_def.llm_provider, agent_def.llm_model)
+    else:
+        model = get_chat_model()  # platform default
     if model is None:
         logger.info(f"LLM not available, cannot create agent {agent_def.id}")
         return None

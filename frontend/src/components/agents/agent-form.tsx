@@ -102,6 +102,18 @@ export function AgentForm({
   const [owner, setOwner] = useState(initial?.owner ?? "");
   const [lastTestStatus, setLastTestStatus] = useState(initial?.last_test_status ?? "not_tested");
   const [usageCount, setUsageCount] = useState(initial?.usage_count ?? 0);
+  const [llmProvider, setLlmProvider] = useState(initial?.llm_provider ?? "");
+  const [llmModel, setLlmModel] = useState(initial?.llm_model ?? "");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (initial?.llm_provider) {
+      fetch(`/api/agents/llm-models/${initial.llm_provider}`)
+        .then(r => r.json())
+        .then(data => setAvailableModels(data.models || []))
+        .catch(() => setAvailableModels([]));
+    }
+  }, []);
 
   useEffect(() => {
     if (!familyId) {
@@ -215,6 +227,8 @@ export function AgentForm({
       prompt_content: promptContent.trim(),
       skills_content: skillsContent.trim(),
       soul_content: soulContent.trim() || null,
+      llm_provider: llmProvider.trim() || null,
+      llm_model: llmModel.trim() || null,
       version: version.trim() || "1.0.0",
       status,
       owner: owner.trim() || null,
@@ -558,7 +572,61 @@ export function AgentForm({
       </section>
 
       <section className="glass-panel p-4 space-y-3">
-        <h2 className="section-title text-sm">10. Limits & governance</h2>
+        <h2 className="section-title text-sm">10. LLM Configuration</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <p className="data-label">provider</p>
+            <select
+              value={llmProvider}
+              onChange={(e) => {
+                setLlmProvider(e.target.value);
+                setLlmModel("");
+                setAvailableModels([]);
+                if (e.target.value) {
+                  fetch(`/api/agents/llm-models/${e.target.value}`)
+                    .then(r => r.json())
+                    .then(data => setAvailableModels(data.models || []))
+                    .catch(() => setAvailableModels([]));
+                }
+              }}
+              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+            >
+              <option value="">Default (platform config)</option>
+              <option value="ollama">Ollama</option>
+              <option value="openai">OpenAI</option>
+            </select>
+          </div>
+          <div>
+            <p className="data-label">model</p>
+            {availableModels.length > 0 ? (
+              <select
+                value={llmModel}
+                onChange={(e) => setLlmModel(e.target.value)}
+                className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              >
+                <option value="">Select a model...</option>
+                {availableModels.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={llmModel}
+                onChange={(e) => setLlmModel(e.target.value)}
+                placeholder={llmProvider ? "Loading models..." : "Select a provider first"}
+                disabled={!llmProvider}
+                className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono disabled:opacity-60"
+              />
+            )}
+          </div>
+        </div>
+        <p className="text-[10px] font-mono text-ork-dim">
+          Leave empty to use the platform default LLM configuration.
+        </p>
+      </section>
+
+      <section className="glass-panel p-4 space-y-3">
+        <h2 className="section-title text-sm">11. Limits & governance</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <p className="data-label">criticality</p>
@@ -612,7 +680,7 @@ export function AgentForm({
       </section>
 
       <section className="glass-panel p-4 space-y-3">
-        <h2 className="section-title text-sm">11. Lifecycle / ownership</h2>
+        <h2 className="section-title text-sm">12. Lifecycle / ownership</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <p className="data-label">status preview</p>

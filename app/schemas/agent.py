@@ -32,6 +32,8 @@ class AgentCreate(OrkBaseSchema):
     skills_ref: Optional[str] = None
     skills_content: Optional[str] = None
     soul_content: Optional[str] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
     version: str = "1.0.0"
     status: str = "draft"
     owner: Optional[str] = None
@@ -59,6 +61,8 @@ class AgentUpdate(OrkBaseSchema):
     skills_ref: Optional[str] = None
     skills_content: Optional[str] = None
     soul_content: Optional[str] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
     version: Optional[str] = None
     status: Optional[str] = None
     owner: Optional[str] = None
@@ -89,6 +93,8 @@ class AgentOut(OrkBaseSchema):
     skills_ref: Optional[str]
     skills_content: Optional[str]
     soul_content: Optional[str]
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
     version: str
     status: str
     owner: Optional[str]

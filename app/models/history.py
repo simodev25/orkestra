@@ -28,6 +28,8 @@ class AgentDefinitionHistory(Base):
     prompt_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     skills_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     soul_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    llm_provider: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    llm_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     selection_hints: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     allowed_mcps: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     forbidden_effects: Mapped[list | None] = mapped_column(JSONB, nullable=True)

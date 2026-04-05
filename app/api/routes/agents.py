@@ -77,6 +77,47 @@ async def list_agents(
     return [await agent_registry_service.enrich_agent(db, a) for a in agents]
 
 
+@router.get("/llm-models/{provider}")
+async def list_llm_models(provider: str):
+    """Fetch available models from the LLM provider API."""
+    import httpx
+    from app.core.config import get_settings
+    settings = get_settings()
+
+    if provider == "ollama":
+        host = settings.OLLAMA_HOST
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{host}/api/tags")
+                resp.raise_for_status()
+                data = resp.json()
+                models = [m["name"] for m in data.get("models", [])]
+                return {"provider": "ollama", "models": sorted(models)}
+        except Exception as e:
+            return {"provider": "ollama", "models": [], "error": str(e)}
+
+    elif provider == "openai":
+        api_key = settings.OPENAI_API_KEY
+        base_url = settings.OPENAI_BASE_URL or "https://api.openai.com/v1"
+        if not api_key:
+            return {"provider": "openai", "models": [], "error": "OPENAI_API_KEY not configured"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{base_url}/models",
+                    headers={"Authorization": f"Bearer {api_key}"}
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                models = sorted([m["id"] for m in data.get("data", [])])
+                return {"provider": "openai", "models": models}
+        except Exception as e:
+            return {"provider": "openai", "models": [], "error": str(e)}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+
+
 @router.get("/{agent_id}/history")
 async def get_agent_history(agent_id: str, db: AsyncSession = Depends(get_db)):
     history = await agent_registry_service.get_agent_history(db, agent_id)

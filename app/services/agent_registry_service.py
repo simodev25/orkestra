@@ -104,6 +104,8 @@ async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payloa
     agent.prompt_ref = payload.prompt_ref
     agent.prompt_content = payload.prompt_content
     agent.soul_content = payload.soul_content
+    agent.llm_provider = payload.llm_provider
+    agent.llm_model = payload.llm_model
     agent.skills_ref = payload.skills_ref
     # Auto-generate skills_content from resolved skill_ids if not explicitly provided
     skill_ids = _dedupe_str_list(payload.skill_ids)
@@ -195,6 +197,8 @@ async def update_agent(db: AsyncSession, agent_id: str, data: AgentUpdate) -> Ag
         prompt_content=agent.prompt_content,
         skills_content=agent.skills_content,
         soul_content=agent.soul_content,
+        llm_provider=agent.llm_provider,
+        llm_model=agent.llm_model,
         selection_hints=agent.selection_hints,
         allowed_mcps=agent.allowed_mcps,
         forbidden_effects=agent.forbidden_effects,
@@ -316,6 +320,8 @@ async def restore_agent(db: AsyncSession, agent_id: str, history_id: str) -> Age
         prompt_content=agent.prompt_content,
         skills_content=agent.skills_content,
         soul_content=agent.soul_content,
+        llm_provider=agent.llm_provider,
+        llm_model=agent.llm_model,
         selection_hints=agent.selection_hints,
         allowed_mcps=agent.allowed_mcps,
         forbidden_effects=agent.forbidden_effects,
@@ -338,6 +344,8 @@ async def restore_agent(db: AsyncSession, agent_id: str, history_id: str) -> Age
     agent.prompt_content = history.prompt_content
     agent.skills_content = history.skills_content
     agent.soul_content = history.soul_content
+    agent.llm_provider = history.llm_provider
+    agent.llm_model = history.llm_model
     agent.selection_hints = history.selection_hints
     agent.allowed_mcps = history.allowed_mcps
     agent.forbidden_effects = history.forbidden_effects
@@ -536,6 +544,8 @@ async def enrich_agent(db: AsyncSession, agent: AgentDefinition) -> dict:
         "skills_ref": agent.skills_ref,
         "skills_content": agent.skills_content,
         "soul_content": agent.soul_content,
+        "llm_provider": agent.llm_provider,
+        "llm_model": agent.llm_model,
         "version": agent.version,
         "status": agent.status,
         "owner": agent.owner,

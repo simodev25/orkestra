@@ -39,6 +39,8 @@ export interface AgentDefinition {
   skills_ref: string | null;
   skills_content: string | null;
   soul_content: string | null;
+  llm_provider: string | null;
+  llm_model: string | null;
   version: string;
   status: AgentStatus;
   owner: string | null;
@@ -147,6 +149,8 @@ export interface AgentCreatePayload {
   skills_ref?: string | null;
   skills_content?: string | null;
   soul_content?: string | null;
+  llm_provider?: string | null;
+  llm_model?: string | null;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;
@@ -173,6 +177,8 @@ export interface AgentUpdatePayload {
   skills_ref?: string | null;
   skills_content?: string | null;
   soul_content?: string | null;
+  llm_provider?: string | null;
+  llm_model?: string | null;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;
