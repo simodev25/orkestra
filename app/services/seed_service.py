@@ -43,12 +43,24 @@ async def _seed_families(db: AsyncSession) -> tuple[int, int]:
         if existing:
             existing.label = entry["label"]
             existing.description = entry.get("description")
+            existing.default_system_rules = entry.get("default_system_rules", [])
+            existing.default_forbidden_effects = entry.get("default_forbidden_effects", [])
+            existing.default_output_expectations = entry.get("default_output_expectations", [])
+            existing.version = entry.get("version", "1.0.0")
+            existing.status = entry.get("status", "active")
+            existing.owner = entry.get("owner")
             updated += 1
         else:
             db.add(FamilyDefinition(
                 id=fid,
                 label=entry["label"],
                 description=entry.get("description"),
+                default_system_rules=entry.get("default_system_rules", []),
+                default_forbidden_effects=entry.get("default_forbidden_effects", []),
+                default_output_expectations=entry.get("default_output_expectations", []),
+                version=entry.get("version", "1.0.0"),
+                status=entry.get("status", "active"),
+                owner=entry.get("owner"),
             ))
             created += 1
 
@@ -74,6 +86,9 @@ async def _seed_skills(db: AsyncSession) -> tuple[int, int]:
             existing.description = entry.get("description")
             existing.behavior_templates = entry.get("behavior_templates", [])
             existing.output_guidelines = entry.get("output_guidelines", [])
+            existing.version = entry.get("version", "1.0.0")
+            existing.status = entry.get("status", "active")
+            existing.owner = entry.get("owner")
             updated += 1
         else:
             db.add(SkillDefinition(
@@ -83,6 +98,9 @@ async def _seed_skills(db: AsyncSession) -> tuple[int, int]:
                 description=entry.get("description"),
                 behavior_templates=entry.get("behavior_templates", []),
                 output_guidelines=entry.get("output_guidelines", []),
+                version=entry.get("version", "1.0.0"),
+                status=entry.get("status", "active"),
+                owner=entry.get("owner"),
             ))
             created += 1
 

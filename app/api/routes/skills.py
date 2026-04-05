@@ -50,6 +50,9 @@ async def list_skills_with_agents(db: AsyncSession = Depends(get_db)):
             behavior_templates=s.get("behavior_templates", []),
             output_guidelines=s.get("output_guidelines", []),
             allowed_families=s.get("allowed_families", []),
+            version=s.get("version"),
+            status=s.get("status"),
+            owner=s.get("owner"),
             agents=skill_agent_map.get(s["skill_id"], []),
         )
         for s in all_skills

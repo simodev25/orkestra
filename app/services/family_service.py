@@ -48,6 +48,12 @@ async def get_family_detail(db: AsyncSession, family_id: str) -> dict | None:
         "id": family.id,
         "label": family.label,
         "description": family.description,
+        "default_system_rules": family.default_system_rules or [],
+        "default_forbidden_effects": family.default_forbidden_effects or [],
+        "default_output_expectations": family.default_output_expectations or [],
+        "version": family.version,
+        "status": family.status,
+        "owner": family.owner,
         "created_at": family.created_at,
         "updated_at": family.updated_at,
         "skills": [{"skill_id": s.id, "label": s.label, "category": s.category} for s in skills],
@@ -60,7 +66,17 @@ async def create_family(db: AsyncSession, data: FamilyCreate) -> FamilyDefinitio
     if existing:
         raise ValueError(f"Family '{data.id}' already exists")
 
-    family = FamilyDefinition(id=data.id, label=data.label, description=data.description)
+    family = FamilyDefinition(
+        id=data.id,
+        label=data.label,
+        description=data.description,
+        default_system_rules=data.default_system_rules,
+        default_forbidden_effects=data.default_forbidden_effects,
+        default_output_expectations=data.default_output_expectations,
+        version=data.version,
+        status=data.status,
+        owner=data.owner,
+    )
     db.add(family)
     await db.flush()
     return family

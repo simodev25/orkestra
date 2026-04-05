@@ -63,6 +63,9 @@ async def create_skill(db: AsyncSession, data: SkillCreate) -> dict:
         description=data.description,
         behavior_templates=data.behavior_templates,
         output_guidelines=data.output_guidelines,
+        version=data.version,
+        status=data.status,
+        owner=data.owner,
     )
     db.add(skill)
     await db.flush()
@@ -227,6 +230,9 @@ def _skill_to_dict(skill: SkillDefinition, families: list[str]) -> dict:
         "behavior_templates": skill.behavior_templates or [],
         "output_guidelines": skill.output_guidelines or [],
         "allowed_families": families,
+        "version": getattr(skill, "version", None),
+        "status": getattr(skill, "status", None),
+        "owner": getattr(skill, "owner", None),
         "created_at": skill.created_at,
         "updated_at": skill.updated_at,
     }

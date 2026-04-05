@@ -37,6 +37,9 @@ class SkillCreate(OrkBaseSchema):
     behavior_templates: list[str] = Field(default_factory=list)
     output_guidelines: list[str] = Field(default_factory=list)
     allowed_families: list[str] = Field(default_factory=list)
+    version: str = "1.0.0"
+    status: str = "active"
+    owner: Optional[str] = None
 
 
 class SkillUpdate(OrkBaseSchema):
@@ -48,6 +51,9 @@ class SkillUpdate(OrkBaseSchema):
     behavior_templates: Optional[list[str]] = None
     output_guidelines: Optional[list[str]] = None
     allowed_families: Optional[list[str]] = None
+    version: Optional[str] = None
+    status: Optional[str] = None
+    owner: Optional[str] = None
 
 
 class SkillOut(OrkBaseSchema):
@@ -60,6 +66,9 @@ class SkillOut(OrkBaseSchema):
     behavior_templates: list[str]
     output_guidelines: list[str]
     allowed_families: list[str] = Field(default_factory=list)
+    version: Optional[str] = None
+    status: Optional[str] = None
+    owner: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -81,6 +90,9 @@ class SkillWithAgents(OrkBaseSchema):
     behavior_templates: list[str] = Field(default_factory=list)
     output_guidelines: list[str] = Field(default_factory=list)
     allowed_families: list[str] = Field(default_factory=list)
+    version: Optional[str] = None
+    status: Optional[str] = None
+    owner: Optional[str] = None
     agents: list[AgentSummary]
 
 
@@ -94,6 +106,9 @@ class SkillSeedEntry(OrkBaseSchema):
     behavior_templates: list[str] = Field(..., min_length=1)
     output_guidelines: list[str] = Field(..., min_length=1)
     allowed_families: list[str] = Field(default_factory=list)
+    version: str = "1.0.0"
+    status: str = "active"
+    owner: Optional[str] = None
 
     @field_validator("behavior_templates", "output_guidelines")
     @classmethod

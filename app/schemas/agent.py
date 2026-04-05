@@ -31,6 +31,7 @@ class AgentCreate(OrkBaseSchema):
     prompt_content: Optional[str] = None
     skills_ref: Optional[str] = None
     skills_content: Optional[str] = None
+    soul_content: Optional[str] = None
     version: str = "1.0.0"
     status: str = "draft"
     owner: Optional[str] = None
@@ -57,6 +58,7 @@ class AgentUpdate(OrkBaseSchema):
     prompt_content: Optional[str] = None
     skills_ref: Optional[str] = None
     skills_content: Optional[str] = None
+    soul_content: Optional[str] = None
     version: Optional[str] = None
     status: Optional[str] = None
     owner: Optional[str] = None
@@ -86,6 +88,7 @@ class AgentOut(OrkBaseSchema):
     prompt_content: Optional[str]
     skills_ref: Optional[str]
     skills_content: Optional[str]
+    soul_content: Optional[str]
     version: str
     status: str
     owner: Optional[str]
