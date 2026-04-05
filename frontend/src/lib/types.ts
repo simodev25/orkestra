@@ -202,3 +202,10 @@ export interface PlatformMetrics {
   control_decisions_by_type: Record<string, number>;
   audit_events_total: number;
 }
+
+export interface PlatformSecret {
+  id: string;
+  value_masked: string;
+  description: string | null;
+  updated_at: string | null;
+}

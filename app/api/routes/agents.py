@@ -78,10 +78,11 @@ async def list_agents(
 
 
 @router.get("/llm-models/{provider}")
-async def list_llm_models(provider: str):
+async def list_llm_models(provider: str, db: AsyncSession = Depends(get_db)):
     """Fetch available models from the LLM provider API."""
     import httpx
     from app.core.config import get_settings
+    from app.services.secret_service import get_secret
     settings = get_settings()
 
     if provider == "ollama":
@@ -96,10 +97,10 @@ async def list_llm_models(provider: str):
             return {"provider": "ollama", "models": [], "error": str(e)}
 
     elif provider == "openai":
-        api_key = settings.OPENAI_API_KEY
+        api_key = await get_secret(db, "OPENAI_API_KEY", settings.OPENAI_API_KEY)
         base_url = settings.OPENAI_BASE_URL or "https://api.openai.com/v1"
         if not api_key:
-            return {"provider": "openai", "models": [], "error": "OPENAI_API_KEY not configured"}
+            return {"provider": "openai", "models": [], "error": "OPENAI_API_KEY not configured. Set it in Admin > Security."}
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(

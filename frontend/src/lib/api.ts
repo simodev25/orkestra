@@ -89,6 +89,16 @@ export const api = {
   createBudget: (data: any) =>
     request<T.BudgetProfile>("/settings/budget-profiles", { method: "POST", body: JSON.stringify(data) }),
 
+  // Secrets (API keys)
+  listSecrets: () => request<T.PlatformSecret[]>("/settings/secrets"),
+  upsertSecret: (id: string, value: string, description?: string) =>
+    request<{ id: string; status: string }>(`/settings/secrets/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ value, description: description ?? "" }),
+    }),
+  deleteSecret: (id: string) =>
+    request<{ id: string; status: string }>(`/settings/secrets/${id}`, { method: "DELETE" }),
+
   // Metrics
   getPlatformMetrics: () => request<T.PlatformMetrics>("/metrics/platform"),
 };
