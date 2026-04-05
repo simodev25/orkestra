@@ -8,9 +8,11 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.family import FamilyDefinition, SkillFamily, AgentSkill
+from app.models.history import FamilyDefinitionHistory
 from app.models.registry import AgentDefinition
 from app.models.skill import SkillDefinition
 from app.schemas.family import FamilyCreate, FamilyUpdate
+from app.services.version_utils import bump_patch
 
 logger = logging.getLogger("orkestra.families")
 
@@ -88,12 +90,42 @@ async def update_family(db: AsyncSession, family_id: str, data: FamilyUpdate) ->
     if not family:
         raise ValueError(f"Family '{family_id}' not found")
 
+    # Snapshot current state to history
+    history = FamilyDefinitionHistory(
+        family_id=family.id,
+        label=family.label,
+        description=family.description,
+        default_system_rules=family.default_system_rules or [],
+        default_forbidden_effects=family.default_forbidden_effects or [],
+        default_output_expectations=family.default_output_expectations or [],
+        version=family.version or "1.0.0",
+        status=family.status or "active",
+        owner=family.owner,
+        original_created_at=family.created_at,
+        original_updated_at=family.updated_at,
+    )
+    db.add(history)
+
     updates = data.model_dump(exclude_none=True)
+
+    # Auto-bump version if not explicitly provided
+    if "version" not in updates:
+        family.version = bump_patch(family.version or "1.0.0")
+
     for field, value in updates.items():
         setattr(family, field, value)
 
     await db.flush()
     return family
+
+
+async def get_family_history(db: AsyncSession, family_id: str) -> list[FamilyDefinitionHistory]:
+    result = await db.execute(
+        select(FamilyDefinitionHistory)
+        .where(FamilyDefinitionHistory.family_id == family_id)
+        .order_by(FamilyDefinitionHistory.replaced_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 async def archive_family(db: AsyncSession, family_id: str) -> FamilyDefinition:

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { SkillFormModal } from "@/components/agents/skill-form-modal";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { archiveSkill, listSkillsWithAgents } from "@/lib/families/service";
+import { archiveSkill, getSkillHistory, listSkillsWithAgents } from "@/lib/families/service";
 import type { SkillWithAgents } from "@/lib/families/types";
 
 export default function SkillsAdminPage() {
@@ -17,6 +17,9 @@ export default function SkillsAdminPage() {
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [historySkill, setHistorySkill] = useState<SkillWithAgents | null>(null);
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   async function load(includeArchived: boolean) {
     setLoading(true);
@@ -48,6 +51,19 @@ export default function SkillsAdminPage() {
   function handleSaved() {
     setModalOpen(false);
     void load(showArchived);
+  }
+
+  async function openHistory(skill: SkillWithAgents) {
+    setHistorySkill(skill);
+    setHistoryLoading(true);
+    try {
+      const data = await getSkillHistory(skill.skill_id);
+      setHistoryData(data);
+    } catch {
+      setHistoryData([]);
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
   async function confirmArchive() {
@@ -164,6 +180,12 @@ export default function SkillsAdminPage() {
                     >
                       Edit
                     </button>
+                    <button
+                      onClick={() => void openHistory(skill)}
+                      className="text-ork-cyan hover:underline"
+                    >
+                      History
+                    </button>
                     {skill.status !== "archived" && (
                       <button
                         onClick={() => setPendingArchive(skill)}
@@ -201,6 +223,52 @@ export default function SkillsAdminPage() {
         }}
         onConfirm={() => void confirmArchive()}
       />
+
+      {historySkill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="glass-panel w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-mono font-semibold text-ork-text">
+                Version History — {historySkill.label}
+              </h2>
+              <button
+                onClick={() => setHistorySkill(null)}
+                className="text-xs font-mono text-ork-dim hover:text-ork-text"
+              >
+                Close
+              </button>
+            </div>
+            {historyLoading ? (
+              <p className="text-xs font-mono text-ork-cyan">Loading history...</p>
+            ) : historyData.length === 0 ? (
+              <p className="text-xs font-mono text-ork-dim">No history yet. History is recorded on each update.</p>
+            ) : (
+              <table className="w-full text-xs font-mono">
+                <thead className="border-b border-ork-border/60 text-ork-dim">
+                  <tr>
+                    <th className="p-2 text-left">version</th>
+                    <th className="p-2 text-left">label</th>
+                    <th className="p-2 text-left">category</th>
+                    <th className="p-2 text-left">status</th>
+                    <th className="p-2 text-left">replaced_at</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyData.map((h) => (
+                    <tr key={h.id} className="border-b border-ork-border/30">
+                      <td className="p-2 text-ork-cyan">{h.version}</td>
+                      <td className="p-2 text-ork-text">{h.label}</td>
+                      <td className="p-2 text-ork-muted">{h.category}</td>
+                      <td className="p-2 text-ork-muted">{h.status}</td>
+                      <td className="p-2 text-ork-dim">{new Date(h.replaced_at).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

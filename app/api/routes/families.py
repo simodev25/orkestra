@@ -20,6 +20,30 @@ async def list_families(
     return await family_service.list_families(db, include_archived=include_archived)
 
 
+@router.get("/{family_id}/history")
+async def get_family_history(family_id: str, db: AsyncSession = Depends(get_db)):
+    from app.services.family_service import get_family_history as get_history
+    history = await get_history(db, family_id)
+    return [
+        {
+            "id": h.id,
+            "family_id": h.family_id,
+            "label": h.label,
+            "description": h.description,
+            "default_system_rules": h.default_system_rules,
+            "default_forbidden_effects": h.default_forbidden_effects,
+            "default_output_expectations": h.default_output_expectations,
+            "version": h.version,
+            "status": h.status,
+            "owner": h.owner,
+            "replaced_at": h.replaced_at.isoformat(),
+            "original_created_at": h.original_created_at.isoformat(),
+            "original_updated_at": h.original_updated_at.isoformat(),
+        }
+        for h in history
+    ]
+
+
 @router.get("/{family_id}", response_model=FamilyDetail)
 async def get_family(family_id: str, db: AsyncSession = Depends(get_db)):
     detail = await family_service.get_family_detail(db, family_id)

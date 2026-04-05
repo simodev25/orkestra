@@ -85,3 +85,11 @@ export async function deleteSkill(skillId: string): Promise<void> {
 export async function archiveSkill(skillId: string): Promise<SkillDefinition> {
   return request<SkillDefinition>(`/api/skills/${skillId}/archive`, { method: "PATCH" });
 }
+
+export async function getFamilyHistory(familyId: string): Promise<any[]> {
+  return request<any[]>(`/api/families/${familyId}/history`);
+}
+
+export async function getSkillHistory(skillId: string): Promise<any[]> {
+  return request<any[]>(`/api/skills/${skillId}/history`);
+}

@@ -89,3 +89,33 @@ async def test_agent_rejected_if_family_archived(client):
     })
     assert resp.status_code == 400
     assert "not active" in resp.json()["detail"].lower() or "archived" in resp.json()["detail"].lower()
+
+
+async def test_update_family_creates_history(client):
+    await client.post("/api/families", json={"id": "hist_fam", "label": "V1", "version": "1.0.0"})
+    await client.patch("/api/families/hist_fam", json={"label": "V2"})
+
+    resp = await client.get("/api/families/hist_fam/history")
+    assert resp.status_code == 200
+    history = resp.json()
+    assert len(history) == 1
+    assert history[0]["label"] == "V1"
+    assert history[0]["version"] == "1.0.0"
+
+    # Check the current family has bumped version
+    current = await client.get("/api/families/hist_fam")
+    assert current.json()["label"] == "V2"
+    assert current.json()["version"] == "1.0.1"
+
+
+async def test_multiple_updates_create_history_chain(client):
+    await client.post("/api/families", json={"id": "chain_fam", "label": "V1"})
+    await client.patch("/api/families/chain_fam", json={"label": "V2"})
+    await client.patch("/api/families/chain_fam", json={"label": "V3"})
+
+    resp = await client.get("/api/families/chain_fam/history")
+    history = resp.json()
+    assert len(history) == 2
+    # Most recent first
+    assert history[0]["label"] == "V2"
+    assert history[1]["label"] == "V1"

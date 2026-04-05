@@ -71,6 +71,29 @@ async def list_skills(
     return await skill_service.list_skills(db, include_archived=include_archived)
 
 
+@router.get("/{skill_id}/history")
+async def get_skill_history(skill_id: str, db: AsyncSession = Depends(get_db)):
+    from app.services.skill_service import get_skill_history as get_history
+    history = await get_history(db, skill_id)
+    return [
+        {
+            "id": h.id,
+            "skill_id": h.skill_id,
+            "label": h.label,
+            "category": h.category,
+            "description": h.description,
+            "behavior_templates": h.behavior_templates,
+            "output_guidelines": h.output_guidelines,
+            "version": h.version,
+            "status": h.status,
+            "owner": h.owner,
+            "allowed_families_snapshot": h.allowed_families_snapshot,
+            "replaced_at": h.replaced_at.isoformat(),
+        }
+        for h in history
+    ]
+
+
 @router.get("/{skill_id}", response_model=SkillOut)
 async def get_skill(skill_id: str, db: AsyncSession = Depends(get_db)):
     skill = await skill_service.get_skill(db, skill_id)

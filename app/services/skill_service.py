@@ -9,9 +9,11 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.family import SkillFamily, AgentSkill
+from app.models.history import SkillDefinitionHistory
 from app.models.registry import AgentDefinition
 from app.models.skill import SkillDefinition
 from app.schemas.skill import SkillContent, SkillCreate, SkillRef, SkillUpdate
+from app.services.version_utils import bump_patch
 
 logger = logging.getLogger("orkestra.skills")
 
@@ -91,6 +93,30 @@ async def update_skill(db: AsyncSession, skill_id: str, data: SkillUpdate) -> di
     updates = data.model_dump(exclude_none=True)
     new_families = updates.pop("allowed_families", None)
 
+    # Get current allowed_families for snapshot
+    current_families_snapshot = await _get_allowed_families(db, skill_id)
+
+    # Snapshot current state to history
+    history = SkillDefinitionHistory(
+        skill_id=skill.id,
+        label=skill.label,
+        category=skill.category,
+        description=skill.description,
+        behavior_templates=skill.behavior_templates or [],
+        output_guidelines=skill.output_guidelines or [],
+        version=skill.version or "1.0.0",
+        status=skill.status or "active",
+        owner=skill.owner,
+        allowed_families_snapshot=current_families_snapshot,
+        original_created_at=skill.created_at,
+        original_updated_at=skill.updated_at,
+    )
+    db.add(history)
+
+    # Auto-bump version if not explicitly provided
+    if "version" not in updates:
+        skill.version = bump_patch(skill.version or "1.0.0")
+
     for field, value in updates.items():
         setattr(skill, field, value)
 
@@ -164,6 +190,15 @@ async def delete_skill(db: AsyncSession, skill_id: str) -> dict | None:
     await db.delete(skill)
     await db.flush()
     return None
+
+
+async def get_skill_history(db: AsyncSession, skill_id: str) -> list[SkillDefinitionHistory]:
+    result = await db.execute(
+        select(SkillDefinitionHistory)
+        .where(SkillDefinitionHistory.skill_id == skill_id)
+        .order_by(SkillDefinitionHistory.replaced_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 async def resolve_skills(db: AsyncSession, skill_ids: list[str]) -> tuple[list[SkillRef], list[str]]:
