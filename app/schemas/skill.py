@@ -77,7 +77,9 @@ class SkillWithAgents(OrkBaseSchema):
     skill_id: str
     label: str
     category: str
-    description: Optional[str]
+    description: Optional[str] = None
+    behavior_templates: list[str] = Field(default_factory=list)
+    output_guidelines: list[str] = Field(default_factory=list)
     allowed_families: list[str] = Field(default_factory=list)
     agents: list[AgentSummary]
 
