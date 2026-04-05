@@ -3,10 +3,10 @@ import requests, json
 agent = {
     "id": "identity_resolution_agent",
     "name": "Identity Resolution Agent",
-    "family": "resolution",
+    "family_id": "analysis",
     "purpose": "Resolve the target company with certainty by normalizing queries, searching by name/SIREN/SIRET, managing homonyms, selecting the correct legal unit, and returning an identity confidence score.",
     "description": "Specialized agent for resolving company identity with high confidence using French public data sources (INSEE/Sirene, data.gouv.fr, service-public.fr).",
-    "skills": ["requirements_extraction", "source_comparison", "context_gap_detection", "quality_review"],
+    "skill_ids": ["requirements_extraction", "source_comparison", "context_gap_detection"],
     "selection_hints": {
         "routing_keywords": ["company", "siren", "siret", "entreprise", "identity", "resolution", "insee", "siege"],
         "workflow_ids": []
