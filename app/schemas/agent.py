@@ -8,6 +8,7 @@ from typing import Optional
 from pydantic import AliasChoices, Field
 
 from app.schemas.common import OrkBaseSchema
+from app.schemas.skill import SkillRef
 
 
 class AgentCreate(OrkBaseSchema):
@@ -70,6 +71,7 @@ class AgentOut(OrkBaseSchema):
     purpose: str
     description: Optional[str]
     skills: Optional[list[str]]
+    skills_resolved: Optional[list[SkillRef]] = None  # enriched at read time
     selection_hints: Optional[dict[str, str | list[str] | bool]]
     allowed_mcps: Optional[list[str]]
     forbidden_effects: Optional[list[str]]

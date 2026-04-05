@@ -1,6 +1,7 @@
 """Orkestra — Governed multi-agent orchestration platform."""
 
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,15 +12,21 @@ from app.api.routes import (
     control, supervision, approvals, audit, workflows, mcp_catalog,
 )
 from app.api.routes import settings as settings_routes
+from app.api.routes.skills import router as skills_router
+from app.services import skill_registry_service
 
 settings = get_settings()
+logger = logging.getLogger("orkestra")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import logging
-    logger = logging.getLogger("orkestra")
     logger.info(f"Orkestra {settings.APP_VERSION} starting")
+    try:
+        skill_registry_service.load_skills()
+    except Exception as exc:
+        logger.error(f"Failed to load skills.seed.json: {exc}")
+        raise
     yield
     logger.info("Orkestra shutting down")
 
@@ -42,6 +49,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(requests.router, prefix="/api/requests", tags=["requests"])
 app.include_router(cases.router, prefix="/api/cases", tags=["cases"])
+app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(mcps.router, prefix="/api/mcps", tags=["mcps"])
 app.include_router(mcp_catalog.router, prefix="/api/mcp-catalog", tags=["mcp-catalog"])

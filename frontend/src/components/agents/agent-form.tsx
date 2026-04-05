@@ -47,6 +47,7 @@ interface AgentFormProps {
   mode: "create" | "edit";
   initial?: AgentDefinition;
   availableMcps: McpCatalogSummary[];
+  availableSkills?: string[];
   submitLabel: string;
   saving: boolean;
   onSubmit: (payload: FormPayload) => Promise<void> | void;
@@ -56,6 +57,7 @@ export function AgentForm({
   mode,
   initial,
   availableMcps,
+  availableSkills = [],
   submitLabel,
   saving,
   onSubmit,
@@ -287,7 +289,15 @@ export function AgentForm({
           onChange={(e) => setSkills(e.target.value)}
           placeholder="evidence_collection, entity_resolution, source_cross_check"
           className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          list="available-skills-list"
         />
+        {availableSkills.length > 0 && (
+          <datalist id="available-skills-list">
+            {availableSkills.map((skill) => (
+              <option key={skill} value={skill} />
+            ))}
+          </datalist>
+        )}
       </section>
 
       <section className="glass-panel p-4 space-y-3">

@@ -15,7 +15,7 @@ from app.schemas.agent import (
     AgentUpdate,
     GeneratedAgentDraft,
 )
-from app.services import obot_catalog_service
+from app.services import obot_catalog_service, skill_registry_service
 from app.services.event_service import emit_event
 from app.state_machines.agent_lifecycle_sm import AgentLifecycleStateMachine
 
@@ -52,6 +52,12 @@ def validate_agent_definition(data: AgentCreate) -> list[str]:
     if data.skills_content is not None and not data.skills_content.strip():
         errors.append("skills_content cannot be empty when provided")
 
+    # Validate skill references against the registry
+    if data.skills:
+        _, unresolved = skill_registry_service.resolve_skills(data.skills)
+        for sid in unresolved:
+            errors.append(f"agent references unknown skill_id: '{sid}'")
+
     return errors
 
 
@@ -72,7 +78,11 @@ def _apply_create_payload(agent: AgentDefinition, payload: AgentCreate) -> None:
     agent.prompt_ref = payload.prompt_ref
     agent.prompt_content = payload.prompt_content
     agent.skills_ref = payload.skills_ref
-    agent.skills_content = payload.skills_content
+    # Auto-generate skills_content from resolved skill_ids if not explicitly provided
+    if payload.skills and not payload.skills_content:
+        agent.skills_content = skill_registry_service.build_skills_content(payload.skills)
+    else:
+        agent.skills_content = payload.skills_content
     agent.version = payload.version
     agent.status = payload.status
     agent.owner = payload.owner
@@ -116,10 +126,21 @@ async def update_agent(db: AsyncSession, agent_id: str, data: AgentUpdate) -> Ag
     if "purpose" in updates and len(updates["purpose"].strip()) < 10:
         raise ValueError("purpose must be at least 10 characters")
 
+    # Validate skill references against the registry on update
+    if "skills" in updates:
+        _, unresolved = skill_registry_service.resolve_skills(updates["skills"])
+        if unresolved:
+            raise ValueError(f"agent references unknown skill_ids: {unresolved}")
+
     list_fields = {"skills", "allowed_mcps", "forbidden_effects", "limitations"}
     for field, value in updates.items():
         if field in list_fields:
             setattr(agent, field, _dedupe_str_list(value))
+            if field == "skills":
+                # Auto-regenerate skills_content when skills change
+                skills = _dedupe_str_list(value)
+                if skills:
+                    setattr(agent, "skills_content", skill_registry_service.build_skills_content(skills))
             continue
         if field in {"prompt_content", "skills_content"} and isinstance(value, str):
             if not value.strip():
@@ -286,6 +307,32 @@ async def available_mcp_summaries(db: AsyncSession) -> list[dict[str, str | bool
         }
         for item in items
     ]
+
+
+async def available_skills(db: AsyncSession) -> list[str]:
+    """Return a sorted list of unique skill names across all registered agents."""
+    result = await db.execute(select(AgentDefinition.skills))
+    all_skills: set[str] = set()
+    for row in result.all():
+        skills = row[0] or []
+        for skill in skills:
+            if skill.strip():
+                all_skills.add(skill.strip())
+    return sorted(all_skills)
+
+
+def enrich_agent_skills(agent: AgentDefinition) -> AgentDefinition:
+    """Populate agent.skills_resolved from the skill registry.
+
+    This is called when returning agents via the API so the caller gets
+    the fully-resolved skill metadata without duplicating it in the DB.
+    """
+    if not agent.skills:
+        return agent
+    resolved, _ = skill_registry_service.resolve_skills(agent.skills)
+    # Attach as a transient attribute (not persisted)
+    object.__setattr__(agent, "skills_resolved", resolved)
+    return agent
 
 
 async def save_generated_draft(db: AsyncSession, draft: GeneratedAgentDraft) -> AgentDefinition:

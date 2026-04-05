@@ -30,6 +30,11 @@ async def get_agent_registry_stats(
     return await agent_registry_service.get_registry_stats(db, workflow_id=workflow_id)
 
 
+@router.get("/available-skills")
+async def get_available_skills(db: AsyncSession = Depends(get_db)):
+    return await agent_registry_service.available_skills(db)
+
+
 @router.post("", response_model=AgentOut, status_code=201)
 async def create_agent(data: AgentCreate, db: AsyncSession = Depends(get_db)):
     try:
@@ -72,7 +77,7 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     agent = await agent_registry_service.get_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return agent
+    return agent_registry_service.enrich_agent_skills(agent)
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)

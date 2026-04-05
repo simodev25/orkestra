@@ -194,10 +194,9 @@ def generate_agent_draft(
     )
 
     skills = [
-        "entity_resolution",
-        "evidence_collection",
-        "source_cross_check",
-        "structured_summary",
+        "context_gap_detection",
+        "document_analysis",
+        "source_comparison",
     ]
 
     return GeneratedAgentDraft(

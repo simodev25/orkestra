@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AgentForm } from "@/components/agents/agent-form";
-import { getAgent, listMcpCatalogForAgentDesign, updateAgent } from "@/lib/agent-registry/service";
+import { getAgent, listAvailableSkills, listMcpCatalogForAgentDesign, updateAgent } from "@/lib/agent-registry/service";
 import type {
   AgentCreatePayload,
   AgentDefinition,
@@ -19,6 +19,7 @@ export default function EditAgentPage() {
 
   const [agent, setAgent] = useState<AgentDefinition | null>(null);
   const [catalogMcps, setCatalogMcps] = useState<McpCatalogSummary[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +27,12 @@ export default function EditAgentPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([getAgent(id), listMcpCatalogForAgentDesign()])
-      .then(([agentValue, catalog]) => {
+    Promise.all([getAgent(id), listMcpCatalogForAgentDesign(), listAvailableSkills()])
+      .then(([agentValue, catalog, skills]) => {
         if (cancelled) return;
         setAgent(agentValue);
         setCatalogMcps(catalog);
+        setAvailableSkills(skills);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -97,6 +99,7 @@ export default function EditAgentPage() {
         mode="edit"
         initial={agent}
         availableMcps={catalogMcps}
+        availableSkills={availableSkills}
         submitLabel="Save agent changes"
         saving={saving}
         onSubmit={handleSubmit}
