@@ -144,6 +144,7 @@ export default function FamiliesAdminPage() {
       )}
 
       <FamilyFormModal
+        key={editingFamily?.id ?? "__create__"}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSaved={handleSaved}

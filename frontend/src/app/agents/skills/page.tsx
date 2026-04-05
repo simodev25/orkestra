@@ -155,6 +155,7 @@ export default function SkillsAdminPage() {
       )}
 
       <SkillFormModal
+        key={editingSkill?.skill_id ?? "__create__"}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSaved={handleSaved}
