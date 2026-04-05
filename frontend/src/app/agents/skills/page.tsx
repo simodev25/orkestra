@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { SkillFormModal } from "@/components/agents/skill-form-modal";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
-import { deleteSkill, listSkillsWithAgents } from "@/lib/families/service";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { archiveSkill, listSkillsWithAgents } from "@/lib/families/service";
 import type { SkillWithAgents } from "@/lib/families/types";
 
 export default function SkillsAdminPage() {
@@ -12,15 +13,16 @@ export default function SkillsAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<SkillWithAgents | undefined>(undefined);
-  const [pendingDelete, setPendingDelete] = useState<SkillWithAgents | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [pendingArchive, setPendingArchive] = useState<SkillWithAgents | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
-  async function load() {
+  async function load(includeArchived: boolean) {
     setLoading(true);
     setError(null);
     try {
-      const data = await listSkillsWithAgents();
+      const data = await listSkillsWithAgents(includeArchived);
       setSkills(data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load skills");
@@ -30,8 +32,8 @@ export default function SkillsAdminPage() {
   }
 
   useEffect(() => {
-    void load();
-  }, []);
+    void load(showArchived);
+  }, [showArchived]);
 
   function openCreate() {
     setEditingSkill(undefined);
@@ -45,24 +47,27 @@ export default function SkillsAdminPage() {
 
   function handleSaved() {
     setModalOpen(false);
-    void load();
+    void load(showArchived);
   }
 
-  async function confirmDelete() {
-    if (!pendingDelete) return;
-    setDeleting(true);
-    setDeleteError(null);
+  async function confirmArchive() {
+    if (!pendingArchive) return;
+    setArchiving(true);
+    setArchiveError(null);
     try {
-      await deleteSkill(pendingDelete.skill_id);
-      setSkills((prev) => prev.filter((s) => s.skill_id !== pendingDelete.skill_id));
-      setPendingDelete(null);
+      const updated = await archiveSkill(pendingArchive.skill_id);
+      setSkills((prev) =>
+        showArchived
+          ? prev.map((s) => (s.skill_id === updated.skill_id ? { ...s, ...updated } : s))
+          : prev.filter((s) => s.skill_id !== pendingArchive.skill_id),
+      );
+      setPendingArchive(null);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to delete skill";
-      // 409 conflict — skill is in use
-      setDeleteError(msg);
-      setPendingDelete(null);
+      const msg = err instanceof Error ? err.message : "Failed to archive skill";
+      setArchiveError(msg);
+      setPendingArchive(null);
     } finally {
-      setDeleting(false);
+      setArchiving(false);
     }
   }
 
@@ -75,17 +80,28 @@ export default function SkillsAdminPage() {
             Manage skill definitions. Skills define capabilities available to agent families.
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
-        >
-          Create Skill
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs font-mono text-ork-muted cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="accent-ork-cyan"
+            />
+            Show archived
+          </label>
+          <button
+            onClick={openCreate}
+            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
+          >
+            Create Skill
+          </button>
+        </div>
       </div>
 
-      {deleteError && (
+      {archiveError && (
         <div className="glass-panel p-3 border border-ork-red/30">
-          <p className="text-xs font-mono text-ork-red">{deleteError}</p>
+          <p className="text-xs font-mono text-ork-red">{archiveError}</p>
         </div>
       )}
 
@@ -105,6 +121,9 @@ export default function SkillsAdminPage() {
                 <th className="p-3 text-left">skill_id</th>
                 <th className="p-3 text-left">label</th>
                 <th className="p-3 text-left">category</th>
+                <th className="p-3 text-left">version</th>
+                <th className="p-3 text-left">status</th>
+                <th className="p-3 text-left">owner</th>
                 <th className="p-3 text-left">allowed_families</th>
                 <th className="p-3 text-left">agents</th>
                 <th className="p-3 text-left">actions</th>
@@ -116,6 +135,11 @@ export default function SkillsAdminPage() {
                   <td className="p-3 text-ork-cyan">{skill.skill_id}</td>
                   <td className="p-3 text-ork-text font-semibold">{skill.label}</td>
                   <td className="p-3 text-ork-muted">{skill.category}</td>
+                  <td className="p-3 text-ork-muted">{skill.version || "-"}</td>
+                  <td className="p-3">
+                    <StatusBadge status={skill.status ?? "active"} />
+                  </td>
+                  <td className="p-3 text-ork-muted">{skill.owner || "-"}</td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">
                       {skill.allowed_families.length > 0 ? (
@@ -140,12 +164,14 @@ export default function SkillsAdminPage() {
                     >
                       Edit
                     </button>
-                    <button
-                      onClick={() => setPendingDelete(skill)}
-                      className="text-ork-red hover:underline"
-                    >
-                      Delete
-                    </button>
+                    {skill.status !== "archived" && (
+                      <button
+                        onClick={() => setPendingArchive(skill)}
+                        className="text-ork-amber hover:underline"
+                      >
+                        Archive
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -163,17 +189,17 @@ export default function SkillsAdminPage() {
       />
 
       <ConfirmDangerDialog
-        open={Boolean(pendingDelete)}
-        title="Delete Skill"
-        description="Deleting a skill will remove it from agents that reference it. This action cannot be undone."
-        targetLabel={pendingDelete ? `${pendingDelete.label} (${pendingDelete.skill_id})` : undefined}
-        confirmLabel="Delete Skill"
-        loading={deleting}
+        open={Boolean(pendingArchive)}
+        title="Archive Skill"
+        description="Archiving a skill will mark it as inactive. Agents that reference it will not be affected, but this skill will be hidden by default."
+        targetLabel={pendingArchive ? `${pendingArchive.label} (${pendingArchive.skill_id})` : undefined}
+        confirmLabel="Archive Skill"
+        loading={archiving}
         onCancel={() => {
-          if (deleting) return;
-          setPendingDelete(null);
+          if (archiving) return;
+          setPendingArchive(null);
         }}
-        onConfirm={() => void confirmDelete()}
+        onConfirm={() => void confirmArchive()}
       />
     </div>
   );

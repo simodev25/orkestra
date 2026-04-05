@@ -2,6 +2,12 @@ export interface FamilyDefinition {
   id: string;
   label: string;
   description: string | null;
+  default_system_rules: string[];
+  default_forbidden_effects: string[];
+  default_output_expectations: string[];
+  version: string;
+  status: string;
+  owner: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -25,6 +31,9 @@ export interface SkillDefinition {
   behavior_templates: string[];
   output_guidelines: string[];
   allowed_families: string[];
+  version: string | null;
+  status: string | null;
+  owner: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -37,11 +46,23 @@ export interface FamilyCreatePayload {
   id: string;
   label: string;
   description?: string;
+  default_system_rules?: string[];
+  default_forbidden_effects?: string[];
+  default_output_expectations?: string[];
+  version?: string;
+  status?: string;
+  owner?: string;
 }
 
 export interface FamilyUpdatePayload {
   label?: string;
   description?: string;
+  default_system_rules?: string[];
+  default_forbidden_effects?: string[];
+  default_output_expectations?: string[];
+  version?: string;
+  status?: string;
+  owner?: string;
 }
 
 export interface SkillCreatePayload {
@@ -52,6 +73,9 @@ export interface SkillCreatePayload {
   behavior_templates: string[];
   output_guidelines: string[];
   allowed_families: string[];
+  version?: string;
+  status?: string;
+  owner?: string;
 }
 
 export interface SkillUpdatePayload {
@@ -61,4 +85,7 @@ export interface SkillUpdatePayload {
   behavior_templates?: string[];
   output_guidelines?: string[];
   allowed_families?: string[];
+  version?: string;
+  status?: string;
+  owner?: string;
 }

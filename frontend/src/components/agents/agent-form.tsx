@@ -98,6 +98,7 @@ export function AgentForm({
   const [promptContent, setPromptContent] = useState(initial?.prompt_content ?? "");
   const [skillsRef, setSkillsRef] = useState(initial?.skills_ref ?? "");
   const [skillsContent, setSkillsContent] = useState(initial?.skills_content ?? "");
+  const [soulContent, setSoulContent] = useState(initial?.soul_content ?? "");
   const [version, setVersion] = useState(initial?.version ?? "1.0.0");
   const [status, setStatus] = useState<AgentStatus>(initial?.status ?? "draft");
   const [owner, setOwner] = useState(initial?.owner ?? "");
@@ -193,6 +194,7 @@ export function AgentForm({
       prompt_content: promptContent.trim(),
       skills_ref: skillsRef.trim() || null,
       skills_content: skillsContent.trim(),
+      soul_content: soulContent.trim() || null,
       version: version.trim() || "1.0.0",
       status,
       owner: owner.trim() || null,
@@ -510,7 +512,24 @@ export function AgentForm({
       </section>
 
       <section className="glass-panel p-4 space-y-3">
-        <h2 className="section-title text-sm">9. Limits & governance</h2>
+        <h2 className="section-title text-sm">9. Soul</h2>
+        <p className="text-xs font-mono text-ork-dim">
+          Optional soul content — overarching character, values and behavioural identity injected into this agent.
+        </p>
+        <div>
+          <p className="data-label">soul_content</p>
+          <textarea
+            value={soulContent}
+            onChange={(e) => setSoulContent(e.target.value)}
+            rows={6}
+            placeholder="You are a disciplined analyst who values accuracy above speed…"
+            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+          />
+        </div>
+      </section>
+
+      <section className="glass-panel p-4 space-y-3">
+        <h2 className="section-title text-sm">10. Limits & governance</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <p className="data-label">criticality</p>
@@ -564,7 +583,7 @@ export function AgentForm({
       </section>
 
       <section className="glass-panel p-4 space-y-3">
-        <h2 className="section-title text-sm">10. Lifecycle / ownership</h2>
+        <h2 className="section-title text-sm">11. Lifecycle / ownership</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <p className="data-label">status preview</p>

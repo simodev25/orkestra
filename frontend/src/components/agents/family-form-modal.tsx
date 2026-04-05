@@ -11,12 +11,31 @@ interface FamilyFormModalProps {
   initial?: FamilyDefinition;
 }
 
+function parseLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+}
+
+function toLines(arr: string[] | undefined | null): string {
+  if (!arr || arr.length === 0) return "";
+  return arr.join("\n");
+}
+
 export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormModalProps) {
   const isEdit = Boolean(initial);
 
   const [id, setId] = useState(initial?.id ?? "");
   const [label, setLabel] = useState(initial?.label ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [defaultSystemRules, setDefaultSystemRules] = useState(toLines(initial?.default_system_rules));
+  const [defaultForbiddenEffects, setDefaultForbiddenEffects] = useState(toLines(initial?.default_forbidden_effects));
+  const [defaultOutputExpectations, setDefaultOutputExpectations] = useState(
+    toLines(initial?.default_output_expectations),
+  );
+  const [version, setVersion] = useState(initial?.version ?? "");
+  const [owner, setOwner] = useState(initial?.owner ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +65,11 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
         const payload: FamilyUpdatePayload = {
           label: label.trim(),
           description: description.trim() || undefined,
+          default_system_rules: parseLines(defaultSystemRules),
+          default_forbidden_effects: parseLines(defaultForbiddenEffects),
+          default_output_expectations: parseLines(defaultOutputExpectations),
+          version: version.trim() || undefined,
+          owner: owner.trim() || undefined,
         };
         saved = await updateFamily(initial.id, payload);
       } else {
@@ -53,6 +77,11 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
           id: id.trim(),
           label: label.trim(),
           description: description.trim() || undefined,
+          default_system_rules: parseLines(defaultSystemRules),
+          default_forbidden_effects: parseLines(defaultForbiddenEffects),
+          default_output_expectations: parseLines(defaultOutputExpectations),
+          version: version.trim() || undefined,
+          owner: owner.trim() || undefined,
         };
         saved = await createFamily(payload);
       }
@@ -65,8 +94,8 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-md glass-panel border border-ork-border">
+    <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="w-full max-w-lg glass-panel border border-ork-border my-auto">
         <div className="p-4 border-b border-ork-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">{isEdit ? "Edit Family" : "Create Family"}</h2>
           <button
@@ -115,6 +144,60 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
               rows={3}
               placeholder="Optional description of this agent family..."
               className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <p className="data-label">version</p>
+              <input
+                value={version}
+                onChange={(e) => setVersion(e.target.value)}
+                placeholder="1.0.0"
+                className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              />
+            </div>
+            <div>
+              <p className="data-label">owner</p>
+              <input
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+                placeholder="team-risk-ops"
+                className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="data-label">default_system_rules (one per line)</p>
+            <textarea
+              value={defaultSystemRules}
+              onChange={(e) => setDefaultSystemRules(e.target.value)}
+              rows={4}
+              placeholder="Always verify data sources&#10;Never expose PII in outputs"
+              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+            />
+          </div>
+
+          <div>
+            <p className="data-label">default_forbidden_effects (one per line)</p>
+            <textarea
+              value={defaultForbiddenEffects}
+              onChange={(e) => setDefaultForbiddenEffects(e.target.value)}
+              rows={3}
+              placeholder="write&#10;act"
+              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+            />
+          </div>
+
+          <div>
+            <p className="data-label">default_output_expectations (one per line)</p>
+            <textarea
+              value={defaultOutputExpectations}
+              onChange={(e) => setDefaultOutputExpectations(e.target.value)}
+              rows={3}
+              placeholder="Return structured JSON&#10;Include confidence score"
+              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
             />
           </div>
 

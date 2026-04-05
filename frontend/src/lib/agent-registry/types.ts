@@ -38,6 +38,7 @@ export interface AgentDefinition {
   prompt_content: string | null;
   skills_ref: string | null;
   skills_content: string | null;
+  soul_content: string | null;
   version: string;
   status: AgentStatus;
   owner: string | null;
@@ -145,6 +146,7 @@ export interface AgentCreatePayload {
   prompt_content?: string | null;
   skills_ref?: string | null;
   skills_content?: string | null;
+  soul_content?: string | null;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;
@@ -170,6 +172,7 @@ export interface AgentUpdatePayload {
   prompt_content?: string | null;
   skills_ref?: string | null;
   skills_content?: string | null;
+  soul_content?: string | null;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;

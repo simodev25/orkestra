@@ -22,8 +22,9 @@ async function request<R>(url: string, opts?: RequestInit): Promise<R> {
 }
 
 // Families
-export async function listFamilies(): Promise<FamilyDefinition[]> {
-  return request<FamilyDefinition[]>("/api/families");
+export async function listFamilies(includeArchived = false): Promise<FamilyDefinition[]> {
+  const qs = includeArchived ? "?include_archived=true" : "";
+  return request<FamilyDefinition[]>(`/api/families${qs}`);
 }
 
 export async function getFamily(familyId: string): Promise<FamilyDetail> {
@@ -46,17 +47,23 @@ export async function deleteFamily(familyId: string): Promise<void> {
   }
 }
 
+export async function archiveFamily(familyId: string): Promise<FamilyDefinition> {
+  return request<FamilyDefinition>(`/api/families/${familyId}/archive`, { method: "PATCH" });
+}
+
 // Skills
-export async function listSkills(): Promise<SkillDefinition[]> {
-  return request<SkillDefinition[]>("/api/skills");
+export async function listSkills(includeArchived = false): Promise<SkillDefinition[]> {
+  const qs = includeArchived ? "?include_archived=true" : "";
+  return request<SkillDefinition[]>(`/api/skills${qs}`);
 }
 
 export async function listSkillsByFamily(familyId: string): Promise<SkillDefinition[]> {
   return request<SkillDefinition[]>(`/api/skills/by-family/${familyId}`);
 }
 
-export async function listSkillsWithAgents(): Promise<SkillWithAgents[]> {
-  return request<SkillWithAgents[]>("/api/skills/with-agents");
+export async function listSkillsWithAgents(includeArchived = false): Promise<SkillWithAgents[]> {
+  const qs = includeArchived ? "?include_archived=true" : "";
+  return request<SkillWithAgents[]>(`/api/skills/with-agents${qs}`);
 }
 
 export async function createSkill(payload: SkillCreatePayload): Promise<SkillDefinition> {
@@ -73,4 +80,8 @@ export async function deleteSkill(skillId: string): Promise<void> {
     const body = await res.json().catch(() => null);
     throw new Error(body?.detail || res.statusText);
   }
+}
+
+export async function archiveSkill(skillId: string): Promise<SkillDefinition> {
+  return request<SkillDefinition>(`/api/skills/${skillId}/archive`, { method: "PATCH" });
 }
