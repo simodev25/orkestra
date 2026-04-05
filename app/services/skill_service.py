@@ -223,16 +223,27 @@ async def resolve_skills(db: AsyncSession, skill_ids: list[str]) -> tuple[list[S
 
 
 async def build_skills_content(db: AsyncSession, skill_ids: list[str]) -> str:
+    """Build a human-readable skills content block from resolved skills."""
     resolved, _ = await resolve_skills(db, skill_ids)
-    content = {
-        ref.skill_id: {
-            "description": ref.skills_content.description,
-            "behavior_templates": ref.skills_content.behavior_templates,
-            "output_guidelines": ref.skills_content.output_guidelines,
-        }
-        for ref in resolved
-    }
-    return json.dumps(content, indent=2)
+    if not resolved:
+        return ""
+
+    parts: list[str] = []
+    for ref in resolved:
+        lines = [f"## {ref.label} ({ref.skill_id})"]
+        if ref.skills_content.description:
+            lines.append(ref.skills_content.description)
+        if ref.skills_content.behavior_templates:
+            lines.append("\nBehavior:")
+            for t in ref.skills_content.behavior_templates:
+                lines.append(f"- {t}")
+        if ref.skills_content.output_guidelines:
+            lines.append("\nOutput guidelines:")
+            for g in ref.skills_content.output_guidelines:
+                lines.append(f"- {g}")
+        parts.append("\n".join(lines))
+
+    return "\n\n---\n\n".join(parts)
 
 
 async def validate_skills_for_family(

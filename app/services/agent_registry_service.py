@@ -210,10 +210,11 @@ async def update_agent(db: AsyncSession, agent_id: str, data: AgentUpdate) -> Ag
                 raise ValueError(f"{field} cannot be empty")
         setattr(agent, field, value)
 
-    # Sync AgentSkill join rows and regenerate skills_content
+    # Sync AgentSkill join rows and regenerate skills_content only if not manually provided
     if new_skill_ids is not None:
         await _sync_agent_skills(db, agent_id, new_skill_ids)
-        agent.skills_content = await skill_service.build_skills_content(db, new_skill_ids)
+        if "skills_content" not in updates:
+            agent.skills_content = await skill_service.build_skills_content(db, new_skill_ids)
 
     await db.flush()
     await emit_event(
