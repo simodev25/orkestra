@@ -119,6 +119,45 @@ async def update_family(db: AsyncSession, family_id: str, data: FamilyUpdate) ->
     return family
 
 
+async def restore_family(db: AsyncSession, family_id: str, history_id: str) -> FamilyDefinition:
+    """Restore a family to a previous version. Snapshots current state first."""
+    family = await db.get(FamilyDefinition, family_id)
+    if not family:
+        raise ValueError(f"Family '{family_id}' not found")
+
+    history = await db.get(FamilyDefinitionHistory, history_id)
+    if not history or history.family_id != family_id:
+        raise ValueError(f"History entry '{history_id}' not found for family '{family_id}'")
+
+    # Snapshot current state first
+    snapshot = FamilyDefinitionHistory(
+        family_id=family.id,
+        label=family.label,
+        description=family.description,
+        default_system_rules=family.default_system_rules or [],
+        default_forbidden_effects=family.default_forbidden_effects or [],
+        default_output_expectations=family.default_output_expectations or [],
+        version=family.version or "1.0.0",
+        status="superseded",
+        owner=family.owner,
+        original_created_at=family.created_at,
+        original_updated_at=family.updated_at,
+    )
+    db.add(snapshot)
+
+    # Restore values from history
+    family.label = history.label
+    family.description = history.description
+    family.default_system_rules = history.default_system_rules
+    family.default_forbidden_effects = history.default_forbidden_effects
+    family.default_output_expectations = history.default_output_expectations
+    family.owner = history.owner
+    family.version = bump_patch(family.version or "1.0.0")
+
+    await db.flush()
+    return family
+
+
 async def get_family_history(db: AsyncSession, family_id: str) -> list[FamilyDefinitionHistory]:
     result = await db.execute(
         select(FamilyDefinitionHistory)

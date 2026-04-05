@@ -93,3 +93,11 @@ export async function getFamilyHistory(familyId: string): Promise<any[]> {
 export async function getSkillHistory(skillId: string): Promise<any[]> {
   return request<any[]>(`/api/skills/${skillId}/history`);
 }
+
+export async function restoreFamily(familyId: string, historyId: string): Promise<FamilyDefinition> {
+  return request<FamilyDefinition>(`/api/families/${familyId}/restore/${historyId}`, { method: "POST" });
+}
+
+export async function restoreSkill(skillId: string, historyId: string): Promise<SkillDefinition> {
+  return request<SkillDefinition>(`/api/skills/${skillId}/restore/${historyId}`, { method: "POST" });
+}

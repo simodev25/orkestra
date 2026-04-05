@@ -44,6 +44,14 @@ async def get_family_history(family_id: str, db: AsyncSession = Depends(get_db))
     ]
 
 
+@router.post("/{family_id}/restore/{history_id}", response_model=FamilyOut)
+async def restore_family(family_id: str, history_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        return await family_service.restore_family(db, family_id, history_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/{family_id}", response_model=FamilyDetail)
 async def get_family(family_id: str, db: AsyncSession = Depends(get_db)):
     detail = await family_service.get_family_detail(db, family_id)

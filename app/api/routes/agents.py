@@ -98,6 +98,15 @@ async def get_agent_history(agent_id: str, db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.post("/{agent_id}/restore/{history_id}", response_model=AgentOut)
+async def restore_agent(agent_id: str, history_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        agent = await agent_registry_service.restore_agent(db, agent_id, history_id)
+        return await agent_registry_service.enrich_agent(db, agent)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/{agent_id}", response_model=AgentOut)
 async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     agent = await agent_registry_service.get_agent(db, agent_id)

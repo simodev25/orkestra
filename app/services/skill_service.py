@@ -201,6 +201,53 @@ async def get_skill_history(db: AsyncSession, skill_id: str) -> list[SkillDefini
     return list(result.scalars().all())
 
 
+async def restore_skill(db: AsyncSession, skill_id: str, history_id: str) -> dict:
+    """Restore a skill to a previous version. Snapshots current state first."""
+    skill = await db.get(SkillDefinition, skill_id)
+    if not skill:
+        raise ValueError(f"Skill '{skill_id}' not found")
+
+    history = await db.get(SkillDefinitionHistory, history_id)
+    if not history or history.skill_id != skill_id:
+        raise ValueError(f"History entry '{history_id}' not found for skill '{skill_id}'")
+
+    # Snapshot current state first
+    current_families = await _get_allowed_families(db, skill_id)
+    snapshot = SkillDefinitionHistory(
+        skill_id=skill.id,
+        label=skill.label,
+        category=skill.category,
+        description=skill.description,
+        behavior_templates=skill.behavior_templates or [],
+        output_guidelines=skill.output_guidelines or [],
+        version=skill.version or "1.0.0",
+        status="superseded",
+        owner=skill.owner,
+        allowed_families_snapshot=current_families,
+        original_created_at=skill.created_at,
+        original_updated_at=skill.updated_at,
+    )
+    db.add(snapshot)
+
+    # Restore values from history
+    skill.label = history.label
+    skill.category = history.category
+    skill.description = history.description
+    skill.behavior_templates = history.behavior_templates
+    skill.output_guidelines = history.output_guidelines
+    skill.owner = history.owner
+    skill.version = bump_patch(skill.version or "1.0.0")
+
+    # Restore allowed_families from snapshot
+    await db.execute(delete(SkillFamily).where(SkillFamily.skill_id == skill_id))
+    for fam_id in history.allowed_families_snapshot or []:
+        db.add(SkillFamily(skill_id=skill_id, family_id=fam_id))
+
+    await db.flush()
+    families = await _get_allowed_families(db, skill_id)
+    return _skill_to_dict(skill, families)
+
+
 async def resolve_skills(db: AsyncSession, skill_ids: list[str]) -> tuple[list[SkillRef], list[str]]:
     resolved: list[SkillRef] = []
     unresolved: list[str] = []

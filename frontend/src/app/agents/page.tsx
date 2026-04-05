@@ -8,9 +8,11 @@ import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
 import { GenerateAgentModal } from "@/components/agents/generate-agent-modal";
 import {
   deleteAgent,
+  getAgentHistory,
   getAgentRegistryStats,
   listAgents,
   listMcpCatalogForAgentDesign,
+  restoreAgent,
 } from "@/lib/agent-registry/service";
 import type {
   AgentDefinition,
@@ -60,6 +62,9 @@ function AgentRegistryPageContent() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
   const [agentPendingDelete, setAgentPendingDelete] = useState<AgentDefinition | null>(null);
+  const [historyAgent, setHistoryAgent] = useState<AgentDefinition | null>(null);
+  const [agentHistory, setAgentHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   async function loadAll(nextFilters: AgentRegistryFilters) {
     setLoading(true);
@@ -95,6 +100,19 @@ function AgentRegistryPageContent() {
 
   function updateFilter<K extends keyof AgentRegistryFilters>(key: K, value: AgentRegistryFilters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function openAgentHistory(agent: AgentDefinition) {
+    setHistoryAgent(agent);
+    setHistoryLoading(true);
+    try {
+      const history = await getAgentHistory(agent.id);
+      setAgentHistory(history);
+    } catch {
+      setAgentHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
   async function confirmDeleteAgent() {
@@ -293,6 +311,12 @@ function AgentRegistryPageContent() {
                       Edit
                     </Link>
                     <button
+                      onClick={() => void openAgentHistory(agent)}
+                      className="text-ork-cyan hover:underline block"
+                    >
+                      History
+                    </button>
+                    <button
                       onClick={() => setAgentPendingDelete(agent)}
                       disabled={deletingAgentId === agent.id}
                       className="text-ork-red hover:underline block disabled:opacity-50"
@@ -330,6 +354,65 @@ function AgentRegistryPageContent() {
         }}
         onConfirm={() => void confirmDeleteAgent()}
       />
+
+      {historyAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="glass-panel w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-mono font-semibold text-ork-text">
+                Version History — {historyAgent.name}
+              </h2>
+              <button
+                onClick={() => setHistoryAgent(null)}
+                className="text-xs font-mono text-ork-dim hover:text-ork-text"
+              >
+                Close
+              </button>
+            </div>
+            {historyLoading ? (
+              <p className="text-xs font-mono text-ork-cyan">Loading history...</p>
+            ) : agentHistory.length === 0 ? (
+              <p className="text-xs font-mono text-ork-dim">No history yet. History is recorded on each update.</p>
+            ) : (
+              <table className="w-full text-xs font-mono">
+                <thead className="border-b border-ork-border/60 text-ork-dim">
+                  <tr>
+                    <th className="p-2 text-left">version</th>
+                    <th className="p-2 text-left">name</th>
+                    <th className="p-2 text-left">family</th>
+                    <th className="p-2 text-left">status</th>
+                    <th className="p-2 text-left">replaced_at</th>
+                    <th className="p-2 text-left">action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentHistory.map((h) => (
+                    <tr key={h.id} className="border-b border-ork-border/30">
+                      <td className="p-2 text-ork-cyan">{h.version}</td>
+                      <td className="p-2 text-ork-text">{h.name}</td>
+                      <td className="p-2 text-ork-muted">{h.family_id}</td>
+                      <td className="p-2 text-ork-muted">{h.status}</td>
+                      <td className="p-2 text-ork-dim">{new Date(h.replaced_at).toLocaleString()}</td>
+                      <td className="p-2">
+                        <button
+                          onClick={async () => {
+                            await restoreAgent(historyAgent.id, h.id);
+                            setHistoryAgent(null);
+                            void loadAll(filters);
+                          }}
+                          className="text-ork-cyan hover:underline text-[10px]"
+                        >
+                          Restore
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

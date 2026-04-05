@@ -102,6 +102,10 @@ export async function getAgentHistory(agentId: string): Promise<any[]> {
   return request<any[]>(`${BASE}/${agentId}/history`);
 }
 
+export async function restoreAgent(agentId: string, historyId: string): Promise<AgentDefinition> {
+  return request<AgentDefinition>(`${BASE}/${agentId}/restore/${historyId}`, { method: "POST" });
+}
+
 export async function listMcpCatalogForAgentDesign(): Promise<McpCatalogSummary[]> {
   const items = await request<
     Array<{

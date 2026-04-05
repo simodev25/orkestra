@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { FamilyFormModal } from "@/components/agents/family-form-modal";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { archiveFamily, getFamilyHistory, listFamilies } from "@/lib/families/service";
+import { archiveFamily, getFamilyHistory, listFamilies, restoreFamily } from "@/lib/families/service";
 import type { FamilyDefinition } from "@/lib/families/types";
 
 export default function FamiliesAdminPage() {
@@ -240,6 +240,7 @@ export default function FamiliesAdminPage() {
                     <th className="p-2 text-left">label</th>
                     <th className="p-2 text-left">status</th>
                     <th className="p-2 text-left">replaced_at</th>
+                    <th className="p-2 text-left">action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -249,6 +250,18 @@ export default function FamiliesAdminPage() {
                       <td className="p-2 text-ork-text">{h.label}</td>
                       <td className="p-2 text-ork-muted">{h.status}</td>
                       <td className="p-2 text-ork-dim">{new Date(h.replaced_at).toLocaleString()}</td>
+                      <td className="p-2">
+                        <button
+                          onClick={async () => {
+                            await restoreFamily(historyFamily.id, h.id);
+                            setHistoryFamily(null);
+                            void load(showArchived);
+                          }}
+                          className="text-ork-cyan hover:underline text-[10px]"
+                        >
+                          Restore
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

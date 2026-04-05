@@ -291,6 +291,69 @@ async def update_agent_status(
     return agent
 
 
+async def restore_agent(db: AsyncSession, agent_id: str, history_id: str) -> AgentDefinition:
+    """Restore an agent to a previous version. Snapshots current state first."""
+    from app.models.history import AgentDefinitionHistory
+    from app.services.version_utils import bump_patch
+
+    agent = await db.get(AgentDefinition, agent_id)
+    if not agent:
+        raise ValueError(f"Agent '{agent_id}' not found")
+
+    history = await db.get(AgentDefinitionHistory, history_id)
+    if not history or history.agent_id != agent_id:
+        raise ValueError(f"History entry '{history_id}' not found for agent '{agent_id}'")
+
+    # Snapshot current state first
+    current_skill_ids = await _get_agent_skill_ids(db, agent_id)
+    snapshot = AgentDefinitionHistory(
+        agent_id=agent.id,
+        name=agent.name,
+        family_id=agent.family_id,
+        purpose=agent.purpose,
+        description=agent.description,
+        skill_ids_snapshot=current_skill_ids,
+        prompt_content=agent.prompt_content,
+        skills_content=agent.skills_content,
+        soul_content=agent.soul_content,
+        selection_hints=agent.selection_hints,
+        allowed_mcps=agent.allowed_mcps,
+        forbidden_effects=agent.forbidden_effects,
+        limitations=agent.limitations,
+        criticality=agent.criticality,
+        cost_profile=agent.cost_profile,
+        version=agent.version or "1.0.0",
+        status="superseded",
+        owner=agent.owner,
+        original_created_at=agent.created_at,
+        original_updated_at=agent.updated_at,
+    )
+    db.add(snapshot)
+
+    # Restore from history
+    agent.name = history.name
+    agent.family_id = history.family_id
+    agent.purpose = history.purpose
+    agent.description = history.description
+    agent.prompt_content = history.prompt_content
+    agent.skills_content = history.skills_content
+    agent.soul_content = history.soul_content
+    agent.selection_hints = history.selection_hints
+    agent.allowed_mcps = history.allowed_mcps
+    agent.forbidden_effects = history.forbidden_effects
+    agent.limitations = history.limitations
+    agent.criticality = history.criticality
+    agent.cost_profile = history.cost_profile
+    agent.owner = history.owner
+    agent.version = bump_patch(agent.version or "1.0.0")
+
+    # Restore skill_ids from snapshot
+    await _sync_agent_skills(db, agent_id, history.skill_ids_snapshot or [])
+
+    await db.flush()
+    return agent
+
+
 async def get_agent_history(db: AsyncSession, agent_id: str) -> list:
     """Return version history for an agent, most recent first."""
     from app.models.history import AgentDefinitionHistory

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { SkillFormModal } from "@/components/agents/skill-form-modal";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { archiveSkill, getSkillHistory, listSkillsWithAgents } from "@/lib/families/service";
+import { archiveSkill, getSkillHistory, listSkillsWithAgents, restoreSkill } from "@/lib/families/service";
 import type { SkillWithAgents } from "@/lib/families/types";
 
 export default function SkillsAdminPage() {
@@ -249,6 +249,7 @@ export default function SkillsAdminPage() {
                     <th className="p-2 text-left">category</th>
                     <th className="p-2 text-left">status</th>
                     <th className="p-2 text-left">replaced_at</th>
+                    <th className="p-2 text-left">action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -259,6 +260,18 @@ export default function SkillsAdminPage() {
                       <td className="p-2 text-ork-muted">{h.category}</td>
                       <td className="p-2 text-ork-muted">{h.status}</td>
                       <td className="p-2 text-ork-dim">{new Date(h.replaced_at).toLocaleString()}</td>
+                      <td className="p-2">
+                        <button
+                          onClick={async () => {
+                            await restoreSkill(historySkill.skill_id, h.id);
+                            setHistorySkill(null);
+                            void load(showArchived);
+                          }}
+                          className="text-ork-cyan hover:underline text-[10px]"
+                        >
+                          Restore
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

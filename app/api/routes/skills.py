@@ -94,6 +94,14 @@ async def get_skill_history(skill_id: str, db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.post("/{skill_id}/restore/{history_id}", response_model=SkillOut)
+async def restore_skill(skill_id: str, history_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        return await skill_service.restore_skill(db, skill_id, history_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/{skill_id}", response_model=SkillOut)
 async def get_skill(skill_id: str, db: AsyncSession = Depends(get_db)):
     skill = await skill_service.get_skill(db, skill_id)
