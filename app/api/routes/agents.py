@@ -77,6 +77,27 @@ async def list_agents(
     return [await agent_registry_service.enrich_agent(db, a) for a in agents]
 
 
+@router.get("/{agent_id}/history")
+async def get_agent_history(agent_id: str, db: AsyncSession = Depends(get_db)):
+    history = await agent_registry_service.get_agent_history(db, agent_id)
+    return [
+        {
+            "id": h.id,
+            "agent_id": h.agent_id,
+            "name": h.name,
+            "family_id": h.family_id,
+            "purpose": h.purpose,
+            "skill_ids_snapshot": h.skill_ids_snapshot,
+            "version": h.version,
+            "status": h.status,
+            "owner": h.owner,
+            "criticality": h.criticality,
+            "replaced_at": h.replaced_at.isoformat(),
+        }
+        for h in history
+    ]
+
+
 @router.get("/{agent_id}", response_model=AgentOut)
 async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     agent = await agent_registry_service.get_agent(db, agent_id)

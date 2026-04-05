@@ -98,6 +98,10 @@ export async function saveGeneratedDraft(draft: GeneratedAgentDraft): Promise<Ag
   });
 }
 
+export async function getAgentHistory(agentId: string): Promise<any[]> {
+  return request<any[]>(`${BASE}/${agentId}/history`);
+}
+
 export async function listMcpCatalogForAgentDesign(): Promise<McpCatalogSummary[]> {
   const items = await request<
     Array<{

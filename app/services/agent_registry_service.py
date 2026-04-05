@@ -172,7 +172,40 @@ async def update_agent(db: AsyncSession, agent_id: str, data: AgentUpdate) -> Ag
     if not agent:
         raise ValueError(f"Agent {agent_id} not found")
 
+    # Snapshot current state to history before applying changes
+    from app.models.history import AgentDefinitionHistory
+    from app.services.version_utils import bump_patch
+
+    current_skill_ids = await _get_agent_skill_ids(db, agent_id)
+    history = AgentDefinitionHistory(
+        agent_id=agent.id,
+        name=agent.name,
+        family_id=agent.family_id,
+        purpose=agent.purpose,
+        description=agent.description,
+        skill_ids_snapshot=current_skill_ids,
+        prompt_content=agent.prompt_content,
+        skills_content=agent.skills_content,
+        soul_content=agent.soul_content,
+        selection_hints=agent.selection_hints,
+        allowed_mcps=agent.allowed_mcps,
+        forbidden_effects=agent.forbidden_effects,
+        limitations=agent.limitations,
+        criticality=agent.criticality,
+        cost_profile=agent.cost_profile,
+        version=agent.version or "1.0.0",
+        status="superseded",
+        owner=agent.owner,
+        original_created_at=agent.created_at,
+        original_updated_at=agent.updated_at,
+    )
+    db.add(history)
+
     updates = data.model_dump(exclude_none=True)
+
+    # Version is auto-managed
+    updates.pop("version", None)
+    agent.version = bump_patch(agent.version or "1.0.0")
     if "name" in updates and len(updates["name"].strip()) < 2:
         raise ValueError("name must be at least 2 characters")
     if "purpose" in updates and len(updates["purpose"].strip()) < 10:
@@ -248,6 +281,17 @@ async def update_agent_status(
         payload={"agent_id": agent.id},
     )
     return agent
+
+
+async def get_agent_history(db: AsyncSession, agent_id: str) -> list:
+    """Return version history for an agent, most recent first."""
+    from app.models.history import AgentDefinitionHistory
+    result = await db.execute(
+        select(AgentDefinitionHistory)
+        .where(AgentDefinitionHistory.agent_id == agent_id)
+        .order_by(AgentDefinitionHistory.replaced_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 def _workflow_matches(agent: AgentDefinition, workflow_id: str) -> bool:

@@ -1,9 +1,9 @@
-"""Version history for families and skills."""
+"""Version history for families, skills, and agents."""
 
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, Integer, DateTime, ForeignKey
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +12,34 @@ from app.core.database import Base
 
 def _utcnow():
     return datetime.now(timezone.utc)
+
+
+class AgentDefinitionHistory(Base):
+    """Snapshot of an AgentDefinition at a previous version."""
+    __tablename__ = "agent_definition_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    agent_id: Mapped[str] = mapped_column(String(100), ForeignKey("agent_definitions.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    family_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    skill_ids_snapshot: Mapped[list] = mapped_column(JSONB, default=list)
+    prompt_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    skills_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    soul_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selection_hints: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    allowed_mcps: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    forbidden_effects: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    limitations: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    criticality: Mapped[str] = mapped_column(String(20), nullable=False)
+    cost_profile: Mapped[str] = mapped_column(String(20), nullable=False)
+    version: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    owner: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    replaced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    original_created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    original_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class FamilyDefinitionHistory(Base):
