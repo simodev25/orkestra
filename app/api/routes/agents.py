@@ -85,10 +85,9 @@ async def list_llm_models(provider: str):
     settings = get_settings()
 
     if provider == "ollama":
-        host = settings.OLLAMA_HOST
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(f"{host}/api/tags")
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get("https://ollama.com/api/tags")
                 resp.raise_for_status()
                 data = resp.json()
                 models = [m["name"] for m in data.get("models", [])]
