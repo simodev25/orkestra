@@ -49,6 +49,28 @@ def _get_agent_specific_model(provider: str, model_name: str):
         return None
 
 
+async def _register_orkestra_skills(
+    db: AsyncSession,
+    agent_def: AgentDefinition,
+    toolkit,
+) -> None:
+    """Register agent skills from skills_content field directly in toolkit.skills."""
+    from agentscope.tool._types import AgentSkill
+
+    if not agent_def.skills_content:
+        return
+
+    from app.core.config import get_settings
+    db_url = get_settings().DATABASE_URL.replace("asyncpg", "postgresql")
+
+    toolkit.skills[agent_def.name] = AgentSkill(
+        name=f"{agent_def.name} Skills",
+        description=agent_def.skills_content,
+        dir=f"{db_url}/agent_definitions/{agent_def.id}/skills_content",
+    )
+    logger.info(f"Registered skills_content for agent {agent_def.id} from PostgreSQL")
+
+
 async def resolve_mcp_servers(db: AsyncSession, agent_def: AgentDefinition) -> list[dict]:
     """Resolve MCP server URLs from the agent's allowed_mcps IDs.
 
@@ -157,8 +179,11 @@ async def create_agentscope_agent(
         if connected_mcps:
             logger.info(f"Agent {agent_def.id}: connected {len(connected_mcps)} MCP servers")
 
-        # Build multi-layer system prompt (includes skills from DB via Layer 2)
+        # Build multi-layer system prompt + AgentScope skill prompt
         sys_prompt = await build_agent_prompt(db, agent_def)
+        skill_prompt = toolkit.get_agent_skill_prompt()
+        if skill_prompt:
+            sys_prompt = f"{sys_prompt}\n\n{skill_prompt}"
 
         agent = ReActAgent(
             name=agent_def.id,

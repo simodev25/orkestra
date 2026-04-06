@@ -405,6 +405,7 @@ async def run_agent_test(
             "error": result.get("error"),
         },
         "behavioral_checks": data.behavioral_checks,
+        "message_history": result.get("message_history", []),
     }
     try:
         with open(debug_dir / debug_filename, "w") as f:

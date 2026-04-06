@@ -77,6 +77,8 @@ async def execute_test_run(
     tracer = otel_trace.get_tracer("orkestra.test_lab")
 
     t0 = time.time()
+    message_history = []
+    react_agent = None
 
     with tracer.start_as_current_span(
         "agent_test_run",
@@ -170,6 +172,39 @@ async def execute_test_run(
                 llm_span.set_attribute("gen_ai.response_length", len(content))
                 llm_span.set_attribute("gen_ai.latency_ms", llm_latency)
 
+                # Capture full message history (think → tool_call → tool_result → answer)
+                try:
+                    memory = react_agent.memory
+                    if memory:
+                        msgs = await memory.get_memory()
+                        for msg in msgs:
+                            entry = {"role": getattr(msg, "role", "unknown"), "name": getattr(msg, "name", "")}
+                            # Get text content first, fallback to raw content
+                            text = ""
+                            if hasattr(msg, "get_text_content"):
+                                text = msg.get_text_content() or ""
+                            if not text and hasattr(msg, "content"):
+                                raw = msg.content
+                                if isinstance(raw, list):
+                                    # Tool results are lists of blocks
+                                    parts = []
+                                    for block in raw:
+                                        if hasattr(block, "text"):
+                                            parts.append(block.text[:2000])
+                                        elif hasattr(block, "type"):
+                                            parts.append(f"[{block.type}]")
+                                        else:
+                                            parts.append(str(block)[:500])
+                                    text = "\n".join(parts)
+                                elif isinstance(raw, str):
+                                    text = raw[:5000]
+                                else:
+                                    text = str(raw)[:5000]
+                            entry["content"] = text
+                            message_history.append(entry)
+                except Exception as e:
+                    logger.warning(f"Failed to capture message history: {e}")
+
             except Exception as e:
                 logger.error(f"AgentScope execution failed for {agent.id}: {e}")
                 llm_span.set_attribute("orkestra.error", str(e))
@@ -203,4 +238,5 @@ async def execute_test_run(
         "model": model,
         "token_usage": None,
         "connected_mcps": getattr(react_agent, "_connected_mcps", []) if react_agent else [],
+        "message_history": message_history,
     }

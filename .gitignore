@@ -10,3 +10,4 @@ build/
 *.db
 storage/
 .remember/*
+debug-strategy/*
