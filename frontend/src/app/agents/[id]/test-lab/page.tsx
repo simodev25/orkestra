@@ -16,6 +16,11 @@ import type { AgentDefinition } from "@/lib/agent-registry/types";
 import type { AgentTestCaseInput, AgentTestRunResult } from "@/lib/agent-test-lab/types";
 import { FlaskConical, Play, RotateCcw, Save, Repeat2 } from "lucide-react";
 
+function tryParseJson(s: string | null | undefined): Record<string, unknown> | null {
+  if (!s) return null;
+  try { return JSON.parse(s); } catch { return null; }
+}
+
 export default function AgentTestLabPage() {
   const params = useParams<{ id: string }>();
   const agentId = params.id;
@@ -30,12 +35,37 @@ export default function AgentTestLabPage() {
   const [running, setRunning] = useState(false);
   const [promoting, setPromoting] = useState(false);
 
+  // Load agent + persisted runs from API
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getAgent(agentId)
-      .then((a) => {
-        if (!cancelled) setAgent(a);
+    Promise.all([
+      getAgent(agentId),
+      fetch(`/api/agents/${agentId}/test-runs`).then((r) => r.ok ? r.json() : []).catch(() => []),
+    ])
+      .then(([a, savedRuns]) => {
+        if (cancelled) return;
+        setAgent(a);
+        if (Array.isArray(savedRuns) && savedRuns.length > 0) {
+          const mapped: AgentTestRunResult[] = savedRuns.map((r: any) => ({
+            id: r.id,
+            agentId: r.agent_id,
+            agentVersion: r.agent_version,
+            timestamp: r.created_at,
+            status: r.status === "error" ? "error" : "completed",
+            verdict: r.verdict === "pending" ? (r.status === "error" ? "error" : "pass") : r.verdict,
+            latencyMs: r.latency_ms,
+            tokenUsage: r.token_usage,
+            rawOutput: r.raw_output || "",
+            parsedOutput: tryParseJson(r.raw_output),
+            behavioralChecks: r.behavioral_checks || [],
+            notes: r.error_message || "",
+            task: r.task || "",
+            metadata: r.metadata || null,
+          }));
+          setRuns(mapped);
+          setCurrentResult(mapped[0]);
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load agent");
@@ -46,30 +76,56 @@ export default function AgentTestLabPage() {
     return () => { cancelled = true; };
   }, [agentId]);
 
+  const loadRunsFromApi = useCallback(async () => {
+    try {
+      const resp = await fetch(`/api/agents/${agentId}/test-runs`);
+      if (!resp.ok) return;
+      const savedRuns = await resp.json();
+      if (Array.isArray(savedRuns) && savedRuns.length > 0) {
+        const mapped: AgentTestRunResult[] = savedRuns.map((r: any) => ({
+          id: r.id,
+          agentId: r.agent_id,
+          agentVersion: r.agent_version,
+          timestamp: r.created_at,
+          status: r.status === "error" ? "error" : "completed",
+          verdict: r.verdict === "pending" ? (r.status === "error" ? "error" : "pass") : r.verdict,
+          latencyMs: r.latency_ms,
+          tokenUsage: r.token_usage,
+          rawOutput: r.raw_output || "",
+          parsedOutput: tryParseJson(r.raw_output),
+          behavioralChecks: r.behavioral_checks || [],
+          notes: r.error_message || "",
+          task: r.task || "",
+          metadata: r.metadata || null,
+        }));
+        setRuns(mapped);
+        setCurrentResult(mapped[0]);
+      }
+    } catch { /* ignore */ }
+  }, [agentId]);
+
   const handleRun = useCallback(
     async (count: number = 1) => {
       if (!agent) return;
       setRunning(true);
       setError(null);
       try {
-        let lastResult: AgentTestRunResult | null = null;
         for (let i = 0; i < count; i++) {
           const result = await executeTestRun(agent.id, agent.version, testCase);
-          // Fix total token count
           if (result.tokenUsage) {
             result.tokenUsage.total = result.tokenUsage.input + result.tokenUsage.output;
           }
-          lastResult = result;
-          setRuns((prev) => [result, ...prev]);
+          setCurrentResult(result);
         }
-        setCurrentResult(lastResult);
+        // Reload runs from API to get full trace_data (system_prompt, tools, skills, MCP)
+        await loadRunsFromApi();
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Test execution failed");
       } finally {
         setRunning(false);
       }
     },
-    [agent, testCase],
+    [agent, testCase, loadRunsFromApi],
   );
 
   const handleReset = useCallback(() => {

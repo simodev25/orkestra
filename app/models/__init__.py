@@ -16,6 +16,7 @@ from app.models.family import FamilyDefinition, SkillFamily, AgentSkill
 from app.models.skill import SkillDefinition
 from app.models.history import FamilyDefinitionHistory, SkillDefinitionHistory, AgentDefinitionHistory
 from app.models.secret import PlatformSecret
+from app.models.agent_test_run import AgentTestRun
 
 __all__ = [
     "Request", "Case", "WorkflowDefinition", "OrchestrationPlan",
@@ -26,5 +27,5 @@ __all__ = [
     "PolicyProfile", "BudgetProfile",
     "FamilyDefinition", "SkillFamily", "AgentSkill", "SkillDefinition",
     "FamilyDefinitionHistory", "SkillDefinitionHistory", "AgentDefinitionHistory",
-    "PlatformSecret",
+    "PlatformSecret", "AgentTestRun",
 ]

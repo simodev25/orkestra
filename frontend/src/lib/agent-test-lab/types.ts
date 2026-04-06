@@ -99,6 +99,8 @@ export interface AgentTestRunResult {
   parsedOutput: Record<string, unknown> | null;
   behavioralChecks: BehavioralCheckResult[];
   notes: string;
+  task?: string;
+  metadata?: Record<string, any> | null;
 }
 
 // ── Qualification gate ───────────────────────────────────────────────
