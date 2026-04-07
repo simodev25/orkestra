@@ -212,39 +212,16 @@ def get_tools_for_agent(agent_def: AgentDefinition) -> list:
     Returns an empty list if tool modules are unavailable.
     MCP remote tools are handled separately via resolve_mcp_servers().
     """
+    from app.services.mcp_tool_registry import get_tools_for_mcp
+
     allowed = agent_def.allowed_mcps or []
     if not allowed:
         return []
 
-    MCP_TOOL_MAP: dict[str, list] = {}
-
-    try:
-        from app.mcp_servers.document_parser import parse_document, classify_document
-        MCP_TOOL_MAP["document_parser"] = [parse_document, classify_document]
-    except ImportError:
-        pass
-
-    try:
-        from app.mcp_servers.consistency_checker import check_consistency, validate_fields
-        MCP_TOOL_MAP["consistency_checker"] = [check_consistency, validate_fields]
-    except ImportError:
-        pass
-
-    try:
-        from app.mcp_servers.search_engine import search_knowledge
-        MCP_TOOL_MAP["search_engine"] = [search_knowledge]
-    except ImportError:
-        pass
-
-    try:
-        from app.mcp_servers.weather import get_weather
-        MCP_TOOL_MAP["weather"] = [get_weather]
-    except ImportError:
-        pass
-
-    tools = []
+    all_tools = []
     for mcp_id in allowed:
-        if mcp_id in MCP_TOOL_MAP:
-            tools.extend(MCP_TOOL_MAP[mcp_id])
+        tools = get_tools_for_mcp(mcp_id)
+        if tools:
+            all_tools.extend(tools)
 
-    return tools
+    return all_tools

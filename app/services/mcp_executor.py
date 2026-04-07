@@ -9,31 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.invocation import MCPInvocation
 from app.models.registry import MCPDefinition, AgentDefinition
 from app.services.event_service import emit_event
+from app.services.mcp_tool_registry import get_tools_for_mcp
 
 logger = logging.getLogger(__name__)
-
-# Map MCP IDs to their tool functions
-_MCP_TOOLS = None
-
-
-def _get_mcp_tools() -> dict:
-    global _MCP_TOOLS
-    if _MCP_TOOLS is None:
-        try:
-            from app.mcp_servers.document_parser import parse_document, classify_document
-            from app.mcp_servers.consistency_checker import check_consistency, validate_fields
-            from app.mcp_servers.search_engine import search_knowledge
-            from app.mcp_servers.weather import get_weather
-
-            _MCP_TOOLS = {
-                "document_parser": {"parse": parse_document, "classify": classify_document},
-                "consistency_checker": {"check": check_consistency, "validate": validate_fields},
-                "search_engine": {"search": search_knowledge},
-                "weather": {"get_weather": get_weather},
-            }
-        except ImportError:
-            _MCP_TOOLS = {}
-    return _MCP_TOOLS
 
 
 async def invoke_mcp(
@@ -126,16 +104,17 @@ async def invoke_mcp(
 
 async def _execute_mcp_tool(mcp_id: str, action: str | None, kwargs: dict) -> str | None:
     """Execute a real MCP tool function. Returns result string or None."""
-    tools = _get_mcp_tools()
-    if mcp_id not in tools:
+    tool_list = get_tools_for_mcp(mcp_id)
+    if not tool_list:
         return None
 
-    mcp_tools = tools[mcp_id]
+    # Build a name-keyed dict for action lookup
+    mcp_tools = {fn.__name__: fn for fn in tool_list}
     # Pick the action or default to first tool
     if action and action in mcp_tools:
         tool_func = mcp_tools[action]
     else:
-        tool_func = list(mcp_tools.values())[0]
+        tool_func = tool_list[0]
 
     result = await tool_func(**kwargs)
 
