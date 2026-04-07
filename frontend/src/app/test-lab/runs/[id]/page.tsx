@@ -371,7 +371,7 @@ export default function TestRunDetailPage() {
           Execution Timeline ({events.length} events)
           {isLive && <span className="w-2 h-2 rounded-full bg-ork-green animate-pulse ml-2" title="Live" />}
         </h2>
-        <div className="glass-panel p-5">
+        <div className="glass-panel p-5 max-h-[600px] overflow-y-auto">
           {events.length === 0 ? (
             <div className="text-center py-8">
               {isLive ? (
