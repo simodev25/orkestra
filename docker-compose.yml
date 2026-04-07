@@ -83,11 +83,12 @@ services:
       ORKESTRA_LOG_LEVEL: INFO
       ORKESTRA_OBOT_BASE_URL: http://obot:8080
       ORKESTRA_OBOT_API_KEY: ""
-      ORKESTRA_OBOT_USE_MOCK: "false"
-      ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
+      ORKESTRA_OBOT_USE_MOCK: "true"
+      ORKESTRA_OBOT_FALLBACK_TO_MOCK: "true"
       ORKESTRA_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
       ORKESTRA_PROMETHEUS_ENABLED: "true"
       ORKESTRA_DEBUG_STRATEGY_DIR: /app/storage/debug-strategy
+      ORKESTRA_AUTH_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -148,7 +149,7 @@ services:
     ports:
       - "3300:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8200
     depends_on:
       api:
         condition: service_healthy
