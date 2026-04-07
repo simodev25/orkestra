@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -13,6 +13,7 @@ import {
   Shield,
   Target,
   FileText,
+  Play,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -75,9 +76,11 @@ function formatDuration(ms: number | null | undefined) {
 
 export default function TestRunDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
 
   const [run, setRun] = useState<any>(null);
+  const [rerunning, setRerunning] = useState(false);
   const [events, setEvents] = useState<any[]>([]);
   const [assertions, setAssertions] = useState<any[]>([]);
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
@@ -190,6 +193,25 @@ export default function TestRunDetailPage() {
             <p className="text-[10px] text-ork-dim font-mono mt-0.5">Agent: {run?.agent_id} &middot; v{run?.agent_version}</p>
           </div>
         </div>
+        {run?.scenario_id && run?.status !== "running" && run?.status !== "queued" && (
+          <button
+            disabled={rerunning}
+            onClick={async () => {
+              setRerunning(true);
+              try {
+                const res = await fetch(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: "POST" });
+                if (res.ok) {
+                  const newRun = await res.json();
+                  router.push(`/test-lab/runs/${newRun.id}`);
+                }
+              } catch { /* ignore */ }
+              finally { setRerunning(false); }
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider rounded border bg-ork-cyan/10 text-ork-cyan border-ork-cyan/30 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40"
+          >
+            <Play size={13} /> {rerunning ? "Running..." : "Re-run"}
+          </button>
+        )}
       </div>
 
       {/* Stats Row */}
