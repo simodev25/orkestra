@@ -170,3 +170,75 @@ class ExecutionMode(str, enum.Enum):
     PARALLEL = "parallel"
     MIXED = "mixed"
     CONDITIONAL = "conditional"
+
+
+class TestRunStatus(str, enum.Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+    CANCELLED = "cancelled"
+
+
+class TestVerdict(str, enum.Enum):
+    PASSED = "passed"
+    PASSED_WITH_WARNINGS = "passed_with_warnings"
+    FAILED = "failed"
+
+
+class EventType(str, enum.Enum):
+    RUN_CREATED = "run_created"
+    ORCHESTRATOR_STARTED = "orchestrator_started"
+    PHASE_STARTED = "phase_started"
+    PHASE_COMPLETED = "phase_completed"
+    PHASE_FAILED = "phase_failed"
+    HANDOFF_STARTED = "handoff_started"
+    HANDOFF_COMPLETED = "handoff_completed"
+    RUN_STARTED = "run_started"
+    AGENT_ITERATION_STARTED = "agent_iteration_started"
+    AGENT_ITERATION_COMPLETED = "agent_iteration_completed"
+    LLM_REQUEST_STARTED = "llm_request_started"
+    LLM_REQUEST_COMPLETED = "llm_request_completed"
+    TOOL_CALL_STARTED = "tool_call_started"
+    TOOL_CALL_COMPLETED = "tool_call_completed"
+    TOOL_CALL_FAILED = "tool_call_failed"
+    MCP_SESSION_CONNECTED = "mcp_session_connected"
+    MCP_SESSION_FAILED = "mcp_session_failed"
+    ASSERTION_PHASE_STARTED = "assertion_phase_started"
+    ASSERTION_PASSED = "assertion_passed"
+    ASSERTION_FAILED = "assertion_failed"
+    DIAGNOSTIC_PHASE_STARTED = "diagnostic_phase_started"
+    DIAGNOSTIC_GENERATED = "diagnostic_generated"
+    REPORT_PHASE_STARTED = "report_phase_started"
+    RUN_COMPLETED = "run_completed"
+    RUN_FAILED = "run_failed"
+    RUN_TIMEOUT = "run_timeout"
+
+
+class AssertionType(str, enum.Enum):
+    TOOL_CALLED = "tool_called"
+    TOOL_NOT_CALLED = "tool_not_called"
+    OUTPUT_FIELD_EXISTS = "output_field_exists"
+    OUTPUT_SCHEMA_MATCHES = "output_schema_matches"
+    MAX_DURATION_MS = "max_duration_ms"
+    MAX_ITERATIONS = "max_iterations"
+    FINAL_STATUS_IS = "final_status_is"
+    NO_TOOL_FAILURES = "no_tool_failures"
+
+
+class DiagnosticCode(str, enum.Enum):
+    EXPECTED_TOOL_NOT_USED = "expected_tool_not_used"
+    TOOL_FAILURE_DETECTED = "tool_failure_detected"
+    RUN_TIMED_OUT = "run_timed_out"
+    OUTPUT_SCHEMA_INVALID = "output_schema_invalid"
+    EXCESSIVE_ITERATIONS = "excessive_iterations"
+    SLOW_FINAL_SYNTHESIS = "slow_final_synthesis"
+    NO_PROGRESS_DETECTED = "no_progress_detected"
+
+
+class Severity(str, enum.Enum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"

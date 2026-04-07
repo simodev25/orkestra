@@ -1,0 +1,107 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Agent Test Runs — Trace Explorer",
+      "type": "traces",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+      "targets": [
+        {
+          "queryType": "traceqlSearch",
+          "filters": [
+            { "id": "span-name", "tag": "name", "operator": "=", "value": ["agent_test_run"], "valueType": "string", "scope": "span" }
+          ],
+          "limit": 20
+        }
+      ]
+    },
+    {
+      "title": "LLM Call Latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, rate(orkestra_agent_test_latency_ms_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(orkestra_agent_test_latency_ms_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(orkestra_agent_test_latency_ms_bucket[5m]))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+      }
+    },
+    {
+      "title": "Test Runs by Verdict",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (verdict) (orkestra_agent_test_runs_total)",
+          "legendFormat": "{{verdict}}"
+        }
+      ]
+    },
+    {
+      "title": "Token Usage per Test",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(orkestra_agent_test_tokens_total{type=\"input\"}[5m])",
+          "legendFormat": "input tokens/s"
+        },
+        {
+          "expr": "rate(orkestra_agent_test_tokens_total{type=\"output\"}[5m])",
+          "legendFormat": "output tokens/s"
+        }
+      ]
+    },
+    {
+      "title": "Recent Agent Test Traces",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+      "targets": [
+        {
+          "queryType": "traceqlSearch",
+          "filters": [
+            { "id": "span-name", "tag": "name", "operator": "=", "value": ["agent_test_run"], "valueType": "string", "scope": "span" }
+          ],
+          "limit": 50
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["orkestra", "agents", "llm", "test-lab"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Tempo", "value": "tempo" },
+        "hide": 0,
+        "name": "DS_TEMPO",
+        "type": "datasource",
+        "query": "tempo"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Orkestra — Agent Test Lab",
+  "uid": "orkestra-agent-test-lab"
+}

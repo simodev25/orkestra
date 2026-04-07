@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
+import { AgentLifecyclePanel } from "@/components/agents/lifecycle/AgentLifecyclePanel";
 import { deleteAgent, getAgent, listMcpCatalogForAgentDesign } from "@/lib/agent-registry/service";
 import type { AgentDefinition, McpCatalogSummary } from "@/lib/agent-registry/types";
 
@@ -99,6 +100,12 @@ export default function AgentDetailPage() {
         <div className="flex items-center gap-2">
           <StatusBadge status={agent.status} />
           <Link
+            href={`/agents/${agent.id}/test-lab`}
+            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
+          >
+            Test Lab
+          </Link>
+          <Link
             href={`/agents/${agent.id}/edit`}
             className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-purple/30 text-ork-purple bg-ork-purple/10"
           >
@@ -118,6 +125,11 @@ export default function AgentDetailPage() {
           <p className="text-xs font-mono text-ork-red">{actionError}</p>
         </div>
       )}
+
+      <AgentLifecyclePanel
+        agent={agent}
+        onStatusChange={(updated) => setAgent(updated)}
+      />
 
       <Section title="Identity">
         <KV label="name" value={agent.name} />

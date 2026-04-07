@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.api.routes import (
     health, requests, cases, agents, mcps, plans, runs,
-    control, supervision, approvals, audit, workflows, mcp_catalog,
+    control, supervision, approvals, audit, workflows, mcp_catalog, metrics,
+    debug_strategy, test_lab,
 )
 from app.api.routes import settings as settings_routes
 from app.api.routes.families import router as families_router
@@ -19,6 +20,15 @@ from app.services import seed_service
 
 settings = get_settings()
 logger = logging.getLogger("orkestra")
+
+# Initialize AgentScope tracing at module load (before uvicorn workers fork)
+if settings.OTEL_ENDPOINT:
+    try:
+        from agentscope.tracing import setup_tracing
+        setup_tracing(endpoint=settings.OTEL_ENDPOINT)
+        logger.info(f"AgentScope OTLP tracing → {settings.OTEL_ENDPOINT}")
+    except Exception as exc:
+        logger.warning(f"Failed to init tracing: {exc}")
 
 
 @asynccontextmanager
@@ -31,6 +41,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error(f"Failed to seed families/skills: {exc}")
         raise
+
     yield
     logger.info("Orkestra shutting down")
 
@@ -44,7 +55,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3300", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,3 +77,6 @@ app.include_router(approvals.router, prefix="/api/approvals", tags=["approvals"]
 app.include_router(audit.router, prefix="/api", tags=["audit"])
 app.include_router(workflows.router, prefix="/api/workflow-definitions", tags=["workflows"])
 app.include_router(settings_routes.router, prefix="/api/settings", tags=["settings"])
+app.include_router(metrics.router, prefix="/api", tags=["metrics"])
+app.include_router(debug_strategy.router, prefix="/api", tags=["debug-strategy"])
+app.include_router(test_lab.router, prefix="/api/test-lab", tags=["test-lab"])

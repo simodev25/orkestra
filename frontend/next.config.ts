@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
       { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },
     ];
   },
+  // Increase server-side proxy timeout for long-running LLM calls (test lab)
+  serverExternalPackages: [],
+  experimental: {
+    proxyTimeout: 120_000,
+  },
 };
 
 export default nextConfig;

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     # Observability
     LOG_LEVEL: str = "INFO"
     PROMETHEUS_ENABLED: bool = False
+    OTEL_ENDPOINT: str = ""  # e.g. http://otel-collector:4318/v1/traces
 
     # Obot MCP source of truth
     OBOT_BASE_URL: str = ""

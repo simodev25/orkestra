@@ -87,6 +87,9 @@ services:
       ORKESTRA_OBOT_API_KEY: ""
       ORKESTRA_OBOT_USE_MOCK: "false"
       ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
+      ORKESTRA_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
+      ORKESTRA_PROMETHEUS_ENABLED: "true"
+      ORKESTRA_DEBUG_STRATEGY_DIR: /app/storage/debug-strategy
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,6 +102,7 @@ services:
       - ./migrations:/app/migrations:ro
       - ./alembic.ini:/app/alembic.ini:ro
       - ./storage:/app/storage
+      - ./debug-strategy:/app/storage/debug-strategy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
@@ -123,6 +127,62 @@ services:
       api:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # Observability
+  # ---------------------------------------------------------------------------
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    restart: unless-stopped
+    command: ["--config", "/etc/otel-collector/config.yaml"]
+    ports:
+      - "4327:4317"   # OTLP gRPC
+      - "4328:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus exporter
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "3250:3200"   # Tempo HTTP API
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempodata:/var/tempo
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    ports:
+      - "9190:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: orkestra
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - tempo
+      - prometheus
+
 volumes:
   pgdata:
   redisdata:
+  tempodata:
+  promdata:
+  grafanadata:
