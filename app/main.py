@@ -67,6 +67,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 app.add_middleware(ApiKeyMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
 
 
 # Exception handlers
