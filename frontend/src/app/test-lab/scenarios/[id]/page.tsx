@@ -145,8 +145,9 @@ export default function ScenarioDetailPage() {
               </h1>
               <StatusBadge status={scenario?.enabled ? "active" : "disabled"} />
             </div>
-            <p className="text-[10px] text-ork-dim font-mono mt-0.5">
-              Agent: {scenario?.agent_id.slice(0, 12)} &middot; ID: {id?.slice(0, 12)}
+            <p className="text-[10px] font-mono mt-0.5">
+              Agent: <Link href={`/agents/${scenario?.agent_id}`} className="text-ork-cyan hover:underline">{scenario?.agent_id}</Link>
+              <span className="text-ork-dim"> &middot; Scenario ID: {id}</span>
             </p>
           </div>
         </div>
