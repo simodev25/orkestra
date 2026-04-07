@@ -218,6 +218,20 @@ async def get_run_report(run_id: str, db: AsyncSession = Depends(get_db)):
     return RunReport(run=run, scenario=scenario, events=list(events), assertions=list(assertions), diagnostics=list(diagnostics))
 
 
+# ── Orchestrator chat (follow-up conversation) ───────────
+
+@router.post("/runs/{run_id}/chat")
+async def chat_with_run(run_id: str, request: Request):
+    """Send a follow-up message to the OrchestratorAgent for a completed run."""
+    from app.services.test_lab.orchestrator_agent import chat_with_orchestrator
+    body = await request.json()
+    message = body.get("message", "")
+    if not message.strip():
+        raise HTTPException(400, "Message is required")
+    response = await chat_with_orchestrator(run_id, message)
+    return {"run_id": run_id, "response": response}
+
+
 # ── Agent summary ──────────────────────────────────────────
 
 @router.get("/agents/{agent_id}/summary", response_model=AgentTestSummary)

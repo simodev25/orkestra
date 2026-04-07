@@ -15,6 +15,9 @@ import {
   Target,
   FileText,
   Play,
+  Send,
+  Loader2,
+  MessageSquare,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -242,6 +245,12 @@ export default function TestRunDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [assertions, setAssertions] = useState<any[]>([]);
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
+
+  // Chat with OrchestratorAgent
+  const [chatMessages, setChatMessages] = useState<Array<{role: string; content: string}>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<string | null>(null);
@@ -578,7 +587,116 @@ export default function TestRunDetailPage() {
       {/* Summary */}
       {run?.summary && (
         <div className="glass-panel p-4">
-          <p className="text-xs font-mono text-ork-muted">{run.summary}</p>
+          <p className="text-xs font-mono text-ork-muted whitespace-pre-wrap">{run.summary}</p>
+        </div>
+      )}
+
+      {/* ── Chat with OrchestratorAgent ── */}
+      {run && (run.status === "completed" || run.status === "failed") && (
+        <div>
+          <h2 className="section-title mb-4 flex items-center gap-2">
+            <MessageSquare size={13} />
+            Chat with OrchestratorAgent
+          </h2>
+          <div className="glass-panel overflow-hidden">
+            {/* Messages */}
+            <div className="max-h-[400px] overflow-y-auto p-4 space-y-3">
+              {chatMessages.length === 0 && (
+                <p className="text-center text-xs font-mono text-ork-dim py-8">
+                  Ask the orchestrator about the results, request a deeper analysis, or ask for a follow-up test.
+                </p>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%] rounded-lg px-4 py-2.5 ${
+                    msg.role === "user"
+                      ? "bg-ork-cyan/10 border border-ork-cyan/30 rounded-tr-sm"
+                      : "bg-ork-surface border border-ork-dim/20 rounded-tl-sm"
+                  }`}>
+                    <p className={`text-[10px] font-mono mb-1 uppercase tracking-wider ${
+                      msg.role === "user" ? "text-ork-cyan/60" : "text-ork-purple/60"
+                    }`}>
+                      {msg.role === "user" ? "you" : "orchestrator"}
+                    </p>
+                    <p className="text-sm text-ork-muted leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-ork-surface border border-ork-dim/20 rounded-lg px-4 py-3 flex items-center gap-2">
+                    <Loader2 size={13} className="text-ork-cyan animate-spin" />
+                    <span className="text-xs font-mono text-ork-dim animate-pulse">Thinking...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            {/* Input */}
+            <div className="border-t border-ork-border/50 p-3 flex items-end gap-2">
+              <textarea
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!chatInput.trim() || chatLoading) return;
+                    const msg = chatInput.trim();
+                    setChatInput("");
+                    setChatMessages(prev => [...prev, { role: "user", content: msg }]);
+                    setChatLoading(true);
+                    request<{ response: string }>(`/api/test-lab/runs/${id}/chat`, {
+                      method: "POST",
+                      body: JSON.stringify({ message: msg }),
+                    })
+                      .then(data => {
+                        setChatMessages(prev => [...prev, { role: "orchestrator", content: data.response }]);
+                      })
+                      .catch(err => {
+                        setChatMessages(prev => [...prev, { role: "orchestrator", content: `Error: ${err.message}` }]);
+                      })
+                      .finally(() => {
+                        setChatLoading(false);
+                        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+                      });
+                  }
+                }}
+                placeholder="Ask the orchestrator... (e.g., 'explain the verdict', 'run a stricter test', 'check policy compliance')"
+                disabled={chatLoading}
+                rows={1}
+                className="flex-1 resize-none bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim/50 focus:outline-none focus:border-ork-cyan/40 disabled:opacity-50 min-h-[38px] max-h-[100px] overflow-y-auto"
+              />
+              <button
+                onClick={() => {
+                  if (!chatInput.trim() || chatLoading) return;
+                  const msg = chatInput.trim();
+                  setChatInput("");
+                  setChatMessages(prev => [...prev, { role: "user", content: msg }]);
+                  setChatLoading(true);
+                  request<{ response: string }>(`/api/test-lab/runs/${id}/chat`, {
+                    method: "POST",
+                    body: JSON.stringify({ message: msg }),
+                  })
+                    .then(data => {
+                      setChatMessages(prev => [...prev, { role: "orchestrator", content: data.response }]);
+                    })
+                    .catch(err => {
+                      setChatMessages(prev => [...prev, { role: "orchestrator", content: `Error: ${err.message}` }]);
+                    })
+                    .finally(() => {
+                      setChatLoading(false);
+                      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+                    });
+                }}
+                disabled={chatLoading || !chatInput.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider bg-ork-cyan/15 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/25 transition-colors disabled:opacity-40 flex-shrink-0"
+              >
+                {chatLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                Send
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

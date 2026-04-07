@@ -1,23 +1,18 @@
-"""Multi-Agent Test Orchestrator — OrchestratorAgent with SubAgent tools.
-
-This module creates a ReActAgent-based orchestrator that coordinates test
-execution using tools, following the same pattern as scripts/orchestrateur_chat.py
-but connected to the real Orkestra platform (DB, agent registry, execution engine).
+"""Multi-Agent Test Orchestrator — Full LLM-driven evaluation.
 
 Architecture:
   OrchestratorAgent (ReActAgent)
     ├── get_scenario_context      — reads scenario + agent info
-    ├── run_scenario_subagent     — generates/adapts test plan
+    ├── run_scenario_subagent     — generates test plan (LLM)
     ├── run_target_agent          — executes the REAL agent under test
-    ├── run_assertion_engine      — deterministic assertion evaluation
-    ├── run_diagnostic_engine     — deterministic diagnostic analysis
-    ├── run_scoring_engine        — deterministic scoring + verdict
-    ├── run_judge_subagent        — explains verdict in natural language
-    ├── run_robustness_subagent   — proposes follow-up edge cases
+    ├── run_judge_subagent        — evaluates quality, verdict, score (LLM)
+    ├── run_robustness_subagent   — proposes follow-up tests (LLM)
+    ├── run_policy_subagent       — checks governance compliance (LLM)
+    ├── get_run_state             — reads current run state
     ├── save_run_result           — persists final results to DB
+    ├── respond_to_user           — sends a message back to the user
 
-The deterministic engines (assertions, diagnostics, scoring) remain authoritative.
-SubAgents are assistive — they generate scenarios, explain verdicts, propose follow-ups.
+All evaluation is LLM-driven. The OrchestratorAgent decides the flow.
 """
 from __future__ import annotations
 
@@ -38,7 +33,6 @@ from agentscope.tool import Toolkit, ToolResponse
 from app.core.config import get_settings
 from app.services.test_lab.execution_engine import (
     _get_config_sync,
-    _get_sync_engine,
     emit_event,
     update_run,
 )
@@ -46,7 +40,7 @@ from app.services.test_lab.execution_engine import (
 logger = logging.getLogger("orkestra.test_lab.orchestrator_agent")
 
 
-# ─── Run context (shared mutable state for one test run) ─────────────────────
+# ─── Run context ─────────────────────────────────────────────────────────────
 
 @dataclass
 class RunContext:
@@ -59,7 +53,6 @@ class RunContext:
     scenario_name: str = ""
     input_prompt: str = ""
     expected_tools: list[str] = field(default_factory=list)
-    assertions_defs: list[dict] = field(default_factory=list)
     timeout_seconds: int = 120
     max_iterations: int = 5
 
@@ -69,20 +62,21 @@ class RunContext:
     target_duration_ms: int = 0
     target_iteration_count: int = 0
     execution_events: list[dict] = field(default_factory=list)
-    assertion_results: list[dict] = field(default_factory=list)
-    diagnostics: list[dict] = field(default_factory=list)
     score: float = 0.0
     verdict: str = ""
     summary: str = ""
 
+    # Conversation with user (for interactive follow-ups)
+    user_messages: list[dict] = field(default_factory=list)
 
-# ─── Tool functions (connected to real platform) ─────────────────────────────
+
+# ─── Tool functions ──────────────────────────────────────────────────────────
 
 def _build_tools(ctx: RunContext) -> list:
-    """Build the list of tool functions bound to the run context."""
+    """Build tool functions bound to the run context."""
 
     async def get_scenario_context() -> ToolResponse:
-        """Read the current scenario and agent information."""
+        """Read the scenario and agent under test information."""
         return ToolResponse(content=(
             f"SCENARIO:\n"
             f"  name: {ctx.scenario_name}\n"
@@ -91,38 +85,37 @@ def _build_tools(ctx: RunContext) -> list:
             f"  agent_version: {ctx.agent_version}\n"
             f"  input_prompt: {ctx.input_prompt}\n"
             f"  expected_tools: {json.dumps(ctx.expected_tools)}\n"
-            f"  assertions: {len(ctx.assertions_defs)}\n"
             f"  timeout: {ctx.timeout_seconds}s\n"
-            f"  max_iterations: {ctx.max_iterations}\n"
+            f"  max_iterations: {ctx.max_iterations}"
         ))
 
     async def run_scenario_subagent(objective: str) -> ToolResponse:
-        """Generate a structured test plan from the scenario. Call this before executing the target agent."""
+        """Generate a structured test plan. Call BEFORE executing the target agent."""
         emit_event(ctx.run_id, "subagent_start", "preparation", "ScenarioSubAgent starting")
         model = _make_model("preparation")
         agent = ReActAgent(
             name="ScenarioSubAgent",
-            model=model,
-            formatter=OllamaChatFormatter(),
+            model=model, formatter=OllamaChatFormatter(),
             memory=InMemoryMemory(),
             sys_prompt=(
-                "Tu es un sous-agent de scénarisation de test. "
-                "Tu transformes un besoin de test en scénario concret et structuré. "
-                "Réponds en français. Format: SCENARIO / SUCCESS_CRITERIA / TEST_INPUT."
+                "Tu es un sous-agent de scenarisation de test. "
+                "Tu transformes un besoin de test en scenario concret. "
+                "Reponds en francais.\n"
+                "Format:\nSCENARIO: <description>\nSUCCESS_CRITERIA:\n- <critere>\nTEST_INPUT: <entree>"
             ),
             max_iters=1,
         )
         res = agent(Msg("user", objective, "user"))
         text = res.content if hasattr(res, "content") else str(res)
-        emit_event(ctx.run_id, "subagent_done", "preparation", "ScenarioSubAgent done",
-                   details={"response_length": len(text)})
+        emit_event(ctx.run_id, "subagent_done", "preparation", "ScenarioSubAgent done")
         return ToolResponse(content=text)
 
     async def run_target_agent(task: str) -> ToolResponse:
-        """Execute the REAL agent under test with the given task. This calls the actual agent, not a simulation."""
+        """Execute the REAL agent under test. This is NOT a simulation."""
         emit_event(ctx.run_id, "phase_start", "runtime", f"Executing target agent {ctx.agent_id}")
 
-        from app.services.test_lab.target_agent_runner import run_target_agent as _run_target
+        from app.services.test_lab.target_agent_runner import run_target_agent as _run
+        from app.services.test_lab.target_agent_runner import _build_execution_events
         from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
         from sqlalchemy.orm import sessionmaker
 
@@ -131,12 +124,9 @@ def _build_tools(ctx: RunContext) -> list:
         Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
         async with Session() as db:
-            result = await _run_target(
-                db=db,
-                agent_id=ctx.agent_id,
-                agent_version=ctx.agent_version,
-                input_prompt=task,
-                timeout_seconds=ctx.timeout_seconds,
+            result = await _run(
+                db=db, agent_id=ctx.agent_id, agent_version=ctx.agent_version,
+                input_prompt=task, timeout_seconds=ctx.timeout_seconds,
                 max_iterations=ctx.max_iterations,
             )
         await engine.dispose()
@@ -145,11 +135,9 @@ def _build_tools(ctx: RunContext) -> list:
         ctx.target_status = result.status
         ctx.target_duration_ms = result.duration_ms
         ctx.target_iteration_count = result.iteration_count
-
-        from app.services.test_lab.target_agent_runner import _build_execution_events
         ctx.execution_events = _build_execution_events(result.message_history)
 
-        emit_event(ctx.run_id, "agent_execution_done", "runtime",
+        emit_event(ctx.run_id, "agent_done", "runtime",
                    f"Agent finished: {result.status} ({result.duration_ms}ms)",
                    duration_ms=result.duration_ms)
 
@@ -159,152 +147,111 @@ def _build_tools(ctx: RunContext) -> list:
             f"  duration_ms: {result.duration_ms}\n"
             f"  iterations: {result.iteration_count}\n"
             f"  tool_calls: {len(result.tool_calls)}\n"
-            f"  output_preview: {result.final_output[:500]}\n"
+            f"  output:\n{result.final_output[:2000]}\n"
             f"  error: {result.error or 'none'}"
         ))
 
-    async def run_assertion_engine() -> ToolResponse:
-        """Run DETERMINISTIC assertion evaluation on the target agent output. Call this after run_target_agent."""
-        emit_event(ctx.run_id, "phase_start", "assertions", "Running deterministic assertions")
-        from app.services.test_lab.assertion_engine import evaluate_assertions
-
-        ctx.assertion_results = evaluate_assertions(
-            assertion_defs=ctx.assertions_defs,
-            events=ctx.execution_events,
-            final_output=ctx.target_output,
-            duration_ms=ctx.target_duration_ms,
-            iteration_count=ctx.target_iteration_count,
-            final_status=ctx.target_status,
-        )
-
-        passed = sum(1 for a in ctx.assertion_results if a["passed"])
-        total = len(ctx.assertion_results)
-        emit_event(ctx.run_id, "assertions_done", "assertions", f"Assertions: {passed}/{total} passed")
-
-        lines = [f"ASSERTIONS: {passed}/{total} passed"]
-        for a in ctx.assertion_results:
-            status = "PASS" if a["passed"] else "FAIL"
-            lines.append(f"  [{status}] {a['assertion_type']}: {a.get('message', '')}")
-        return ToolResponse(content="\n".join(lines))
-
-    async def run_diagnostic_engine() -> ToolResponse:
-        """Run DETERMINISTIC diagnostic analysis. Call this after assertions."""
-        emit_event(ctx.run_id, "phase_start", "diagnostics", "Running deterministic diagnostics")
-        from app.services.test_lab.diagnostic_engine import generate_diagnostics
-
-        ctx.diagnostics = generate_diagnostics(
-            events=ctx.execution_events,
-            assertions=ctx.assertion_results,
-            expected_tools=ctx.expected_tools,
-            duration_ms=ctx.target_duration_ms,
-            iteration_count=ctx.target_iteration_count,
-            max_iterations=ctx.max_iterations,
-            timeout_seconds=ctx.timeout_seconds,
-            final_output=ctx.target_output,
-        )
-
-        emit_event(ctx.run_id, "diagnostics_done", "diagnostics", f"{len(ctx.diagnostics)} findings")
-
-        lines = [f"DIAGNOSTICS: {len(ctx.diagnostics)} findings"]
-        for d in ctx.diagnostics:
-            lines.append(f"  [{d['severity'].upper()}] {d['code']}: {d['message']}")
-        return ToolResponse(content="\n".join(lines))
-
-    async def run_scoring_engine() -> ToolResponse:
-        """Compute DETERMINISTIC score and verdict. Call this after assertions + diagnostics."""
-        from app.services.test_lab.scoring import compute_score_and_verdict
-
-        ctx.score, ctx.verdict = compute_score_and_verdict(ctx.assertion_results, ctx.diagnostics)
-        emit_event(ctx.run_id, "phase_start", "verdict", f"Score: {ctx.score}/100, Verdict: {ctx.verdict}")
-
-        return ToolResponse(content=(
-            f"SCORING:\n"
-            f"  score: {ctx.score}/100\n"
-            f"  verdict: {ctx.verdict}\n"
-            f"  assertions_passed: {sum(1 for a in ctx.assertion_results if a['passed'])}/{len(ctx.assertion_results)}\n"
-            f"  diagnostics: {len(ctx.diagnostics)}"
-        ))
-
     async def run_judge_subagent(analysis_request: str) -> ToolResponse:
-        """Generate a human-readable verdict explanation. Call after scoring."""
-        emit_event(ctx.run_id, "subagent_start", "verdict", "JudgeSubAgent starting")
+        """Evaluate the target agent output. Produce a verdict (PASS/FAIL/PARTIAL), a score (0-100), and a rationale. Call AFTER run_target_agent."""
+        emit_event(ctx.run_id, "subagent_start", "judgment", "JudgeSubAgent starting")
         model = _make_model("verdict")
         agent = ReActAgent(
             name="JudgeSubAgent",
-            model=model,
-            formatter=OllamaChatFormatter(),
+            model=model, formatter=OllamaChatFormatter(),
             memory=InMemoryMemory(),
             sys_prompt=(
-                "Tu es un sous-agent juge. Tu évalues les résultats d'un test d'agent. "
-                "Réponds en français. Format: VERDICT / SCORE / RATIONALE."
+                "Tu es un sous-agent juge pour un systeme de test d'agents IA.\n"
+                "Tu evalues la sortie d'un agent sous test.\n"
+                "Tu dois donner:\n"
+                "- VERDICT: PASS, FAIL ou PARTIAL\n"
+                "- SCORE: un nombre entre 0 et 100\n"
+                "- RATIONALE: une explication courte et technique\n"
+                "- ISSUES: liste des problemes detectes (si applicable)\n"
+                "- RECOMMENDATIONS: suggestions d'amelioration\n\n"
+                "Sois strict mais juste. Reponds en francais."
             ),
             max_iters=1,
         )
         res = agent(Msg("user", analysis_request, "user"))
         text = res.content if hasattr(res, "content") else str(res)
+
+        # Try to extract score and verdict from response
+        import re
+        score_match = re.search(r"SCORE[:\s]*(\d+)", text)
+        verdict_match = re.search(r"VERDICT[:\s]*(PASS|FAIL|PARTIAL)", text, re.IGNORECASE)
+        if score_match:
+            ctx.score = float(score_match.group(1))
+        if verdict_match:
+            ctx.verdict = verdict_match.group(1).lower()
+            if ctx.verdict == "pass":
+                ctx.verdict = "passed"
+            elif ctx.verdict == "partial":
+                ctx.verdict = "passed_with_warnings"
+            elif ctx.verdict == "fail":
+                ctx.verdict = "failed"
         ctx.summary = text
-        emit_event(ctx.run_id, "subagent_done", "verdict", "JudgeSubAgent done")
+
+        emit_event(ctx.run_id, "subagent_done", "judgment",
+                   f"JudgeSubAgent: {ctx.verdict} ({ctx.score}/100)")
         return ToolResponse(content=text)
 
     async def run_robustness_subagent(request: str) -> ToolResponse:
-        """Propose a follow-up edge case or robustness test. Optional — call after verdict."""
+        """Propose a follow-up edge case or robustness test."""
         model = _make_model("diagnostic")
         agent = ReActAgent(
             name="RobustnessSubAgent",
-            model=model,
-            formatter=OllamaChatFormatter(),
+            model=model, formatter=OllamaChatFormatter(),
             memory=InMemoryMemory(),
             sys_prompt=(
                 "Tu es un sous-agent de robustesse. "
-                "Tu proposes des tests complémentaires plus durs ou des edge cases. "
-                "Réponds en français. Format: FOLLOWUP_TEST / WHY_IT_MATTERS."
+                "Tu proposes des tests complementaires plus durs ou des edge cases. "
+                "Reponds en francais.\nFormat: FOLLOWUP_TEST / WHY_IT_MATTERS"
             ),
             max_iters=1,
         )
         res = agent(Msg("user", request, "user"))
         return ToolResponse(content=res.content if hasattr(res, "content") else str(res))
 
+    async def run_policy_subagent(request: str) -> ToolResponse:
+        """Check if the agent output respects governance constraints (forbidden effects, scope, etc.)."""
+        model = _make_model("assertion")
+        agent = ReActAgent(
+            name="PolicySubAgent",
+            model=model, formatter=OllamaChatFormatter(),
+            memory=InMemoryMemory(),
+            sys_prompt=(
+                "Tu es un sous-agent de conformite policy.\n"
+                "Tu verifies si la sortie d'un agent respecte ses contraintes de gouvernance:\n"
+                "- effets interdits (forbidden_effects)\n"
+                "- perimetre de competence\n"
+                "- regles de la famille\n"
+                "Reponds en francais.\nFormat: COMPLIANCE: OK/VIOLATION / DETAILS"
+            ),
+            max_iters=1,
+        )
+        res = agent(Msg("user", request, "user"))
+        return ToolResponse(content=res.content if hasattr(res, "content") else str(res))
+
+    async def get_run_state() -> ToolResponse:
+        """Get the current state of the test run."""
+        return ToolResponse(content=(
+            f"RUN_STATE:\n"
+            f"  run_id: {ctx.run_id}\n"
+            f"  agent: {ctx.agent_id} ({ctx.agent_label})\n"
+            f"  target_status: {ctx.target_status or 'not_executed'}\n"
+            f"  target_duration_ms: {ctx.target_duration_ms}\n"
+            f"  verdict: {ctx.verdict or 'pending'}\n"
+            f"  score: {ctx.score}\n"
+            f"  output_length: {len(ctx.target_output)}\n"
+            f"  events: {len(ctx.execution_events)}"
+        ))
+
     async def save_run_result(summary: str) -> ToolResponse:
-        """Persist the test run results to the database. Call this as the LAST step."""
-        from app.models.test_lab import TestRunAssertion, TestRunDiagnostic
-        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-        from sqlalchemy.orm import sessionmaker
-
-        # Persist assertions and diagnostics
-        settings = get_settings()
-        engine = create_async_engine(settings.DATABASE_URL)
-        Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-        async with Session() as db:
-            for ar in ctx.assertion_results:
-                db.add(TestRunAssertion(
-                    run_id=ctx.run_id,
-                    assertion_type=ar["assertion_type"],
-                    target=ar.get("target"),
-                    expected=str(ar.get("expected")),
-                    actual=str(ar.get("actual")),
-                    passed=ar["passed"],
-                    critical=ar.get("critical", False),
-                    message=ar.get("message", ""),
-                ))
-            for diag in ctx.diagnostics:
-                db.add(TestRunDiagnostic(
-                    run_id=ctx.run_id,
-                    code=diag["code"],
-                    severity=diag["severity"],
-                    message=diag["message"],
-                    probable_causes=diag.get("probable_causes"),
-                    recommendation=diag.get("recommendation"),
-                    evidence=diag.get("evidence"),
-                ))
-            await db.commit()
-        await engine.dispose()
-
-        # Update run record
+        """Persist test results to DB. Call this as the LAST step."""
         update_run(
             ctx.run_id,
             status="completed",
-            verdict=ctx.verdict,
+            verdict=ctx.verdict or "unknown",
             score=ctx.score,
             duration_ms=ctx.target_duration_ms,
             final_output=ctx.target_output,
@@ -312,27 +259,20 @@ def _build_tools(ctx: RunContext) -> list:
             ended_at=datetime.now(timezone.utc),
             agent_version=ctx.agent_version,
         )
-
         emit_event(ctx.run_id, "run_completed", "verdict",
                    f"Test completed: {ctx.verdict} ({ctx.score}/100)")
-
         return ToolResponse(content=(
-            f"RUN_SAVED:\n"
-            f"  run_id: {ctx.run_id}\n"
-            f"  verdict: {ctx.verdict}\n"
-            f"  score: {ctx.score}/100\n"
-            f"  status: completed"
+            f"RUN_SAVED: run_id={ctx.run_id}, verdict={ctx.verdict}, score={ctx.score}/100"
         ))
 
     return [
         get_scenario_context,
         run_scenario_subagent,
         run_target_agent,
-        run_assertion_engine,
-        run_diagnostic_engine,
-        run_scoring_engine,
         run_judge_subagent,
         run_robustness_subagent,
+        run_policy_subagent,
+        get_run_state,
         save_run_result,
     ]
 
@@ -340,87 +280,115 @@ def _build_tools(ctx: RunContext) -> list:
 # ─── Model factory ───────────────────────────────────────────────────────────
 
 def _make_model(worker_name: str | None = None) -> OllamaChatModel:
-    """Create an OllamaChatModel, reading config from DB."""
     config = _get_config_sync()
     model_name = None
     if worker_name and worker_name in config.get("workers", {}):
         model_name = config["workers"][worker_name].get("model")
     if not model_name:
         model_name = config.get("orchestrator", {}).get("model", "mistral")
-
     settings = get_settings()
     host = getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
     return OllamaChatModel(model_name=model_name, host=host, stream=False)
 
 
-# ─── Build the OrchestratorAgent ─────────────────────────────────────────────
+# ─── OrchestratorAgent ───────────────────────────────────────────────────────
 
-ORCHESTRATOR_SYSTEM_PROMPT = """Tu es OrchestratorAgent, l'orchestrateur de test d'agents d'Orkestra.
+ORCHESTRATOR_PROMPT = """Tu es OrchestratorAgent, l'orchestrateur de test d'agents d'Orkestra.
 
 Mission :
-- Tu testes un agent sous test en coordonnant des sous-agents spécialisés.
-- Tu suis un workflow structuré mais tu peux adapter l'ordre si nécessaire.
+- Tu testes un agent sous test en coordonnant des sous-agents specialises.
+- TOUT est evalue par LLM, pas de moteur deterministe.
 
-Workflow standard :
-1. get_scenario_context — lis le contexte du scénario et de l'agent
-2. run_scenario_subagent — fais préparer un plan de test
-3. run_target_agent — exécute le VRAI agent sous test avec l'input du scénario
-4. run_assertion_engine — évalue les assertions de manière DÉTERMINISTE
-5. run_diagnostic_engine — analyse les diagnostics de manière DÉTERMINISTE
-6. run_scoring_engine — calcule le score et le verdict de manière DÉTERMINISTE
-7. run_judge_subagent — fais expliquer le verdict en langage naturel
-8. save_run_result — sauvegarde les résultats dans la base
+Tools disponibles :
+- get_scenario_context : lis le contexte du scenario
+- run_scenario_subagent : fais preparer un plan de test
+- run_target_agent : execute le VRAI agent sous test (PAS une simulation)
+- run_judge_subagent : fais evaluer la sortie (verdict + score + rationale)
+- run_robustness_subagent : fais proposer des tests complementaires
+- run_policy_subagent : fais verifier la conformite policy
+- get_run_state : lis l'etat courant du run
+- save_run_result : sauvegarde les resultats (TOUJOURS appeler en dernier)
 
-Règles :
-1. Tu réponds en français.
-2. Tu dois TOUJOURS exécuter run_target_agent — c'est le vrai agent, pas une simulation.
-3. Tu dois TOUJOURS exécuter run_assertion_engine, run_diagnostic_engine, run_scoring_engine — ce sont les évaluations déterministes officielles.
-4. Tu dois TOUJOURS finir par save_run_result.
-5. Tu restes direct et technique.
-6. Après save_run_result, tu donnes un résumé structuré avec le verdict et les options suivantes.
+Workflow :
+1. get_scenario_context
+2. run_scenario_subagent — prepare le plan de test
+3. run_target_agent — execute le vrai agent avec l'input du scenario
+4. run_judge_subagent — evalue la sortie de l'agent
+5. (optionnel) run_policy_subagent — verifie la conformite
+6. save_run_result — sauvegarde
 
-Format du résumé final :
-RÉSUMÉ: <résumé court>
+Regles :
+1. Reponds en francais.
+2. TOUJOURS executer run_target_agent — c'est le vrai agent.
+3. TOUJOURS executer run_judge_subagent — c'est l'evaluation.
+4. TOUJOURS finir par save_run_result.
+5. Apres save, donne un resume structure.
+
+Format du resume final :
+RESUME: <resume court>
 STATUT: <PASS | FAIL | PARTIAL>
 AGENT_SOUS_TEST: <agent_id>
 SCORE: <score>/100
-DÉTAILS: <points importants>
+DETAILS: <points importants>
 OPTIONS_SUIVANTES:
 - test plus strict
-- edge case / robustesse
+- edge case
 - test policy
 - rejouer
 """
 
 
 def build_orchestrator_agent(ctx: RunContext) -> ReActAgent:
-    """Build the OrchestratorAgent with all tools bound to the run context."""
     tools = _build_tools(ctx)
     toolkit = Toolkit()
-    for tool_fn in tools:
-        toolkit.register_tool_function(tool_fn)
-
+    for fn in tools:
+        toolkit.register_tool_function(fn)
     model = _make_model()
     return ReActAgent(
         name="OrchestratorAgent",
-        model=model,
-        formatter=OllamaChatFormatter(),
-        memory=InMemoryMemory(),
-        toolkit=toolkit,
-        sys_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
-        max_iters=12,
+        model=model, formatter=OllamaChatFormatter(),
+        memory=InMemoryMemory(), toolkit=toolkit,
+        sys_prompt=ORCHESTRATOR_PROMPT, max_iters=12,
     )
+
+
+# ─── Orchestrator with persistent memory (for chat follow-ups) ───────────────
+
+_active_orchestrators: dict[str, tuple[ReActAgent, RunContext]] = {}
+
+
+def get_or_create_orchestrator(run_id: str, scenario_id: str | None = None) -> tuple[ReActAgent, RunContext]:
+    """Get existing orchestrator for follow-up, or create new one."""
+    if run_id in _active_orchestrators:
+        return _active_orchestrators[run_id]
+    # Will be populated by run_orchestrated_test
+    return None, None
+
+
+async def chat_with_orchestrator(run_id: str, message: str) -> str:
+    """Send a follow-up message to the orchestrator for a completed run."""
+    if run_id not in _active_orchestrators:
+        return "No active orchestrator for this run. Start a new run first."
+
+    orchestrator, ctx = _active_orchestrators[run_id]
+    try:
+        user_msg = Msg("user", message, "user")
+        response = await asyncio.wait_for(
+            asyncio.to_thread(orchestrator, user_msg),
+            timeout=120,
+        )
+        text = response.content if hasattr(response, "content") else str(response)
+        emit_event(run_id, "orchestrator_chat", "interactive", f"User: {message[:100]}",
+                   details={"response_length": len(text)})
+        return text
+    except Exception as exc:
+        return f"Orchestrator error: {exc}"
 
 
 # ─── Main entry point ────────────────────────────────────────────────────────
 
 async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
-    """Execute a test run using the multi-agent OrchestratorAgent.
-
-    This is the replacement for the sequential pipeline.
-    The OrchestratorAgent decides the flow, but deterministic engines
-    (assertions, diagnostics, scoring) remain authoritative.
-    """
+    """Execute a test run using the multi-agent OrchestratorAgent."""
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import select
@@ -433,83 +401,53 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
 
     try:
         update_run(run_id, status="running", started_at=datetime.now(timezone.utc))
-        emit_event(run_id, "run_started", "orchestration", "OrchestratorAgent starting multi-agent test")
+        emit_event(run_id, "run_started", "orchestration", "OrchestratorAgent starting")
 
-        # Load scenario and agent
         async with Session() as db:
             scenario = (await db.execute(
                 select(TestScenario).where(TestScenario.id == scenario_id)
             )).scalar_one_or_none()
             if not scenario:
                 raise ValueError(f"Scenario {scenario_id} not found")
-
             agent_def = await agent_registry_service.get_agent(db, scenario.agent_id)
             if not agent_def:
                 raise ValueError(f"Agent {scenario.agent_id} not found")
 
-        # Build run context
         ctx = RunContext(
-            run_id=run_id,
-            scenario_id=scenario_id,
+            run_id=run_id, scenario_id=scenario_id,
             agent_id=scenario.agent_id,
             agent_label=getattr(agent_def, "name", scenario.agent_id),
             agent_version=getattr(agent_def, "version", ""),
             scenario_name=scenario.name,
             input_prompt=scenario.input_prompt,
             expected_tools=scenario.expected_tools or [],
-            assertions_defs=scenario.assertions or [],
             timeout_seconds=scenario.timeout_seconds or 120,
             max_iterations=scenario.max_iterations or 5,
         )
 
-        # Build and run the OrchestratorAgent
         orchestrator = build_orchestrator_agent(ctx)
+
+        # Store for follow-up chat
+        _active_orchestrators[run_id] = (orchestrator, ctx)
 
         user_msg = Msg(
             "user",
-            f"Lance le test du scénario '{ctx.scenario_name}' pour l'agent '{ctx.agent_id}'. "
+            f"Lance le test du scenario '{ctx.scenario_name}' pour l'agent '{ctx.agent_id}'. "
             f"Input: {ctx.input_prompt}",
             "user",
         )
 
-        emit_event(run_id, "orchestrator_start", "orchestration", "OrchestratorAgent processing")
-
-        # Run in thread (AgentScope agents are sync)
         response = await asyncio.wait_for(
             asyncio.to_thread(orchestrator, user_msg),
-            timeout=ctx.timeout_seconds + 120,  # extra time for subagents
+            timeout=ctx.timeout_seconds + 180,
         )
 
-        final_text = response.content if hasattr(response, "content") else str(response)
-
-        # If the orchestrator didn't save (e.g., it failed mid-way), ensure we save
-        if ctx.verdict == "":
-            # Orchestrator didn't reach save_run_result — run deterministic engines manually
-            logger.warning("OrchestratorAgent did not complete full workflow, running fallback")
-            from app.services.test_lab.assertion_engine import evaluate_assertions
-            from app.services.test_lab.diagnostic_engine import generate_diagnostics
-            from app.services.test_lab.scoring import compute_score_and_verdict
-
-            if not ctx.assertion_results:
-                ctx.assertion_results = evaluate_assertions(
-                    ctx.assertions_defs, ctx.execution_events, ctx.target_output,
-                    ctx.target_duration_ms, ctx.target_iteration_count, ctx.target_status,
-                )
-            if not ctx.diagnostics:
-                ctx.diagnostics = generate_diagnostics(
-                    ctx.execution_events, ctx.assertion_results, ctx.expected_tools,
-                    ctx.target_duration_ms, ctx.target_iteration_count,
-                    ctx.max_iterations, ctx.timeout_seconds, ctx.target_output,
-                )
-            ctx.score, ctx.verdict = compute_score_and_verdict(ctx.assertion_results, ctx.diagnostics)
-
-            update_run(
-                run_id, status="completed", verdict=ctx.verdict, score=ctx.score,
-                duration_ms=ctx.target_duration_ms, final_output=ctx.target_output,
-                summary=final_text, ended_at=datetime.now(timezone.utc),
-            )
-            emit_event(run_id, "run_completed", "verdict",
-                       f"Fallback completed: {ctx.verdict} ({ctx.score}/100)")
+        # Fallback if orchestrator didn't save
+        if not ctx.verdict:
+            update_run(run_id, status="completed", verdict="unknown", score=0,
+                       duration_ms=ctx.target_duration_ms, final_output=ctx.target_output,
+                       summary=response.content if hasattr(response, "content") else str(response),
+                       ended_at=datetime.now(timezone.utc))
 
     except Exception as exc:
         logger.exception(f"OrchestratorAgent failed for run {run_id}")
@@ -517,6 +455,5 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
                    ended_at=datetime.now(timezone.utc))
         emit_event(run_id, "run_failed", "error", f"Run failed: {exc}")
         raise
-
     finally:
         await engine.dispose()
