@@ -7,6 +7,7 @@ import logging
 
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.family import SkillFamily, AgentSkill
 from app.models.history import SkillDefinitionHistory
@@ -19,14 +20,16 @@ logger = logging.getLogger("orkestra.skills")
 
 
 async def list_skills(db: AsyncSession, *, include_archived: bool = False) -> list[dict]:
-    stmt = select(SkillDefinition).order_by(SkillDefinition.label)
+    stmt = select(SkillDefinition).options(
+        selectinload(SkillDefinition.skill_families),
+    ).order_by(SkillDefinition.label)
     if not include_archived:
         stmt = stmt.where(SkillDefinition.status != "archived")
     result = await db.execute(stmt)
     skills = list(result.scalars().all())
     out = []
     for s in skills:
-        families = await _get_allowed_families(db, s.id)
+        families = [sf.family_id for sf in s.skill_families]
         out.append(_skill_to_dict(s, families))
     return out
 
@@ -44,6 +47,7 @@ async def get_skills_for_family(db: AsyncSession, family_id: str, *, include_arc
         select(SkillDefinition)
         .join(SkillFamily, SkillFamily.skill_id == SkillDefinition.id)
         .where(SkillFamily.family_id == family_id)
+        .options(selectinload(SkillDefinition.skill_families))
         .order_by(SkillDefinition.label)
     )
     if not include_archived:
@@ -52,7 +56,7 @@ async def get_skills_for_family(db: AsyncSession, family_id: str, *, include_arc
     skills = list(result.scalars().all())
     out = []
     for s in skills:
-        families = await _get_allowed_families(db, s.id)
+        families = [sf.family_id for sf in s.skill_families]
         out.append(_skill_to_dict(s, families))
     return out
 

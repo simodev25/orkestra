@@ -7,6 +7,7 @@ from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.family import AgentSkill, FamilyDefinition
 from app.models.registry import AgentDefinition
@@ -410,7 +411,10 @@ async def list_agents(
     limit: int = 50,
     offset: int = 0,
 ) -> list[AgentDefinition]:
-    stmt = select(AgentDefinition)
+    stmt = select(AgentDefinition).options(
+        selectinload(AgentDefinition.family_rel),
+        selectinload(AgentDefinition.agent_skills),
+    )
     if family and family != "all":
         stmt = stmt.where(AgentDefinition.family_id == family)
     if status and status != "all":
@@ -437,7 +441,16 @@ async def list_agents(
 
 
 async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
-    return await db.get(AgentDefinition, agent_id)
+    stmt = (
+        select(AgentDefinition)
+        .where(AgentDefinition.id == agent_id)
+        .options(
+            selectinload(AgentDefinition.family_rel),
+            selectinload(AgentDefinition.agent_skills),
+        )
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
 async def delete_agent(db: AsyncSession, agent_id: str) -> None:
