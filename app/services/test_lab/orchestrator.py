@@ -310,80 +310,79 @@ async def _execute_target_agent(run_id: str, db, scenario, agent_def) -> dict:
              details={"tools": mcp.get("tools", []), "url": mcp.get("url", "")})
 
     emit(run_id, "run_started", "runtime", "Target agent execution started")
-    react_agent.set_console_output_enabled(False)
     task_msg = Msg("user", scenario.input_prompt, "user")
     t0 = time.time()
-    msg_count = 0
 
+    # Execute agent directly (no stream_printing_messages wrapper that breaks ReAct loop)
     try:
-        async for msg, is_last in stream_printing_messages(
-            agents=[react_agent],
-            coroutine_task=asyncio.wait_for(react_agent(task_msg), timeout=scenario.timeout_seconds),
-        ):
-            msg_count += 1
-            name = getattr(msg, "name", "agent")
-            text = msg.get_text_content() if hasattr(msg, "get_text_content") else ""
-
-            # Detect content type
-            event_type = "agent_message"
-            details = {"agent": name}
-            content_blocks = getattr(msg, "content", None)
-
-            if isinstance(content_blocks, list):
-                for block in content_blocks:
-                    bt = block.get("type", "") if isinstance(block, dict) else getattr(block, "type", "")
-                    if bt == "tool_use":
-                        tool_name = block.get("name", "") if isinstance(block, dict) else getattr(block, "name", "")
-                        tool_input = block.get("raw_input", block.get("input", "")) if isinstance(block, dict) else getattr(block, "raw_input", getattr(block, "input", ""))
-                        event_type = "tool_call_started"
-                        details.update({"tool_name": tool_name, "tool_input": str(tool_input)[:500]})
-                    elif bt == "tool_result":
-                        tool_name = block.get("name", "") if isinstance(block, dict) else getattr(block, "name", "")
-                        output = block.get("output", "") if isinstance(block, dict) else getattr(block, "output", "")
-                        if isinstance(output, list):
-                            output_text = "\n".join(
-                                str(b.get("text", b) if isinstance(b, dict) else getattr(b, "text", b))[:800] for b in output)[:3000]
-                        else:
-                            output_text = str(output)[:3000]
-                        event_type = "tool_call_completed"
-                        details.update({"tool_name": tool_name, "output_preview": output_text})
-                    elif bt == "thinking":
-                        t = block.get("text", "") if isinstance(block, dict) else getattr(block, "text", "")
-                        details["thinking"] = t[:1000]
-                    elif bt == "text":
-                        t = block.get("text", "") if isinstance(block, dict) else getattr(block, "text", "")
-                        details["content"] = t[:2000]
-
-            if text and "content" not in details:
-                details["content"] = text[:2000]
-
-            emit(run_id, event_type, "runtime", f"{name}: {(text or '')[:100]}", details=details)
-
+        response = await asyncio.wait_for(react_agent(task_msg), timeout=scenario.timeout_seconds)
     except asyncio.TimeoutError:
         emit(run_id, "run_timeout", "runtime", f"Timed out after {scenario.timeout_seconds}s")
         return {"status": "timed_out", "final_output": None, "duration_ms": int((time.time() - t0) * 1000),
-                "iteration_count": msg_count, "message_history": []}
+                "iteration_count": 0, "message_history": []}
 
     duration_ms = int((time.time() - t0) * 1000)
 
-    # Extract final output + history from memory
+    # Extract full conversation from memory and emit detailed events
     final_output = ""
     message_history = []
+
+    def bget(block, key, default=""):
+        if isinstance(block, dict):
+            return block.get(key, default)
+        return getattr(block, key, default)
+
     try:
         msgs = await react_agent.memory.get_memory()
-        for m in msgs:
+        for i, m in enumerate(msgs):
+            role = getattr(m, "role", "")
+            name = getattr(m, "name", "")
             text = m.get_text_content() if hasattr(m, "get_text_content") else ""
-            if not text and hasattr(m, "content"):
-                raw = m.content
-                if isinstance(raw, list):
-                    parts = []
-                    for b in raw:
-                        t = b.get("text", str(b)) if isinstance(b, dict) else getattr(b, "text", str(b))
-                        parts.append(str(t)[:500])
+            content_blocks = getattr(m, "content", None)
+
+            # Parse each block for detailed events
+            if isinstance(content_blocks, list):
+                for block in content_blocks:
+                    bt = bget(block, "type", "")
+
+                    if bt == "tool_use":
+                        tool_name = bget(block, "name", "unknown")
+                        tool_input = str(bget(block, "raw_input", "") or bget(block, "input", ""))[:500]
+                        emit(run_id, "tool_call_started", "runtime", f"Calling MCP: {tool_name}",
+                             details={"tool_name": tool_name, "tool_input": tool_input})
+
+                    elif bt == "tool_result":
+                        tool_name = bget(block, "name", "unknown")
+                        output = bget(block, "output", "")
+                        if isinstance(output, list):
+                            output_text = "\n".join(str(bget(b, "text", b))[:800] for b in output)[:3000]
+                        else:
+                            output_text = str(output)[:3000]
+                        emit(run_id, "tool_call_completed", "runtime", f"MCP returned: {tool_name}",
+                             details={"tool_name": tool_name, "output_preview": output_text})
+
+                    elif bt == "thinking":
+                        thinking_text = str(bget(block, "text", ""))[:1000]
+                        if thinking_text:
+                            emit(run_id, "agent_message", "runtime", f"{name} (thinking)",
+                                 details={"agent": name, "thinking": thinking_text})
+
+                    elif bt == "text":
+                        block_text = str(bget(block, "text", ""))[:2000]
+                        if block_text and role == "assistant":
+                            emit(run_id, "llm_request_completed", "runtime", f"{name}: {block_text[:80]}...",
+                                 details={"agent": name, "llm_output": block_text})
+
+                # Build text from blocks for history
+                if not text:
+                    parts = [str(bget(b, "text", b))[:500] for b in content_blocks]
                     text = "\n".join(parts)
-                elif isinstance(raw, str):
-                    text = raw
-            message_history.append({"role": getattr(m, "role", ""), "name": getattr(m, "name", ""), "content": text[:5000]})
+
+            elif isinstance(content_blocks, str) and not text:
+                text = content_blocks
+
+            message_history.append({"role": role, "name": name, "content": text[:5000]})
+
         if msgs:
             last = msgs[-1]
             final_output = last.get_text_content() if hasattr(last, "get_text_content") else str(last.content)[:5000]
