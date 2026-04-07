@@ -267,6 +267,46 @@ async def get_config(db: AsyncSession = Depends(get_db)):
     return config
 
 
+@router.get("/config/models/{provider}")
+async def list_models(provider: str):
+    """List available models from Ollama or OpenAI."""
+    import httpx
+
+    if provider == "ollama":
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get("https://ollama.com/api/tags")
+                resp.raise_for_status()
+                data = resp.json()
+                models = [{"name": m["name"], "size": m.get("size", 0)} for m in data.get("models", [])]
+                return {"provider": "ollama", "models": models}
+        except Exception as e:
+            return {"provider": "ollama", "models": [], "error": str(e)}
+
+    elif provider == "openai":
+        from app.core.config import get_settings
+        from app.services.secret_service import get_secret
+        from app.core.database import get_async_session_factory
+        settings = get_settings()
+        factory = get_async_session_factory()
+        async with factory() as db_session:
+            api_key = await get_secret(db_session, "OPENAI_API_KEY", settings.OPENAI_API_KEY)
+        base_url = (settings.OPENAI_BASE_URL or "https://api.openai.com/v1").rstrip("/")
+        if not api_key:
+            return {"provider": "openai", "models": [], "error": "API key not configured"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{base_url}/models", headers={"Authorization": f"Bearer {api_key}"})
+                resp.raise_for_status()
+                data = resp.json()
+                models = [{"name": m["id"], "size": 0} for m in data.get("data", [])]
+                return {"provider": "openai", "models": sorted(models, key=lambda m: m["name"])}
+        except Exception as e:
+            return {"provider": "openai", "models": [], "error": str(e)}
+
+    return {"provider": provider, "models": [], "error": f"Unknown provider: {provider}"}
+
+
 @router.put("/config")
 async def update_config(data: dict, db: AsyncSession = Depends(get_db)):
     """Update test lab configuration."""

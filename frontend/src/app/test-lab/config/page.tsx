@@ -188,23 +188,98 @@ export default function TestLabConfigPage() {
         </div>
       </section>
 
-      {/* Available Models Reference */}
-      <section className="glass-panel p-5 space-y-3">
-        <h2 className="section-title flex items-center gap-2"><Wrench size={13} /> Available Ollama Cloud Models</h2>
-        <div className="flex gap-2 flex-wrap">
-          {["gpt-oss:20b", "gpt-oss:120b", "deepseek-v3.1:671b", "gemma4:31b", "qwen3-next:80b",
-            "nemotron-3-super", "minimax-m2.7", "devstral-small-2:24b", "ministral-3:8b"].map((m) => (
-            <button
-              key={m}
-              onClick={() => setConfig({ ...config, orchestrator: { ...config.orchestrator, model: m } })}
-              className="text-[10px] font-mono px-2 py-1 rounded border border-ork-border text-ork-muted hover:text-ork-cyan hover:border-ork-cyan/30 transition-colors"
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-        <p className="text-[10px] text-ork-dim">Click a model to set it as the orchestrator model. Suffix &quot;-cloud&quot; is added automatically.</p>
-      </section>
+      {/* Available Models */}
+      <ModelBrowser
+        provider={config?.orchestrator?.provider || "ollama"}
+        onSelect={(model: string) => setConfig({ ...config, orchestrator: { ...config.orchestrator, model } })}
+        currentModel={config?.orchestrator?.model}
+      />
     </div>
+  );
+}
+
+
+function ModelBrowser({ provider, onSelect, currentModel }: { provider: string; onSelect: (m: string) => void; currentModel: string }) {
+  const [models, setModels] = useState<any[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  function loadModels() {
+    setLoadingModels(true);
+    setModelError(null);
+    fetch(`/api/test-lab/config/models/${provider}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) setModelError(data.error);
+        setModels(data.models || []);
+      })
+      .catch((e) => setModelError(e.message))
+      .finally(() => setLoadingModels(false));
+  }
+
+  const filtered = search
+    ? models.filter((m: any) => m.name.toLowerCase().includes(search.toLowerCase()))
+    : models;
+
+  function formatSize(bytes: number) {
+    if (!bytes) return "";
+    if (bytes > 1e12) return `${(bytes / 1e12).toFixed(0)}T`;
+    if (bytes > 1e9) return `${(bytes / 1e9).toFixed(0)}G`;
+    if (bytes > 1e6) return `${(bytes / 1e6).toFixed(0)}M`;
+    return `${bytes}`;
+  }
+
+  return (
+    <section className="glass-panel p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="section-title flex items-center gap-2">
+          <Wrench size={13} />
+          Available Models ({provider})
+        </h2>
+        <button
+          onClick={loadModels}
+          disabled={loadingModels}
+          className="text-[10px] font-mono px-3 py-1 rounded border border-ork-border text-ork-muted hover:text-ork-cyan hover:border-ork-cyan/30 transition-colors disabled:opacity-40"
+        >
+          {loadingModels ? "Loading..." : models.length > 0 ? "Refresh" : "Load models"}
+        </button>
+      </div>
+
+      {modelError && <p className="text-[10px] font-mono text-ork-red">{modelError}</p>}
+
+      {models.length > 0 && (
+        <>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search models..."
+            className="w-full px-3 py-1.5 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+          />
+          <div className="max-h-64 overflow-y-auto space-y-1">
+            {filtered.map((m: any) => (
+              <button
+                key={m.name}
+                onClick={() => onSelect(m.name)}
+                className={`w-full text-left px-3 py-1.5 text-xs font-mono rounded border transition-colors flex items-center justify-between ${
+                  currentModel === m.name
+                    ? "bg-ork-cyan/10 text-ork-cyan border-ork-cyan/30"
+                    : "bg-ork-bg text-ork-muted border-ork-border hover:text-ork-text hover:border-ork-dim"
+                }`}
+              >
+                <span>{m.name}</span>
+                {m.size > 0 && <span className="text-[9px] text-ork-dim">{formatSize(m.size)}</span>}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-ork-dim">{filtered.length} models — click to select</p>
+        </>
+      )}
+
+      {models.length === 0 && !loadingModels && (
+        <p className="text-[10px] text-ork-dim">Click &quot;Load models&quot; to fetch available models from {provider}</p>
+      )}
+    </section>
   );
 }
