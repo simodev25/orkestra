@@ -54,6 +54,7 @@ export default function TestLabConfigPage() {
   const [models, setModels] = useState<any[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [availableSkills, setAvailableSkills] = useState<any[]>([]);
 
   useEffect(() => {
     fetch("/api/test-lab/config")
@@ -77,6 +78,10 @@ export default function TestLabConfigPage() {
       loadModels(config.orchestrator.provider);
     }
   }, [config?.orchestrator?.provider]);
+
+  useEffect(() => {
+    fetch("/api/test-lab/config/skills").then((r) => r.json()).then(setAvailableSkills).catch(() => {});
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -236,6 +241,48 @@ export default function TestLabConfigPage() {
                       placeholder="Use default model"
                       allowEmpty
                     />
+                  </div>
+
+                  {/* Skills */}
+                  <div>
+                    <label className="data-label block mb-1.5">Skills</label>
+                    <div className="space-y-2">
+                      {/* Current skills */}
+                      {(workerConfig.skills || []).length > 0 && (
+                        <div className="flex gap-1.5 flex-wrap">
+                          {(workerConfig.skills || []).map((sid: string) => {
+                            const skill = availableSkills.find((s: any) => s.id === sid);
+                            return (
+                              <span key={sid} className="flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded bg-ork-purple/10 text-ork-purple border border-ork-purple/20">
+                                {skill?.label || sid}
+                                <button onClick={() => updateWorker(agent.key, "skills", (workerConfig.skills || []).filter((s: string) => s !== sid))}
+                                  className="text-ork-red hover:text-ork-red/80 ml-1">&times;</button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Add skill */}
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          const current = workerConfig.skills || [];
+                          if (!current.includes(e.target.value)) {
+                            updateWorker(agent.key, "skills", [...current, e.target.value]);
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40"
+                      >
+                        <option value="">+ Add a skill...</option>
+                        {availableSkills
+                          .filter((s: any) => !(workerConfig.skills || []).includes(s.id))
+                          .map((s: any) => (
+                            <option key={s.id} value={s.id}>[{s.category}] {s.label}</option>
+                          ))
+                        }
+                      </select>
+                    </div>
                   </div>
                 </div>
               )}

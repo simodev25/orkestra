@@ -227,20 +227,24 @@ DEFAULT_CONFIG = {
     },
     "workers": {
         "preparation": {
-            "prompt": "You are a test preparation worker. Produce a structured TEST PLAN: Objective, Target agent, Input, Expected behavior, Assertions, Constraints, Risks. Be concise.",
+            "prompt": "You are a test preparation agent. Produce a structured TEST PLAN: Objective, Target agent, Input, Expected behavior, Assertions, Constraints, Risks. Be concise.",
             "model": None,
+            "skills": [],
         },
         "assertion": {
             "prompt": "Analyze assertion results briefly.",
             "model": None,
+            "skills": [],
         },
         "diagnostic": {
             "prompt": "Analyze diagnostic findings and recommend fixes.",
             "model": None,
+            "skills": [],
         },
         "verdict": {
             "prompt": "Produce a concise final test summary.",
             "model": None,
+            "skills": [],
         },
     },
     "defaults": {
@@ -265,6 +269,18 @@ async def get_config(db: AsyncSession = Depends(get_db)):
             else:
                 config[key] = rows[key]
     return config
+
+
+@router.get("/config/skills")
+async def list_available_skills(db: AsyncSession = Depends(get_db)):
+    """List all available skills from the registry."""
+    from app.models.skill import SkillDefinition
+    result = await db.execute(select(SkillDefinition).order_by(SkillDefinition.category, SkillDefinition.label))
+    return [
+        {"id": s.id, "label": s.label, "category": s.category, "description": s.description,
+         "behavior_templates": s.behavior_templates, "output_guidelines": s.output_guidelines}
+        for s in result.scalars().all()
+    ]
 
 
 @router.get("/config/models/{provider}")

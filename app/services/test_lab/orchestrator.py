@@ -127,6 +127,37 @@ def make_model(worker_name: str | None = None):
     return OllamaChatModel(model_name=model_name, host=host, stream=False)
 
 
+def _load_skills_text(skill_ids: list[str]) -> str:
+    """Load skill content from DB by IDs."""
+    from sqlalchemy import create_engine, text
+    settings = get_settings()
+    sync_url = settings.DATABASE_URL.replace("asyncpg", "psycopg2").replace("+asyncpg", "")
+    engine = create_engine(sync_url)
+    parts = []
+    try:
+        with engine.connect() as conn:
+            for sid in skill_ids:
+                r = conn.execute(text("SELECT label, category, description, behavior_templates, output_guidelines FROM skill_definitions WHERE id = :id"), {"id": sid})
+                row = r.fetchone()
+                if row:
+                    lines = [f"### {row[0]} ({row[1]})"]
+                    if row[2]:
+                        lines.append(row[2])
+                    if row[3]:
+                        lines.append("Behavior:")
+                        for b in row[3]:
+                            lines.append(f"- {b}")
+                    if row[4]:
+                        lines.append("Output guidelines:")
+                        for g in row[4]:
+                            lines.append(f"- {g}")
+                    parts.append("\n".join(lines))
+    except Exception:
+        pass
+    engine.dispose()
+    return "\n\n".join(parts)
+
+
 def make_formatter():
     from agentscope.formatter import OllamaChatFormatter
     return OllamaChatFormatter()
@@ -142,10 +173,18 @@ async def run_worker(run_id: str, phase: str, worker_name: str, default_prompt: 
     from agentscope.memory import InMemoryMemory
     from agentscope.message import Msg
 
-    # Read prompt from config (override default)
+    # Read prompt + skills from config
     config = _get_config_sync()
-    config_prompt = config.get("workers", {}).get(worker_name.replace("_worker", ""), {}).get("prompt")
-    sys_prompt = config_prompt or default_prompt
+    agent_key = worker_name.replace("_agent", "").replace("_worker", "")
+    worker_cfg = config.get("workers", {}).get(agent_key, {})
+    sys_prompt = worker_cfg.get("prompt") or default_prompt
+
+    # Inject skills into prompt
+    skill_ids = worker_cfg.get("skills") or []
+    if skill_ids:
+        skills_text = _load_skills_text(skill_ids)
+        if skills_text:
+            sys_prompt = f"{sys_prompt}\n\n## SKILLS\n\n{skills_text}"
 
     worker = ReActAgent(
         name=worker_name, sys_prompt=sys_prompt,
