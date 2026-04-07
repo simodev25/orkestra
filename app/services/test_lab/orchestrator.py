@@ -1,458 +1,394 @@
-"""Central test orchestrator — Agent-as-Tool pattern from AgentScope docs.
+"""Agentic Test Lab Orchestrator.
 
-Each phase is a worker ReActAgent created dynamically by tool functions.
-The master orchestrator delegates to these workers via tool calls.
+Single source of truth for test execution.
+Uses AgentScope stream_printing_messages for real-time output capture.
+Publishes events to Redis pub/sub for SSE streaming.
+
+Architecture:
+  Celery Task → orchestrator.run_test()
+    → Phase 1: Preparation worker (LLM)
+    → Phase 2: Target agent execution (stream_printing_messages)
+    → Phase 3: Assertion evaluation (deterministic + LLM analysis)
+    → Phase 4: Diagnostic analysis (deterministic + LLM analysis)
+    → Phase 5: Verdict (deterministic scoring + LLM summary)
+    → Events published to Redis in real-time
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timezone
-from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
+import redis
 
-from app.models.test_lab import TestRun, TestRunEvent, TestRunAssertion, TestRunDiagnostic, TestScenario
+from app.core.config import get_settings
 
 logger = logging.getLogger("orkestra.test_lab.orchestrator")
 
-# ── Shared state ──────────────────────────────────────────────────────
 
-_db: AsyncSession | None = None
-_run: TestRun | None = None
-_scenario: TestScenario | None = None
-_agent_def: Any = None
-_runtime_result: dict | None = None
-_assertion_results: list[dict] = []
-_diagnostic_results: list[dict] = []
+# ── Event publishing ──────────────────────────────────────────────────
 
 
-async def _emit(etype: str, phase: str, msg: str, details: dict | None = None, dur: int | None = None):
-    if _db and _run:
-        _db.add(TestRunEvent(run_id=_run.id, event_type=etype, phase=phase, message=msg, details=details, duration_ms=dur))
-        await _db.commit()  # Commit immediately so SSE can see it
+def emit(run_id: str, event_type: str, phase: str, message: str,
+         details: dict | None = None, duration_ms: int | None = None):
+    """Persist event to DB + publish to Redis pub/sub for SSE."""
+    from sqlalchemy import create_engine, text
+    settings = get_settings()
+    sync_url = settings.DATABASE_URL.replace("asyncpg", "psycopg2").replace("+asyncpg", "")
+    evt_id = f"evt_{datetime.now(timezone.utc).strftime('%H%M%S%f')}"
+
+    engine = create_engine(sync_url)
+    with engine.connect() as conn:
+        conn.execute(text(
+            "INSERT INTO test_run_events (id, run_id, event_type, phase, message, details, timestamp, duration_ms, created_at, updated_at) "
+            "VALUES (:id, :rid, :et, :ph, :msg, :det, NOW(), :dur, NOW(), NOW())"
+        ), {"id": evt_id, "rid": run_id, "et": event_type, "ph": phase,
+            "msg": message, "det": json.dumps(details) if details else None, "dur": duration_ms})
+        conn.commit()
+    engine.dispose()
+
+    # Publish to Redis for SSE
+    try:
+        r = redis.Redis.from_url(settings.REDIS_URL)
+        r.publish(f"test_lab:run:{run_id}", json.dumps({
+            "id": evt_id, "event_type": event_type, "phase": phase,
+            "message": message, "details": details, "duration_ms": duration_ms,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }, default=str))
+        r.close()
+    except Exception:
+        pass
 
 
-def _make_model():
-    """Create the LLM model for worker agents."""
+def update_run(run_id: str, **fields):
+    """Update run record in DB."""
+    from sqlalchemy import create_engine, text
+    settings = get_settings()
+    sync_url = settings.DATABASE_URL.replace("asyncpg", "psycopg2").replace("+asyncpg", "")
+    sets = ", ".join(f"{k} = :{k}" for k in fields)
+    engine = create_engine(sync_url)
+    with engine.connect() as conn:
+        conn.execute(text(f"UPDATE test_runs SET {sets}, updated_at = NOW() WHERE id = :id"), {"id": run_id, **fields})
+        conn.commit()
+    engine.dispose()
+
+
+# ── LLM model factory ────────────────────────────────────────────────
+
+
+def make_model():
+    """Create the LLM for worker agents (gpt-oss:20b-cloud via Ollama)."""
     from agentscope.model import OllamaChatModel
-    from app.services.agent_factory import _docker_safe_host
-    from app.core.config import get_settings
-    host = _docker_safe_host(get_settings().OLLAMA_HOST)
+    settings = get_settings()
+    host = settings.OLLAMA_HOST
+    # Docker: replace localhost with host.docker.internal
+    import os
+    if os.path.exists("/.dockerenv") or os.environ.get("ORKESTRA_DATABASE_URL", "").startswith("postgresql"):
+        host = host.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
     return OllamaChatModel(model_name="gpt-oss:20b-cloud", host=host, stream=False)
 
 
-def _make_formatter():
-    from app.llm.provider import get_formatter
-    return get_formatter()
+def make_formatter():
+    from agentscope.formatter import OllamaChatFormatter
+    return OllamaChatFormatter()
 
 
-def _tool_response(text: str):
-    from agentscope.tool import ToolResponse
-    from agentscope.message import TextBlock
-    return ToolResponse(content=[TextBlock(type="text", text=text)])
+# ── Worker helper ─────────────────────────────────────────────────────
 
 
-# ── Worker tool functions (Agent-as-Tool pattern) ─────────────────────
-
-
-async def prepare_test_scenario(scenario_summary: str) -> Any:
-    """Create a preparation worker agent to validate the test scenario.
-
-    Args:
-        scenario_summary: A description of what scenario to validate.
-
-    Returns:
-        ToolResponse with the validation results.
-    """
+async def run_worker(run_id: str, phase: str, worker_name: str, sys_prompt: str, user_prompt: str) -> str:
+    """Create a worker ReActAgent, run it, capture output via stream_printing_messages."""
     from agentscope.agent import ReActAgent
     from agentscope.tool import Toolkit
     from agentscope.memory import InMemoryMemory
     from agentscope.message import Msg
-
-    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → prepare_test_scenario", details={
-        "tool_name": "prepare_test_scenario", "tool_input": scenario_summary[:300],
-    })
-    await _emit("phase_started", "preparation", "Preparation worker started")
-
-    config = {
-        "scenario_id": _scenario.id,
-        "name": _scenario.name,
-        "agent_id": _scenario.agent_id,
-        "timeout_seconds": _scenario.timeout_seconds,
-        "max_iterations": _scenario.max_iterations,
-        "assertion_count": len(_scenario.assertions or []),
-        "expected_tools": _scenario.expected_tools or [],
-        "input_prompt_preview": _scenario.input_prompt[:200],
-    }
+    from agentscope.pipeline import stream_printing_messages
 
     worker = ReActAgent(
-        name="preparation_worker",
-        sys_prompt="""You are a test preparation worker. Your job is to analyze the scenario and produce a structured TEST PLAN.
-
-Your test plan must include:
-1. **Objective** — what is being tested and why
-2. **Target agent** — which agent, what is its purpose
-3. **Input** — what prompt/data will be sent
-4. **Expected behavior** — what the agent should do (tools to call, output format)
-5. **Assertions** — what will be checked automatically
-6. **Constraints** — timeout, max iterations, allowed tools
-7. **Risk factors** — what could go wrong
-
-Be concise. Use bullet points. This plan will guide the test execution.""",
-        model=_make_model(),
-        formatter=_make_formatter(),
-        toolkit=Toolkit(),
-        memory=InMemoryMemory(),
-        max_iters=1,
+        name=worker_name, sys_prompt=sys_prompt,
+        model=make_model(), formatter=make_formatter(),
+        toolkit=Toolkit(), memory=InMemoryMemory(), max_iters=1,
     )
+    worker.set_console_output_enabled(False)
 
-    res = await worker(Msg("user", f"Prepare a test plan for this scenario:\n{json.dumps(config, indent=2)}\n\nFull input prompt: {_scenario.input_prompt}", "user"))
-    text = res.get_text_content() if hasattr(res, "get_text_content") else str(res)
+    task_msg = Msg("user", user_prompt, "user")
 
-    await _emit("phase_completed", "preparation", "Test plan ready", details={
-        **config,
-        "worker_response": text[:3000],
-    })
-    return _tool_response(f"Test plan ready.\nConfig: {json.dumps(config)}\nPlan: {text}")
+    async for msg, is_last in stream_printing_messages(agents=[worker], coroutine_task=worker(task_msg)):
+        text = msg.get_text_content() if hasattr(msg, "get_text_content") else ""
+        if text:
+            emit(run_id, "agent_message", phase, f"{worker_name}: {text[:100]}...",
+                 details={"agent": worker_name, "content": text[:3000]})
+
+    # Get final response
+    msgs = await worker.memory.get_memory()
+    return msgs[-1].get_text_content() if msgs else ""
 
 
-async def execute_target_agent(test_instructions: str) -> Any:
-    """Create and execute the real target agent to test its behavior.
+# ── Main entry point ──────────────────────────────────────────────────
 
-    Args:
-        test_instructions: Instructions about what to execute and observe.
 
-    Returns:
-        ToolResponse with the execution results including events, output, and metrics.
+async def run_test(run_id: str, scenario_id: str):
+    """Execute a full agentic test run through 5 phases.
+
+    Called by the Celery task. Uses stream_printing_messages for real-time
+    output and publishes events to Redis for SSE streaming.
     """
-    global _runtime_result
-
-    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → execute_target_agent", details={
-        "tool_name": "execute_target_agent", "tool_input": test_instructions[:300],
-    })
-    await _emit("handoff_started", "orchestrator", "Dispatching target agent execution")
-
-    from app.services.test_lab.runtime_adapter import execute_with_event_capture
-
-    _runtime_result = await execute_with_event_capture(
-        db=_db,
-        agent_def=_agent_def,
-        input_prompt=_scenario.input_prompt,
-        max_iterations=_scenario.max_iterations,
-        timeout_seconds=_scenario.timeout_seconds,
-        run_id=_run.id,
-    )
-
-    # Runtime events already persisted live by RuntimeEventCollector
-    await _db.commit()
-
-    _run.final_output = _runtime_result.get("final_output")
-    _run.duration_ms = _runtime_result.get("duration_ms", 0)
-    _run.execution_metadata = {
-        "iteration_count": _runtime_result.get("iteration_count", 0),
-        "message_history": _runtime_result.get("message_history", []),
-        "runtime_status": _runtime_result.get("status"),
-        "error": _runtime_result.get("error"),
-    }
-    if _runtime_result["status"] in ("failed", "timed_out"):
-        _run.status = _runtime_result["status"]
-        _run.error_message = _runtime_result.get("error")
-
-    await _emit("handoff_completed", "orchestrator", "Target agent execution completed",
-                details={"status": _runtime_result["status"], "duration_ms": _runtime_result.get("duration_ms", 0)})
-
-    summary = json.dumps({
-        "status": _runtime_result["status"],
-        "duration_ms": _runtime_result.get("duration_ms", 0),
-        "iterations": _runtime_result.get("iteration_count", 0),
-        "output_preview": (_runtime_result.get("final_output") or "")[:500],
-    })
-    return _tool_response(f"Target agent execution completed.\n{summary}")
-
-
-async def run_assertion_evaluation(execution_summary: str) -> Any:
-    """Create an assertion worker agent to evaluate test assertions.
-
-    Args:
-        execution_summary: Summary of the execution results to evaluate.
-
-    Returns:
-        ToolResponse with assertion results.
-    """
-    global _assertion_results
-    from agentscope.agent import ReActAgent
-    from agentscope.tool import Toolkit
-    from agentscope.memory import InMemoryMemory
-    from agentscope.message import Msg
-
-    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → run_assertion_evaluation", details={
-        "tool_name": "run_assertion_evaluation", "tool_input": execution_summary[:300],
-    })
-    await _emit("assertion_phase_started", "assertions", "Assertion worker started")
-
-    # Run deterministic assertions
-    from app.services.test_lab.assertion_engine import evaluate_assertions as _eval
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
     from sqlalchemy import select
-
-    result = await _db.execute(
-        select(TestRunEvent).where(TestRunEvent.run_id == _run.id).order_by(TestRunEvent.timestamp)
-    )
-    all_events = [{"event_type": e.event_type, "details": e.details, "duration_ms": e.duration_ms} for e in result.scalars().all()]
-
-    _assertion_results = _eval(
-        assertion_defs=_scenario.assertions or [], events=all_events,
-        final_output=_run.final_output, duration_ms=_run.duration_ms or 0,
-        iteration_count=(_runtime_result or {}).get("iteration_count", 0),
-        final_status=(_runtime_result or {}).get("status", "unknown"),
-    )
-
-    for ar in _assertion_results:
-        await _emit("assertion_passed" if ar["passed"] else "assertion_failed", "assertions", ar["message"])
-        _db.add(TestRunAssertion(
-            run_id=_run.id, assertion_type=ar["assertion_type"], target=ar.get("target"),
-            expected=ar.get("expected"), actual=ar.get("actual"), passed=ar["passed"],
-            critical=ar.get("critical", False), message=ar["message"], details=ar.get("details"),
-        ))
-    await _db.flush()
-
-    passed = sum(1 for a in _assertion_results if a["passed"])
-    assertion_summary = json.dumps({"total": len(_assertion_results), "passed": passed, "results": [{"type": a["assertion_type"], "passed": a["passed"], "message": a["message"]} for a in _assertion_results]})
-
-    # Worker agent analyzes the results
-    worker = ReActAgent(
-        name="assertion_worker",
-        sys_prompt="You are an assertion evaluation worker. Analyze the assertion results and provide a brief assessment.",
-        model=_make_model(), formatter=_make_formatter(),
-        toolkit=Toolkit(), memory=InMemoryMemory(), max_iters=1,
-    )
-    res = await worker(Msg("user", f"Analyze these assertion results:\n{assertion_summary}", "user"))
-    analysis = res.get_text_content() if hasattr(res, "get_text_content") else str(res)
-
-    await _emit("phase_completed", "assertions", f"Assertions evaluated: {passed}/{len(_assertion_results)} passed", details={
-        "worker_response": analysis[:3000],
-        "passed": passed,
-        "total": len(_assertion_results),
-    })
-    return _tool_response(f"Assertions evaluated: {passed}/{len(_assertion_results)} passed.\n{assertion_summary}\nAnalysis: {analysis}")
-
-
-async def run_diagnostic_analysis(test_context: str) -> Any:
-    """Create a diagnostic worker agent to analyze test patterns.
-
-    Args:
-        test_context: Context about execution and assertions to analyze.
-
-    Returns:
-        ToolResponse with diagnostic findings.
-    """
-    global _diagnostic_results
-    from agentscope.agent import ReActAgent
-    from agentscope.tool import Toolkit
-    from agentscope.memory import InMemoryMemory
-    from agentscope.message import Msg
-
-    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → run_diagnostic_analysis", details={
-        "tool_name": "run_diagnostic_analysis", "tool_input": test_context[:300],
-    })
-    await _emit("diagnostic_phase_started", "diagnostics", "Diagnostic worker started")
-
-    # Run deterministic diagnostics
-    from app.services.test_lab.diagnostic_engine import generate_diagnostics
-    from sqlalchemy import select
-
-    result = await _db.execute(
-        select(TestRunEvent).where(TestRunEvent.run_id == _run.id).order_by(TestRunEvent.timestamp)
-    )
-    all_events = [{"event_type": e.event_type, "details": e.details, "duration_ms": e.duration_ms} for e in result.scalars().all()]
-
-    _diagnostic_results = generate_diagnostics(
-        events=all_events, assertions=_assertion_results, expected_tools=_scenario.expected_tools,
-        duration_ms=_run.duration_ms or 0, iteration_count=(_runtime_result or {}).get("iteration_count", 0),
-        max_iterations=_scenario.max_iterations, timeout_seconds=_scenario.timeout_seconds,
-        final_output=_run.final_output,
-    )
-
-    for dr in _diagnostic_results:
-        await _emit("diagnostic_generated", "diagnostics", dr["message"], details={"code": dr["code"], "severity": dr["severity"]})
-        _db.add(TestRunDiagnostic(
-            run_id=_run.id, code=dr["code"], severity=dr["severity"], message=dr["message"],
-            probable_causes=dr.get("probable_causes"), recommendation=dr.get("recommendation"), evidence=dr.get("evidence"),
-        ))
-    await _db.flush()
-
-    diag_summary = json.dumps([{"code": d["code"], "severity": d["severity"], "message": d["message"]} for d in _diagnostic_results])
-
-    # Worker agent analyzes diagnostics
-    worker = ReActAgent(
-        name="diagnostic_worker",
-        sys_prompt="You are a diagnostic analysis worker. Analyze the diagnostic findings and provide recommendations.",
-        model=_make_model(), formatter=_make_formatter(),
-        toolkit=Toolkit(), memory=InMemoryMemory(), max_iters=1,
-    )
-    res = await worker(Msg("user", f"Analyze these diagnostic findings:\n{diag_summary}", "user"))
-    analysis = res.get_text_content() if hasattr(res, "get_text_content") else str(res)
-
-    await _emit("phase_completed", "diagnostics", f"Diagnostics: {len(_diagnostic_results)} findings", details={
-        "worker_response": analysis[:3000],
-        "findings_count": len(_diagnostic_results),
-    })
-    return _tool_response(f"Diagnostics: {len(_diagnostic_results)} findings.\n{diag_summary}\nAnalysis: {analysis}")
-
-
-async def compute_final_verdict(all_results: str) -> Any:
-    """Create a verdict worker agent to compute the final score and verdict.
-
-    Args:
-        all_results: Summary of all assertions and diagnostics.
-
-    Returns:
-        ToolResponse with final score and verdict.
-    """
-    from agentscope.agent import ReActAgent
-    from agentscope.tool import Toolkit
-    from agentscope.memory import InMemoryMemory
-    from agentscope.message import Msg
-
-    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → compute_final_verdict", details={
-        "tool_name": "compute_final_verdict", "tool_input": all_results[:300],
-    })
-    await _emit("report_phase_started", "report", "Verdict worker started")
-
-    # Compute score deterministically
-    from app.services.test_lab.scoring import compute_score_and_verdict
-    score, verdict = compute_score_and_verdict(_assertion_results, _diagnostic_results)
-
-    _run.score = score
-    _run.verdict = verdict
-    _run.status = "completed" if _run.status == "running" else _run.status
-    _run.ended_at = datetime.now(timezone.utc)
-
-    # Worker agent produces final summary
-    worker = ReActAgent(
-        name="verdict_worker",
-        sys_prompt="You are a verdict worker. Produce a clear, concise final test summary.",
-        model=_make_model(), formatter=_make_formatter(),
-        toolkit=Toolkit(), memory=InMemoryMemory(), max_iters=1,
-    )
-    verdict_data = json.dumps({"score": score, "verdict": verdict, "assertions_passed": sum(1 for a in _assertion_results if a["passed"]), "assertions_total": len(_assertion_results), "diagnostics_count": len(_diagnostic_results)})
-    res = await worker(Msg("user", f"Write a final test summary for:\n{verdict_data}", "user"))
-    summary_text = res.get_text_content() if hasattr(res, "get_text_content") else str(res)
-
-    _run.summary = f"Score: {score}/100 — Verdict: {verdict} — {summary_text[:200]}"
-
-    await _emit("phase_completed", "report", f"Score: {score}/100 — Verdict: {verdict}", details={
-        "worker_response": summary_text[:3000],
-        "score": score,
-        "verdict": verdict,
-    })
-    await _emit("run_completed", "orchestrator", f"Run completed: {verdict} ({score}/100)")
-
-    return _tool_response(f"Final verdict: {verdict} — Score: {score}/100\n{summary_text}")
-
-
-# ── Master orchestrator ───────────────────────────────────────────────
-
-MASTER_PROMPT = """You are the Agentic Test Lab Master Orchestrator.
-
-You coordinate a test scenario by delegating to 5 specialized worker agents IN ORDER:
-
-1. prepare_test_scenario(scenario_summary) — validate the scenario
-2. execute_target_agent(test_instructions) — run the real target agent
-3. run_assertion_evaluation(execution_summary) — evaluate assertions on results
-4. run_diagnostic_analysis(test_context) — analyze patterns and findings
-5. compute_final_verdict(all_results) — compute score and verdict
-
-Call each tool ONCE, in order. Pass relevant context from previous results to the next tool.
-After all 5 tools complete, provide a brief final summary of the test.
-"""
-
-
-async def run_test(db: AsyncSession, scenario: TestScenario, existing_run_id: str | None = None) -> TestRun:
-    """Execute a full test using the Agent-as-Tool pattern with worker agents."""
-    global _db, _run, _scenario, _agent_def, _runtime_result, _assertion_results, _diagnostic_results
-
+    from app.models.test_lab import TestScenario, TestRun, TestRunAssertion, TestRunDiagnostic, TestRunEvent
     from app.services import agent_registry_service
 
-    agent = await agent_registry_service.get_agent(db, scenario.agent_id)
-    if not agent:
-        raise ValueError(f"Agent {scenario.agent_id} not found")
+    settings = get_settings()
+    engine = create_async_engine(settings.DATABASE_URL)
+    Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    if existing_run_id:
-        run = await db.get(TestRun, existing_run_id)
-        if not run:
-            raise ValueError(f"Run {existing_run_id} not found")
-        run.status = "running"
-        run.started_at = datetime.now(timezone.utc)
-        await db.flush()
-    else:
-        run = TestRun(
-            scenario_id=scenario.id, agent_id=scenario.agent_id, agent_version=agent.version,
-            status="running", started_at=datetime.now(timezone.utc),
-        )
-        db.add(run)
-        await db.flush()
+    async with Session() as db:
+        scenario = await db.get(TestScenario, scenario_id)
+        run = await db.get(TestRun, run_id)
+        agent_def = await agent_registry_service.get_agent(db, scenario.agent_id)
 
-    _db, _run, _scenario, _agent_def = db, run, scenario, agent
-    _runtime_result, _assertion_results, _diagnostic_results = None, [], []
+        if not scenario or not run or not agent_def:
+            raise ValueError("Scenario, run, or agent not found")
 
-    await _emit("run_created", "orchestrator", "Test run created")
-    await _emit("orchestrator_started", "orchestrator", "Master orchestrator started")
+        update_run(run_id, status="running")
+        emit(run_id, "run_created", "orchestrator", "Test run created")
+        emit(run_id, "orchestrator_started", "orchestrator", "Orchestrator started")
+        t0 = time.time()
+
+        # ── Phase 1: Preparation ──────────────────────────────
+        emit(run_id, "orchestrator_tool_call", "orchestrator", "→ prepare_test_scenario",
+             details={"tool_name": "prepare_test_scenario"})
+        emit(run_id, "phase_started", "preparation", "Preparation worker started")
+
+        config = json.dumps({
+            "name": scenario.name, "agent_id": scenario.agent_id,
+            "timeout": scenario.timeout_seconds, "max_iters": scenario.max_iterations,
+            "assertions": len(scenario.assertions or []),
+            "expected_tools": scenario.expected_tools or [],
+        })
+        plan = await run_worker(run_id, "preparation", "preparation_worker",
+            "You are a test preparation worker. Produce a structured TEST PLAN: Objective, Target agent, Input, Expected behavior, Assertions, Constraints, Risks. Be concise.",
+            f"Prepare test plan for:\n{config}\n\nPrompt: {scenario.input_prompt}")
+
+        emit(run_id, "phase_completed", "preparation", "Test plan ready",
+             details={"worker_response": plan[:3000]})
+
+        # ── Phase 2: Target agent execution ───────────────────
+        emit(run_id, "orchestrator_tool_call", "orchestrator", "→ execute_target_agent",
+             details={"tool_name": "execute_target_agent"})
+        emit(run_id, "phase_started", "runtime", "Creating target agent")
+
+        runtime_result = await _execute_target_agent(run_id, db, scenario, agent_def)
+
+        duration_ms = int((time.time() - t0) * 1000)
+        run.final_output = runtime_result.get("final_output")
+        run.duration_ms = duration_ms
+        run.execution_metadata = {
+            "iteration_count": runtime_result.get("iteration_count", 0),
+            "message_history": runtime_result.get("message_history", []),
+            "status": runtime_result.get("status"),
+        }
+        await db.commit()
+
+        emit(run_id, "phase_completed", "runtime", f"Agent completed ({duration_ms}ms)",
+             details={"duration_ms": duration_ms, "status": runtime_result["status"]})
+        emit(run_id, "orchestrator_tool_call", "orchestrator", "← execute_target_agent completed")
+
+        # ── Phase 3: Assertions ───────────────────────────────
+        emit(run_id, "orchestrator_tool_call", "orchestrator", "→ run_assertion_evaluation",
+             details={"tool_name": "run_assertion_evaluation"})
+        emit(run_id, "assertion_phase_started", "assertions", "Assertion evaluation started")
+
+        from app.services.test_lab.assertion_engine import evaluate_assertions
+        result = await db.execute(
+            select(TestRunEvent).where(TestRunEvent.run_id == run_id).order_by(TestRunEvent.timestamp))
+        all_events = [{"event_type": e.event_type, "details": e.details, "duration_ms": e.duration_ms}
+                      for e in result.scalars().all()]
+
+        assertion_results = evaluate_assertions(
+            assertion_defs=scenario.assertions or [], events=all_events,
+            final_output=run.final_output, duration_ms=duration_ms,
+            iteration_count=runtime_result.get("iteration_count", 0),
+            final_status=runtime_result.get("status", "unknown"))
+
+        for ar in assertion_results:
+            emit(run_id, "assertion_passed" if ar["passed"] else "assertion_failed", "assertions", ar["message"])
+            db.add(TestRunAssertion(
+                run_id=run_id, assertion_type=ar["assertion_type"], target=ar.get("target"),
+                expected=ar.get("expected"), actual=ar.get("actual"), passed=ar["passed"],
+                critical=ar.get("critical", False), message=ar["message"], details=ar.get("details")))
+        await db.commit()
+
+        passed = sum(1 for a in assertion_results if a["passed"])
+        analysis = await run_worker(run_id, "assertions", "assertion_worker",
+            "Analyze assertion results briefly.",
+            json.dumps({"passed": passed, "total": len(assertion_results),
+                        "results": [{"type": a["assertion_type"], "passed": a["passed"], "message": a["message"]} for a in assertion_results]}))
+
+        emit(run_id, "phase_completed", "assertions", f"Assertions: {passed}/{len(assertion_results)} passed",
+             details={"worker_response": analysis[:3000], "passed": passed, "total": len(assertion_results)})
+
+        # ── Phase 4: Diagnostics ──────────────────────────────
+        emit(run_id, "orchestrator_tool_call", "orchestrator", "→ run_diagnostic_analysis",
+             details={"tool_name": "run_diagnostic_analysis"})
+        emit(run_id, "diagnostic_phase_started", "diagnostics", "Diagnostic analysis started")
+
+        from app.services.test_lab.diagnostic_engine import generate_diagnostics
+        diagnostic_results = generate_diagnostics(
+            events=all_events, assertions=assertion_results,
+            expected_tools=scenario.expected_tools, duration_ms=duration_ms,
+            iteration_count=runtime_result.get("iteration_count", 0),
+            max_iterations=scenario.max_iterations, timeout_seconds=scenario.timeout_seconds,
+            final_output=run.final_output)
+
+        for dr in diagnostic_results:
+            emit(run_id, "diagnostic_generated", "diagnostics", dr["message"],
+                 details={"code": dr["code"], "severity": dr["severity"]})
+            db.add(TestRunDiagnostic(
+                run_id=run_id, code=dr["code"], severity=dr["severity"], message=dr["message"],
+                probable_causes=dr.get("probable_causes"), recommendation=dr.get("recommendation"),
+                evidence=dr.get("evidence")))
+        await db.commit()
+
+        diag_analysis = await run_worker(run_id, "diagnostics", "diagnostic_worker",
+            "Analyze diagnostic findings and recommend fixes.",
+            json.dumps([{"code": d["code"], "severity": d["severity"], "message": d["message"]} for d in diagnostic_results]))
+
+        emit(run_id, "phase_completed", "diagnostics", f"Diagnostics: {len(diagnostic_results)} findings",
+             details={"worker_response": diag_analysis[:3000], "count": len(diagnostic_results)})
+
+        # ── Phase 5: Verdict ──────────────────────────────────
+        emit(run_id, "orchestrator_tool_call", "orchestrator", "→ compute_final_verdict",
+             details={"tool_name": "compute_final_verdict"})
+        emit(run_id, "report_phase_started", "report", "Computing verdict")
+
+        from app.services.test_lab.scoring import compute_score_and_verdict
+        score, verdict = compute_score_and_verdict(assertion_results, diagnostic_results)
+
+        summary = await run_worker(run_id, "report", "verdict_worker",
+            "Produce a concise final test summary.",
+            json.dumps({"score": score, "verdict": verdict,
+                        "assertions_passed": passed, "assertions_total": len(assertion_results),
+                        "diagnostics": len(diagnostic_results)}))
+
+        emit(run_id, "phase_completed", "report", f"Score: {score}/100 — Verdict: {verdict}",
+             details={"worker_response": summary[:3000], "score": score, "verdict": verdict})
+
+        update_run(run_id, score=score, verdict=verdict, status="completed",
+                   summary=f"Score: {score}/100 — Verdict: {verdict} — {summary[:200]}",
+                   ended_at=datetime.now(timezone.utc).isoformat())
+
+        emit(run_id, "run_completed", "orchestrator", f"Run completed: {verdict} ({score}/100)")
+
+    await engine.dispose()
+
+
+# ── Target agent execution with stream_printing_messages ──────────────
+
+
+async def _execute_target_agent(run_id: str, db, scenario, agent_def) -> dict:
+    """Execute the real target agent and capture all output via stream_printing_messages."""
+    from agentscope.message import Msg
+    from agentscope.pipeline import stream_printing_messages
+    from app.services.agent_factory import create_agentscope_agent, get_tools_for_agent
+
+    tools = get_tools_for_agent(agent_def)
+    react_agent = await create_agentscope_agent(
+        agent_def, db=db, tools_to_register=tools, max_iters=scenario.max_iterations)
+
+    if react_agent is None:
+        emit(run_id, "phase_failed", "runtime", "Agent creation failed")
+        return {"status": "failed", "final_output": None, "duration_ms": 0, "iteration_count": 0, "message_history": []}
+
+    # Log MCP connections
+    for mcp in getattr(react_agent, "_connected_mcps", []):
+        emit(run_id, "mcp_session_connected", "runtime", f"Connected to {mcp.get('url', '')}",
+             details={"tools": mcp.get("tools", []), "url": mcp.get("url", "")})
+
+    emit(run_id, "run_started", "runtime", "Target agent execution started")
+    react_agent.set_console_output_enabled(False)
+    task_msg = Msg("user", scenario.input_prompt, "user")
+    t0 = time.time()
+    msg_count = 0
 
     try:
-        master = await _create_master()
-        if master:
-            from agentscope.message import Msg
-            await master(Msg("user", f"Execute test scenario '{scenario.name}' for agent '{scenario.agent_id}'. Input: {scenario.input_prompt[:200]}", "user"))
-        else:
-            # Fallback: direct sequential
-            await prepare_test_scenario(f"Scenario: {scenario.name}")
-            await execute_target_agent(f"Test agent {scenario.agent_id}")
-            await run_assertion_evaluation("Evaluate assertions")
-            await run_diagnostic_analysis("Analyze diagnostics")
-            await compute_final_verdict("Compute verdict")
+        async for msg, is_last in stream_printing_messages(
+            agents=[react_agent],
+            coroutine_task=asyncio.wait_for(react_agent(task_msg), timeout=scenario.timeout_seconds),
+        ):
+            msg_count += 1
+            name = getattr(msg, "name", "agent")
+            text = msg.get_text_content() if hasattr(msg, "get_text_content") else ""
 
-    except Exception as e:
-        logger.error(f"Orchestrator error: {e}")
-        run.status = "failed"
-        run.error_message = str(e)
-        run.ended_at = datetime.now(timezone.utc)
-        await _emit("run_failed", "orchestrator", f"Error: {e}")
+            # Detect content type
+            event_type = "agent_message"
+            details = {"agent": name}
+            content_blocks = getattr(msg, "content", None)
 
-    await db.commit()
-    await db.refresh(run)
-    _db = _run = _scenario = _agent_def = None
-    return run
+            if isinstance(content_blocks, list):
+                for block in content_blocks:
+                    bt = block.get("type", "") if isinstance(block, dict) else getattr(block, "type", "")
+                    if bt == "tool_use":
+                        tool_name = block.get("name", "") if isinstance(block, dict) else getattr(block, "name", "")
+                        tool_input = block.get("raw_input", block.get("input", "")) if isinstance(block, dict) else getattr(block, "raw_input", getattr(block, "input", ""))
+                        event_type = "tool_call_started"
+                        details.update({"tool_name": tool_name, "tool_input": str(tool_input)[:500]})
+                    elif bt == "tool_result":
+                        tool_name = block.get("name", "") if isinstance(block, dict) else getattr(block, "name", "")
+                        output = block.get("output", "") if isinstance(block, dict) else getattr(block, "output", "")
+                        if isinstance(output, list):
+                            output_text = "\n".join(
+                                str(b.get("text", b) if isinstance(b, dict) else getattr(b, "text", b))[:800] for b in output)[:3000]
+                        else:
+                            output_text = str(output)[:3000]
+                        event_type = "tool_call_completed"
+                        details.update({"tool_name": tool_name, "output_preview": output_text})
+                    elif bt == "thinking":
+                        t = block.get("text", "") if isinstance(block, dict) else getattr(block, "text", "")
+                        details["thinking"] = t[:1000]
+                    elif bt == "text":
+                        t = block.get("text", "") if isinstance(block, dict) else getattr(block, "text", "")
+                        details["content"] = t[:2000]
 
+            if text and "content" not in details:
+                details["content"] = text[:2000]
 
-async def _create_master():
-    """Create the master ReActAgent orchestrator."""
+            emit(run_id, event_type, "runtime", f"{name}: {(text or '')[:100]}", details=details)
+
+    except asyncio.TimeoutError:
+        emit(run_id, "run_timeout", "runtime", f"Timed out after {scenario.timeout_seconds}s")
+        return {"status": "timed_out", "final_output": None, "duration_ms": int((time.time() - t0) * 1000),
+                "iteration_count": msg_count, "message_history": []}
+
+    duration_ms = int((time.time() - t0) * 1000)
+
+    # Extract final output + history from memory
+    final_output = ""
+    message_history = []
     try:
-        from agentscope.agent import ReActAgent
-        from agentscope.tool import Toolkit
-        from agentscope.memory import InMemoryMemory
-        from app.llm.provider import is_agentscope_available
+        msgs = await react_agent.memory.get_memory()
+        for m in msgs:
+            text = m.get_text_content() if hasattr(m, "get_text_content") else ""
+            if not text and hasattr(m, "content"):
+                raw = m.content
+                if isinstance(raw, list):
+                    parts = []
+                    for b in raw:
+                        t = b.get("text", str(b)) if isinstance(b, dict) else getattr(b, "text", str(b))
+                        parts.append(str(t)[:500])
+                    text = "\n".join(parts)
+                elif isinstance(raw, str):
+                    text = raw
+            message_history.append({"role": getattr(m, "role", ""), "name": getattr(m, "name", ""), "content": text[:5000]})
+        if msgs:
+            last = msgs[-1]
+            final_output = last.get_text_content() if hasattr(last, "get_text_content") else str(last.content)[:5000]
+    except Exception:
+        pass
 
-        if not is_agentscope_available():
-            return None
-
-        toolkit = Toolkit()
-        toolkit.register_tool_function(prepare_test_scenario)
-        toolkit.register_tool_function(execute_target_agent)
-        toolkit.register_tool_function(run_assertion_evaluation)
-        toolkit.register_tool_function(run_diagnostic_analysis)
-        toolkit.register_tool_function(compute_final_verdict)
-
-        return ReActAgent(
-            name="master_orchestrator",
-            sys_prompt=MASTER_PROMPT,
-            model=_make_model(),
-            formatter=_make_formatter(),
-            toolkit=toolkit,
-            memory=InMemoryMemory(),
-            max_iters=10,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to create master: {e}")
-        return None
+    return {"status": "completed", "final_output": final_output, "duration_ms": duration_ms,
+            "iteration_count": msg_count, "message_history": message_history}
