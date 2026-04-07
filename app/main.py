@@ -6,8 +6,11 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.auth import ApiKeyMiddleware
+from app.core.rate_limit import limiter
 from app.core.config import get_settings
 from app.core.logging_config import configure_logging
 from app.core.exceptions import NotFoundError, ValidationError, StateViolationError
@@ -58,6 +61,9 @@ app = FastAPI(
     version=settings.APP_VERSION,
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

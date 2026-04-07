@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from app.core.database import get_db
 from app.core.encryption import encrypt_value
+from app.core.rate_limit import limiter
 from app.schemas.settings import (
     PolicyProfileCreate, PolicyProfileOut,
     BudgetProfileCreate, BudgetProfileOut,
@@ -84,7 +86,8 @@ async def list_secrets(db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/secrets/{secret_id}")
-async def upsert_secret(secret_id: str, data: SecretUpsert, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def upsert_secret(request: Request, secret_id: str, data: SecretUpsert, db: AsyncSession = Depends(get_db)):
     """Create or update a secret."""
     from app.models.secret import PlatformSecret
 

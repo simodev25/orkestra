@@ -23,6 +23,7 @@ dependencies = [
     "ollama>=0.4.0",
     "celery[redis]>=5.4.0",
     "cryptography>=43.0.0",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
