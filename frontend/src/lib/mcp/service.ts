@@ -2,7 +2,6 @@
  * MCP Service — Data access layer for MCP Catalog & Toolkit
  *
  * Centralizes all MCP-related API calls.
- * Falls back to mock data when API is unavailable.
  */
 
 import type {
@@ -16,7 +15,6 @@ import type {
   McpUpdatePayload,
   McpCompatibilityHint,
 } from "./types";
-import { MOCK_MCPS } from "./seeds";
 
 const BASE = "/api/mcps";
 
@@ -48,35 +46,27 @@ export async function listMcps(params?: {
   const qs = query.toString();
   try {
     return await request<McpDefinition[]>(`${BASE}${qs ? `?${qs}` : ""}`);
-  } catch {
-    return MOCK_MCPS;
+  } catch (err) {
+    console.error("Failed to list MCPs:", err);
+    throw err;
   }
 }
 
 export async function getMcp(id: string): Promise<McpDefinition> {
   try {
     return await request<McpDefinition>(`${BASE}/${id}`);
-  } catch {
-    const mock = MOCK_MCPS.find((m) => m.id === id);
-    if (mock) return mock;
-    throw new Error(`MCP ${id} not found`);
+  } catch (err) {
+    console.error("Failed to get MCP:", err);
+    throw err;
   }
 }
 
 export async function getCatalogStats(): Promise<McpCatalogStats> {
   try {
     return await request<McpCatalogStats>(`${BASE}/catalog/stats`);
-  } catch {
-    const mcps = MOCK_MCPS;
-    return {
-      total: mcps.length,
-      active: mcps.filter((m) => m.status === "active").length,
-      degraded: mcps.filter((m) => m.status === "degraded").length,
-      disabled: mcps.filter((m) => m.status === "disabled").length,
-      critical: mcps.filter((m) => m.criticality === "high").length,
-      approval_required: mcps.filter((m) => m.approval_required).length,
-      healthy: mcps.filter((m) => m.status === "active").length,
-    };
+  } catch (err) {
+    console.error("Failed to get catalog stats:", err);
+    throw err;
   }
 }
 
@@ -106,35 +96,18 @@ export async function updateMcpStatus(id: string, status: string): Promise<McpDe
 export async function getMcpHealth(id: string): Promise<McpHealth> {
   try {
     return await request<McpHealth>(`${BASE}/${id}/health`);
-  } catch {
-    return {
-      mcp_id: id,
-      status: "active",
-      healthy: true,
-      last_check_at: null,
-      last_success_at: null,
-      last_failure_at: null,
-      avg_latency_ms: null,
-      failure_rate: null,
-      total_invocations: 0,
-      recent_errors: [],
-    };
+  } catch (err) {
+    console.error("Failed to get MCP health:", err);
+    throw err;
   }
 }
 
 export async function getMcpUsage(id: string): Promise<McpUsageSummary> {
   try {
     return await request<McpUsageSummary>(`${BASE}/${id}/usage`);
-  } catch {
-    return {
-      mcp_id: id,
-      total_invocations: 0,
-      total_cost: 0,
-      avg_latency_ms: 0,
-      avg_cost: 0,
-      agents_using: [],
-      invocations_by_status: {},
-    };
+  } catch (err) {
+    console.error("Failed to get MCP usage:", err);
+    throw err;
   }
 }
 
@@ -148,14 +121,9 @@ export async function testMcp(id: string, req?: McpTestRequest): Promise<McpTest
       method: "POST",
       body: JSON.stringify(req || { tool_action: null, tool_kwargs: {} }),
     });
-  } catch (e) {
-    return {
-      mcp_id: id,
-      success: false,
-      latency_ms: 0,
-      output: null,
-      error: e instanceof Error ? e.message : "Test failed",
-    };
+  } catch (err) {
+    console.error("Failed to test MCP:", err);
+    throw err;
   }
 }
 
@@ -208,19 +176,8 @@ export async function listAgentIds(): Promise<string[]> {
   try {
     const agents = await request<{ id: string }[]>("/api/agents");
     return agents.map((a) => a.id);
-  } catch {
-    return [
-      "data_extraction_agent",
-      "consistency_review_agent",
-      "evidence_mapping_agent",
-      "compliance_agent",
-      "regulatory_agent",
-      "risk_analysis_agent",
-      "research_agent",
-      "synthesis_agent",
-      "report_agent",
-      "policy_decision_agent",
-      "notification_agent",
-    ];
+  } catch (err) {
+    console.error("Failed to list agent IDs:", err);
+    throw err;
   }
 }

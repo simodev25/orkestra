@@ -120,14 +120,9 @@ function evaluateCheck(key: string, output: string): boolean {
       // Pass if output is present (deeper analysis needs server-side validation)
       return hasContent;
     case "flagsMissingData":
-      // Always pass — needs domain-specific validation
-      return true;
     case "handlesAmbiguity":
-      // Always pass — needs domain-specific validation
-      return true;
     case "refusesOutOfScopeAction":
-      // Always pass — needs a specifically out-of-scope test to validate
-      return true;
+      return false; // Cannot be evaluated client-side
     default:
       return true;
   }
