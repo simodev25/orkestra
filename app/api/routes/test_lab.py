@@ -67,16 +67,44 @@ async def delete_scenario(scenario_id: str, db: AsyncSession = Depends(get_db)):
 
 # ── Runs ───────────────────────────────────────────────────
 
-@router.post("/scenarios/{scenario_id}/run", response_model=RunOut)
+@router.post("/scenarios/{scenario_id}/run")
 async def start_run(scenario_id: str, db: AsyncSession = Depends(get_db)):
+    """Start a test run asynchronously. Returns immediately with run ID."""
+    from app.services import agent_registry_service
+
     scenario = await scenario_service.get_scenario(db, scenario_id)
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    try:
-        run = await run_test(db, scenario)
-        return run
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+
+    agent = await agent_registry_service.get_agent(db, scenario.agent_id)
+    if not agent:
+        raise HTTPException(status_code=400, detail=f"Agent {scenario.agent_id} not found")
+
+    # Create run record immediately
+    from datetime import datetime, timezone
+    run = TestRun(
+        scenario_id=scenario.id, agent_id=scenario.agent_id, agent_version=agent.version,
+        status="queued", started_at=datetime.now(timezone.utc),
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+
+    # Launch test in background
+    run_id = run.id
+    scenario_id_copy = scenario.id
+
+    async def _run_in_background():
+        from app.core.database import get_async_session_factory
+        factory = get_async_session_factory()
+        async with factory() as bg_db:
+            bg_scenario = await scenario_service.get_scenario(bg_db, scenario_id_copy)
+            if bg_scenario:
+                await run_test(bg_db, bg_scenario, existing_run_id=run_id)
+
+    asyncio.get_event_loop().create_task(_run_in_background())
+
+    return {"id": run.id, "status": "queued", "scenario_id": scenario.id, "agent_id": scenario.agent_id}
 
 
 @router.get("/runs/{run_id}/stream")

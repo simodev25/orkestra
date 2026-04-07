@@ -333,7 +333,7 @@ After all 5 tools complete, provide a brief final summary of the test.
 """
 
 
-async def run_test(db: AsyncSession, scenario: TestScenario) -> TestRun:
+async def run_test(db: AsyncSession, scenario: TestScenario, existing_run_id: str | None = None) -> TestRun:
     """Execute a full test using the Agent-as-Tool pattern with worker agents."""
     global _db, _run, _scenario, _agent_def, _runtime_result, _assertion_results, _diagnostic_results
 
@@ -343,12 +343,20 @@ async def run_test(db: AsyncSession, scenario: TestScenario) -> TestRun:
     if not agent:
         raise ValueError(f"Agent {scenario.agent_id} not found")
 
-    run = TestRun(
-        scenario_id=scenario.id, agent_id=scenario.agent_id, agent_version=agent.version,
-        status="running", started_at=datetime.now(timezone.utc),
-    )
-    db.add(run)
-    await db.flush()
+    if existing_run_id:
+        run = await db.get(TestRun, existing_run_id)
+        if not run:
+            raise ValueError(f"Run {existing_run_id} not found")
+        run.status = "running"
+        run.started_at = datetime.now(timezone.utc)
+        await db.flush()
+    else:
+        run = TestRun(
+            scenario_id=scenario.id, agent_id=scenario.agent_id, agent_version=agent.version,
+            status="running", started_at=datetime.now(timezone.utc),
+        )
+        db.add(run)
+        await db.flush()
 
     _db, _run, _scenario, _agent_def = db, run, scenario, agent
     _runtime_result, _assertion_results, _diagnostic_results = None, [], []
