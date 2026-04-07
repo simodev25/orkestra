@@ -37,9 +37,6 @@ class AgentCreate(OrkBaseSchema):
     version: str = "1.0.0"
     status: str = "draft"
     owner: Optional[str] = None
-    last_test_status: str = "not_tested"
-    last_validated_at: Optional[datetime] = None
-    usage_count: int = 0
 
 
 class AgentUpdate(OrkBaseSchema):

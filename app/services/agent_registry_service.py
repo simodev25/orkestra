@@ -116,9 +116,9 @@ async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payloa
     agent.version = payload.version
     agent.status = payload.status
     agent.owner = payload.owner
-    agent.last_test_status = payload.last_test_status
-    agent.last_validated_at = payload.last_validated_at
-    agent.usage_count = payload.usage_count
+    agent.last_test_status = "not_tested"
+    agent.last_validated_at = None
+    agent.usage_count = 0
 
 
 async def _sync_agent_skills(db: AsyncSession, agent_id: str, skill_ids: list[str]) -> None:
