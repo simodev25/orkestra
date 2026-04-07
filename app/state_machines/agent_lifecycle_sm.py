@@ -2,7 +2,8 @@ from app.state_machines.base import StateMachine
 
 class AgentLifecycleStateMachine(StateMachine):
     TRANSITIONS = {
-        "draft": ["tested"],
+        "draft": ["designed"],
+        "designed": ["tested"],
         "tested": ["registered"],
         "registered": ["active"],
         "active": ["deprecated", "disabled"],

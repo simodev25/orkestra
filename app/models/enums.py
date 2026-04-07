@@ -118,6 +118,7 @@ class ReplayBundleStatus(str, enum.Enum):
 
 class AgentStatus(str, enum.Enum):
     DRAFT = "draft"
+    DESIGNED = "designed"
     TESTED = "tested"
     REGISTERED = "registered"
     ACTIVE = "active"

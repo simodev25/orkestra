@@ -21,7 +21,13 @@ export async function request<T>(
 
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new ApiError(resp.status, body.detail || resp.statusText);
+    const detail = body.detail;
+    const message = typeof detail === "string"
+      ? detail
+      : Array.isArray(detail)
+        ? detail.map((d: any) => d.msg || JSON.stringify(d)).join("; ")
+        : resp.statusText;
+    throw new ApiError(resp.status, message);
   }
 
   if (resp.status === 204) return undefined as T;
