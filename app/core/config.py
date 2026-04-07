@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3300,http://localhost:5173"
 
+    # Encryption
+    FERNET_KEY: str = ""  # Auto-generates in dev if empty
+
     class Config:
         env_file = ".env"
         env_prefix = "ORKESTRA_"
