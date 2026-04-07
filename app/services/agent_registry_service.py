@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from sqlalchemy import select, func
+from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -384,18 +384,6 @@ def _workflow_matches(agent: AgentDefinition, workflow_id: str) -> bool:
     return False
 
 
-def _matches_text(agent: AgentDefinition, q: str) -> bool:
-    haystacks = [
-        agent.id,
-        agent.name,
-        agent.family_id,
-        agent.purpose,
-        agent.description or "",
-        " ".join(agent.allowed_mcps or []),
-    ]
-    low_q = q.lower()
-    return any(low_q in h.lower() for h in haystacks)
-
 
 async def list_agents(
     db: AsyncSession,
@@ -423,19 +411,25 @@ async def list_agents(
         stmt = stmt.where(AgentDefinition.criticality == criticality)
     if cost_profile and cost_profile != "all":
         stmt = stmt.where(AgentDefinition.cost_profile == cost_profile)
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                AgentDefinition.id.ilike(pattern),
+                AgentDefinition.name.ilike(pattern),
+                AgentDefinition.purpose.ilike(pattern),
+                AgentDefinition.description.ilike(pattern),
+            )
+        )
+    if mcp_id:
+        stmt = stmt.where(AgentDefinition.allowed_mcps.contains([mcp_id]))
 
     result = await db.execute(stmt.order_by(AgentDefinition.name))
     items = list(result.scalars().all())
 
-    if q:
-        items = [a for a in items if _matches_text(a, q)]
-    if mcp_id:
-        items = [a for a in items if mcp_id in (a.allowed_mcps or [])]
     if used_in_workflow_only and workflow_id:
         items = [a for a in items if _workflow_matches(a, workflow_id)]
-    elif workflow_id:
-        # Keep workflow_id as soft context without forcing filter when toggle is off.
-        pass
+    # workflow_id without the toggle is soft context only — no filtering applied.
 
     total = len(items)
     return items[offset : offset + limit], total
