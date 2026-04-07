@@ -59,9 +59,8 @@ agent = {
         "quality_review: Verify resolved data is consistent and confidence score is justified"
     ),
     "version": "1.0.0",
-    "status": "designed",
-    "owner": None,
-    "last_test_status": "not_tested"
+    "status": "draft",
+    "owner": None
 }
 
 r = requests.post("http://localhost:8200/api/agents", json=agent)
