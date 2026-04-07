@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.encryption import encrypt_value
 from app.schemas.settings import (
     PolicyProfileCreate, PolicyProfileOut,
     BudgetProfileCreate, BudgetProfileOut,
@@ -95,11 +96,11 @@ async def upsert_secret(secret_id: str, data: SecretUpsert, db: AsyncSession = D
 
     existing = await db.get(PlatformSecret, secret_id)
     if existing:
-        existing.value = value
+        existing.value = encrypt_value(value)
         if description:
             existing.description = description
     else:
-        secret = PlatformSecret(id=secret_id, value=value, description=description or None)
+        secret = PlatformSecret(id=secret_id, value=encrypt_value(value), description=description or None)
         db.add(secret)
 
     await db.flush()
