@@ -40,6 +40,26 @@ from app.services.test_lab.execution_engine import (
 logger = logging.getLogger("orkestra.test_lab.orchestrator_agent")
 
 
+def _extract_text(content) -> str:
+    """Extract plain text from AgentScope message content.
+
+    AgentScope content can be: str, list[dict] with {type:'text', text:'...'}, or other.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(item["text"])
+            elif isinstance(item, str):
+                parts.append(item)
+            else:
+                parts.append(str(item))
+        return "\n".join(parts)
+    return str(content)
+
+
 # ─── Run context ─────────────────────────────────────────────────────────────
 
 @dataclass
@@ -106,7 +126,7 @@ def _build_tools(ctx: RunContext) -> list:
             max_iters=1,
         )
         res = agent(Msg("user", objective, "user"))
-        text = res.content if hasattr(res, "content") else str(res)
+        text = _extract_text(res.content if hasattr(res, "content") else str(res))
         emit_event(ctx.run_id, "subagent_done", "preparation", "ScenarioSubAgent done")
         return ToolResponse(content=text)
 
@@ -173,7 +193,7 @@ def _build_tools(ctx: RunContext) -> list:
             max_iters=1,
         )
         res = agent(Msg("user", analysis_request, "user"))
-        text = res.content if hasattr(res, "content") else str(res)
+        text = _extract_text(res.content if hasattr(res, "content") else str(res))
 
         # Try to extract score and verdict from response
         import re
@@ -210,7 +230,7 @@ def _build_tools(ctx: RunContext) -> list:
             max_iters=1,
         )
         res = agent(Msg("user", request, "user"))
-        return ToolResponse(content=res.content if hasattr(res, "content") else str(res))
+        return ToolResponse(content=_extract_text(res.content if hasattr(res, "content") else str(res)))
 
     async def run_policy_subagent(request: str) -> ToolResponse:
         """Check if the agent output respects governance constraints (forbidden effects, scope, etc.)."""
@@ -230,7 +250,7 @@ def _build_tools(ctx: RunContext) -> list:
             max_iters=1,
         )
         res = agent(Msg("user", request, "user"))
-        return ToolResponse(content=res.content if hasattr(res, "content") else str(res))
+        return ToolResponse(content=_extract_text(res.content if hasattr(res, "content") else str(res)))
 
     async def get_run_state() -> ToolResponse:
         """Get the current state of the test run."""
@@ -377,7 +397,7 @@ async def chat_with_orchestrator(run_id: str, message: str) -> str:
             orchestrator(user_msg),
             timeout=120,
         )
-        text = response.content if hasattr(response, "content") else str(response)
+        text = _extract_text(response.content if hasattr(response, "content") else str(response))
         emit_event(run_id, "orchestrator_chat", "interactive", f"User: {message[:100]}",
                    details={"response_length": len(text)})
         return text
@@ -442,13 +462,15 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
             timeout=ctx.timeout_seconds + 180,
         )
 
-        final_text = response.content if hasattr(response, "content") else str(response)
+        raw_content = response.content if hasattr(response, "content") else str(response)
+        final_text = _extract_text(raw_content)
 
         # Fallback if orchestrator didn't save
         if not ctx.verdict:
             update_run(run_id, status="completed", verdict="unknown", score=0,
-                       duration_ms=ctx.target_duration_ms, final_output=ctx.target_output,
-                       summary=final_text,
+                       duration_ms=ctx.target_duration_ms,
+                       final_output=ctx.target_output[:10000] if ctx.target_output else "",
+                       summary=final_text[:5000],
                        ended_at=datetime.now(timezone.utc))
 
     except Exception as exc:
