@@ -218,13 +218,16 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    f"Agent finished: {result.status} ({result.duration_ms}ms)",
                    duration_ms=result.duration_ms)
 
+        # Truncate output to avoid Ollama context overflow (500 errors)
+        output_preview = result.final_output[:800] if result.final_output else "empty"
+
         return ToolResponse(content=(
             f"EXECUTION_RESULT:\n"
             f"  status: {result.status}\n"
             f"  duration_ms: {result.duration_ms}\n"
             f"  iterations: {result.iteration_count}\n"
             f"  tool_calls: {len(result.tool_calls)}\n"
-            f"  output:\n{result.final_output[:2000]}\n"
+            f"  output_preview:\n{output_preview}\n"
             f"  error: {result.error or 'none'}"
         ))
 
@@ -455,9 +458,19 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
 
     except Exception as exc:
         logger.exception(f"OrchestratorAgent failed for run {run_id}")
-        update_run(run_id, status="failed", error_message=str(exc)[:1000],
-                   ended_at=datetime.now(timezone.utc))
-        emit_event(run_id, "run_failed", "error", f"Run failed: {exc}")
-        raise
+        # Save partial results if target agent ran before the crash
+        if ctx.target_output and not ctx.verdict:
+            update_run(run_id, status="completed", verdict="error",
+                       score=0, duration_ms=ctx.target_duration_ms,
+                       final_output=(ctx.target_output or "")[:10000],
+                       summary=f"OrchestratorAgent crashed after target agent execution: {exc}",
+                       error_message=str(exc)[:1000],
+                       ended_at=datetime.now(timezone.utc))
+            emit_event(run_id, "run_completed", "error",
+                       f"Partial result saved (orchestrator crashed): {exc}")
+        else:
+            update_run(run_id, status="failed", error_message=str(exc)[:1000],
+                       ended_at=datetime.now(timezone.utc))
+            emit_event(run_id, "run_failed", "error", f"Run failed: {exc}")
     finally:
         await engine.dispose()
