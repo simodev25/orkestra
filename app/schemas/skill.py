@@ -7,6 +7,7 @@ from typing import Optional
 
 from pydantic import AliasChoices, Field, field_validator
 
+from app.models.enums import SkillStatus
 from app.schemas.common import OrkBaseSchema
 
 
@@ -38,7 +39,7 @@ class SkillCreate(OrkBaseSchema):
     output_guidelines: list[str] = Field(default_factory=list)
     allowed_families: list[str] = Field(default_factory=list)
     version: str = "1.0.0"
-    status: str = "active"
+    status: SkillStatus = SkillStatus.active
     owner: Optional[str] = None
 
 
@@ -52,7 +53,7 @@ class SkillUpdate(OrkBaseSchema):
     output_guidelines: Optional[list[str]] = None
     allowed_families: Optional[list[str]] = None
     version: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[SkillStatus] = None
     owner: Optional[str] = None
 
 
@@ -67,7 +68,7 @@ class SkillOut(OrkBaseSchema):
     output_guidelines: list[str]
     allowed_families: list[str] = Field(default_factory=list)
     version: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[SkillStatus] = None
     owner: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -91,7 +92,7 @@ class SkillWithAgents(OrkBaseSchema):
     output_guidelines: list[str] = Field(default_factory=list)
     allowed_families: list[str] = Field(default_factory=list)
     version: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[SkillStatus] = None
     owner: Optional[str] = None
     agents: list[AgentSummary]
 
@@ -107,7 +108,7 @@ class SkillSeedEntry(OrkBaseSchema):
     output_guidelines: list[str] = Field(..., min_length=1)
     allowed_families: list[str] = Field(default_factory=list)
     version: str = "1.0.0"
-    status: str = "active"
+    status: SkillStatus = SkillStatus.active
     owner: Optional[str] = None
 
     @field_validator("behavior_templates", "output_guidelines")

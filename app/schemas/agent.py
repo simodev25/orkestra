@@ -7,6 +7,7 @@ from typing import Optional
 
 from pydantic import AliasChoices, Field
 
+from app.models.enums import AgentStatus, Criticality, CostProfile
 from app.schemas.common import OrkBaseSchema
 from app.schemas.skill import SkillRef
 from app.schemas.family import FamilyOut
@@ -24,8 +25,8 @@ class AgentCreate(OrkBaseSchema):
     forbidden_effects: Optional[list[str]] = None
     input_contract_ref: Optional[str] = None
     output_contract_ref: Optional[str] = None
-    criticality: str = "medium"
-    cost_profile: str = "medium"
+    criticality: Criticality = Criticality.MEDIUM
+    cost_profile: CostProfile = CostProfile.MEDIUM
     limitations: Optional[list[str]] = None
     prompt_ref: Optional[str] = None
     prompt_content: Optional[str] = None
@@ -35,7 +36,7 @@ class AgentCreate(OrkBaseSchema):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     version: str = "1.0.0"
-    status: str = "draft"
+    status: AgentStatus = AgentStatus.DRAFT
     owner: Optional[str] = None
 
 
@@ -50,8 +51,8 @@ class AgentUpdate(OrkBaseSchema):
     forbidden_effects: Optional[list[str]] = None
     input_contract_ref: Optional[str] = None
     output_contract_ref: Optional[str] = None
-    criticality: Optional[str] = None
-    cost_profile: Optional[str] = None
+    criticality: Optional[Criticality] = None
+    cost_profile: Optional[CostProfile] = None
     limitations: Optional[list[str]] = None
     prompt_ref: Optional[str] = None
     prompt_content: Optional[str] = None
@@ -61,7 +62,7 @@ class AgentUpdate(OrkBaseSchema):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     version: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[AgentStatus] = None
     owner: Optional[str] = None
     last_test_status: Optional[str] = None
     last_validated_at: Optional[datetime] = None
@@ -82,8 +83,8 @@ class AgentOut(OrkBaseSchema):
     forbidden_effects: Optional[list[str]]
     input_contract_ref: Optional[str]
     output_contract_ref: Optional[str]
-    criticality: str
-    cost_profile: str
+    criticality: Criticality
+    cost_profile: CostProfile
     limitations: Optional[list[str]]
     prompt_ref: Optional[str]
     prompt_content: Optional[str]
@@ -93,7 +94,7 @@ class AgentOut(OrkBaseSchema):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     version: str
-    status: str
+    status: AgentStatus
     owner: Optional[str]
     last_test_status: str
     last_validated_at: Optional[datetime]
@@ -103,7 +104,7 @@ class AgentOut(OrkBaseSchema):
 
 
 class AgentStatusUpdate(OrkBaseSchema):
-    status: str
+    status: AgentStatus
     reason: Optional[str] = None
 
 
@@ -154,14 +155,14 @@ class GeneratedAgentDraft(OrkBaseSchema):
     forbidden_effects: list[str]
     input_contract_ref: Optional[str] = None
     output_contract_ref: Optional[str] = None
-    criticality: str
-    cost_profile: str
+    criticality: Criticality
+    cost_profile: CostProfile
     limitations: list[str]
     prompt_content: str
     skills_content: str
     owner: Optional[str] = None
     version: str = "1.0.0"
-    status: str = "draft"
+    status: AgentStatus = AgentStatus.DRAFT
     suggested_missing_mcps: list[str] = Field(default_factory=list)
     mcp_rationale: dict[str, str] = Field(default_factory=dict)
 

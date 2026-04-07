@@ -242,3 +242,15 @@ class Severity(str, enum.Enum):
     WARNING = "warning"
     ERROR = "error"
     CRITICAL = "critical"
+
+
+class FamilyStatus(str, enum.Enum):
+    active = "active"
+    archived = "archived"
+    deprecated = "deprecated"
+
+
+class SkillStatus(str, enum.Enum):
+    active = "active"
+    archived = "archived"
+    deprecated = "deprecated"
