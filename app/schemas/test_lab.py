@@ -158,3 +158,16 @@ class RunReport(OrkBaseSchema):
     assertions: list[AssertionResultOut]
     diagnostics: list[DiagnosticOut]
     scenario: ScenarioOut
+
+
+# ── Test Lab Configuration ────────────────────────────────────────────
+
+class TestLabConfig(OrkBaseSchema):
+    """Validation schema for Test Lab configuration."""
+    default_agent_id: Optional[str] = None
+    default_timeout_seconds: int = Field(default=120, ge=10, le=600)
+    default_max_iterations: int = Field(default=5, ge=1, le=20)
+    default_model_provider: str = Field(default="ollama", pattern="^(ollama|openai)$")
+    default_model_name: str = Field(default="mistral")
+    scoring_pass_threshold: int = Field(default=80, ge=0, le=100)
+    scoring_warning_threshold: int = Field(default=50, ge=0, le=100)

@@ -16,6 +16,7 @@ from app.models.test_lab import TestRun, TestRunEvent, TestRunAssertion, TestRun
 from app.schemas.test_lab import (
     ScenarioCreate, ScenarioUpdate, ScenarioOut,
     RunOut, EventOut, AssertionResultOut, DiagnosticOut, RunReport, AgentTestSummary,
+    TestLabConfig,
 )
 from app.services.test_lab import scenario_service
 from app.services.test_lab.orchestrator import run_test
@@ -324,12 +325,11 @@ async def list_models(provider: str):
 
 
 @router.put("/config")
-async def update_config(data: dict, db: AsyncSession = Depends(get_db)):
+async def update_config(data: TestLabConfig, db: AsyncSession = Depends(get_db)):
     """Update test lab configuration."""
     from sqlalchemy import text
-    for key, value in data.items():
-        if key not in DEFAULT_CONFIG:
-            continue
+    config_dict = data.model_dump(exclude_none=True)
+    for key, value in config_dict.items():
         await db.execute(text(
             "INSERT INTO test_lab_config (key, value, updated_at) VALUES (:key, :val, NOW()) "
             "ON CONFLICT (key) DO UPDATE SET value = :val, updated_at = NOW()"
