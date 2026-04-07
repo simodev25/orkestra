@@ -1,12 +1,14 @@
 "use client";
 
-import { AlertTriangle, XCircle, ArrowRight, CheckCircle2, ShieldAlert } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, XCircle, ArrowRight, CheckCircle2, ShieldAlert, FlaskConical, Plus } from "lucide-react";
 import type { TransitionInfo } from "@/lib/agent-lifecycle/types";
 import { getStatusLabel } from "@/lib/agent-lifecycle/helpers";
 
 interface TransitionGateProps {
   transition: TransitionInfo | null;
   currentStatus: string;
+  agentId?: string;
   onPromote?: (to: string) => void;
   promoting?: boolean;
 }
@@ -14,6 +16,7 @@ interface TransitionGateProps {
 export function TransitionGate({
   transition,
   currentStatus,
+  agentId,
   onPromote,
   promoting,
 }: TransitionGateProps) {
@@ -85,6 +88,26 @@ export function TransitionGate({
         <div className="flex items-center gap-2 text-xs text-ork-green mb-4">
           <CheckCircle2 size={14} />
           <span>All gate conditions met</span>
+        </div>
+      )}
+
+      {/* Test Lab actions (when gate is designed → tested) */}
+      {transition.from === "designed" && transition.to === "tested" && agentId && (
+        <div className="flex items-center gap-2 mb-4">
+          <Link
+            href={`/test-lab/scenarios/new?agent_id=${agentId}`}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider bg-ork-purple/15 text-ork-purple border border-ork-purple/30 rounded hover:bg-ork-purple/25 transition-colors"
+          >
+            <Plus size={11} />
+            Create Test Scenario
+          </Link>
+          <Link
+            href="/test-lab"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider bg-ork-cyan/10 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/20 transition-colors"
+          >
+            <FlaskConical size={11} />
+            Open Test Lab
+          </Link>
         </div>
       )}
 

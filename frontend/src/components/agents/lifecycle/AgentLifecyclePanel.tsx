@@ -101,6 +101,7 @@ export function AgentLifecyclePanel({
       <TransitionGate
         transition={transition}
         currentStatus={agent.status}
+        agentId={agent.id}
         onPromote={handlePromote}
         promoting={promoting}
       />

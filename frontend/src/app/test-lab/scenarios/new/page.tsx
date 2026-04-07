@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FlaskConical, Save } from "lucide-react";
 import { request } from "@/lib/api-client";
@@ -10,12 +10,15 @@ import type { AgentDefinition } from "@/lib/agent-registry/types";
 
 export default function CreateScenarioPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedAgentId = searchParams.get("agent_id") || "";
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
 
   const [name, setName] = useState("");
-  const [agentId, setAgentId] = useState("");
+  const [agentId, setAgentId] = useState(preselectedAgentId);
 
   useEffect(() => {
     listAgents().then(setAgents).catch(() => {});
