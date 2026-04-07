@@ -142,20 +142,18 @@ export default function TestLabPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // ─── Fetch scenarios ────────────────────────────────────────────────────
-  const fetchScenarios = useCallback(() => {
+  const fetchScenarios = useCallback(async () => {
     setScenariosLoading(true);
-    fetch("/api/test-lab/scenarios")
-      .then((res) => {
-        if (!res.ok) throw new Error(res.statusText);
-        return res.json();
-      })
-      .then((data) => {
-        const items = Array.isArray(data) ? data : data.items ?? [];
-        setScenarios(items);
-        setScenariosError(null);
-      })
-      .catch((e) => setScenariosError(e.message))
-      .finally(() => setScenariosLoading(false));
+    try {
+      const data = await request<{ items: Scenario[] } | Scenario[]>("/api/test-lab/scenarios");
+      const items = Array.isArray(data) ? data : data.items ?? [];
+      setScenarios(items);
+      setScenariosError(null);
+    } catch (e: any) {
+      setScenariosError(e.message || "Failed to load scenarios");
+    } finally {
+      setScenariosLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -275,18 +273,12 @@ export default function TestLabPage() {
   async function handleRun(scenarioId: string) {
     setRunningId(scenarioId);
     try {
-      const res = await fetch(`/api/test-lab/scenarios/${scenarioId}/run`, {
+      const run = await request<{ id: string }>(`/api/test-lab/scenarios/${scenarioId}/run`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail || res.statusText);
-      }
-      const run = await res.json();
       router.push(`/test-lab/runs/${run.id}`);
     } catch (e: any) {
-      setScenariosError(e.message);
+      setScenariosError(e.message || "Failed to start run");
     } finally {
       setRunningId(null);
     }
