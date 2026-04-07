@@ -1,4 +1,5 @@
 """Celery tasks for Test Lab execution."""
+import asyncio
 import logging
 
 from app.celery_app import celery
@@ -10,7 +11,11 @@ logger = logging.getLogger(__name__)
 @celery.task(name="test_lab.run_test", bind=True, max_retries=0)
 def run_test_task(self, run_id: str, scenario_id: str):
     try:
-        execute_test_run(run_id, scenario_id)
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(execute_test_run(run_id, scenario_id))
+        finally:
+            loop.close()
     except Exception as exc:
         logger.exception(f"Test run {run_id} failed")
         try:
