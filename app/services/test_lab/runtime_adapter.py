@@ -68,48 +68,44 @@ class RuntimeEventCollector:
         self._emit("agent_iteration_started", message=f"Iteration {self.iteration_count}")
         self._emit("llm_request_started", message=f"LLM inference iteration {self.iteration_count}")
 
-    async def on_post_reasoning(self, agent, response, *args, **kwargs):
+    async def on_post_reasoning(self, agent, *args, **kwargs):
         llm_ms = int((time.time() - self._llm_start) * 1000) if self._llm_start else 0
 
-        # Extract LLM thinking, text, and tool decisions
+        # Get last message from agent memory (the LLM response)
         llm_text = ""
         tool_calls = []
-        if hasattr(response, "content"):
-            content = response.content
-            if isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict):
-                        btype = block.get("type", "")
-                        if btype == "thinking":
-                            llm_text += block.get("text", "")[:1000] + "\n"
-                        elif btype == "text":
-                            llm_text += block.get("text", "")[:1000] + "\n"
-                        elif btype == "tool_use":
-                            name = block.get("name", "unknown")
-                            self._last_tool_name = name
-                            tool_calls.append({
-                                "tool_name": name,
-                                "tool_input": str(block.get("input", block.get("raw_input", "")))[:500],
-                            })
-                    elif hasattr(block, "type"):
-                        btype = getattr(block, "type", "")
-                        if btype == "thinking":
-                            llm_text += getattr(block, "text", "")[:1000] + "\n"
-                        elif btype == "text":
-                            llm_text += getattr(block, "text", "")[:1000] + "\n"
-                        elif btype == "tool_use":
-                            name = getattr(block, "name", "unknown")
-                            self._last_tool_name = name
-                            tool_calls.append({
-                                "tool_name": name,
-                                "tool_input": str(getattr(block, "input", getattr(block, "raw_input", "")))[:500],
-                            })
-            elif isinstance(content, str):
-                llm_text = content[:2000]
 
-        # Also try get_text_content
-        if not llm_text and hasattr(response, "get_text_content"):
-            llm_text = (response.get_text_content() or "")[:2000]
+        try:
+            msgs = await agent.memory.get_memory()
+            if msgs:
+                last_msg = msgs[-1]
+                content = getattr(last_msg, "content", None)
+
+                def bget(block, key, default=""):
+                    if isinstance(block, dict):
+                        return block.get(key, default)
+                    return getattr(block, key, default)
+
+                if isinstance(content, list):
+                    for block in content:
+                        btype = bget(block, "type", "")
+                        if btype in ("thinking", "text"):
+                            llm_text += str(bget(block, "text", ""))[:1000] + "\n"
+                        elif btype == "tool_use":
+                            name = bget(block, "name", "unknown")
+                            self._last_tool_name = name
+                            raw_input = bget(block, "raw_input", "") or str(bget(block, "input", ""))
+                            tool_calls.append({
+                                "tool_name": name,
+                                "tool_input": str(raw_input)[:500],
+                            })
+                elif isinstance(content, str):
+                    llm_text = content[:2000]
+
+                if not llm_text:
+                    llm_text = (last_msg.get_text_content() or "") if hasattr(last_msg, "get_text_content") else ""
+        except Exception as e:
+            logger.warning(f"Failed to extract from memory: {e}")
 
         self._emit("llm_request_completed", message=f"LLM responded", duration_ms=llm_ms, details={
             "llm_output": llm_text.strip()[:2000] if llm_text.strip() else None,
@@ -117,46 +113,50 @@ class RuntimeEventCollector:
         })
 
         for tc in tool_calls:
-            self._emit("tool_call_started", message=f"Calling {tc['tool_name']}", details=tc)
+            self._emit("tool_call_started", message=f"Calling MCP tool: {tc['tool_name']}", details=tc)
 
     async def on_pre_acting(self, agent, *args, **kwargs):
         self._tool_start = time.time()
 
-    async def on_post_acting(self, agent, response, *args, **kwargs):
+    async def on_post_acting(self, agent, *args, **kwargs):
         tool_ms = int((time.time() - self._tool_start) * 1000) if self._tool_start else 0
         iter_ms = int((time.time() - self._iter_start) * 1000) if self._iter_start else 0
 
-        # Extract tool result info
+        def bget(block, key, default=""):
+            if isinstance(block, dict):
+                return block.get(key, default)
+            return getattr(block, key, default)
+
         tool_name = getattr(self, "_last_tool_name", "unknown")
         tool_output_preview = ""
-        if hasattr(response, "content"):
-            content = response.content
-            if isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict):
-                        if block.get("type") == "tool_result":
-                            tool_name = block.get("name", tool_name)
-                            output = block.get("output", "")
-                            if isinstance(output, list):
-                                parts = [b.get("text", str(b))[:500] if isinstance(b, dict) else getattr(b, "text", str(b))[:500] for b in output]
-                                tool_output_preview = "\n".join(parts)[:2000]
-                            else:
-                                tool_output_preview = str(output)[:2000]
-                    elif hasattr(block, "type"):
-                        if getattr(block, "type", "") == "tool_result":
-                            tool_name = getattr(block, "name", tool_name)
-                            output = getattr(block, "output", "")
-                            if isinstance(output, list):
-                                parts = [getattr(b, "text", str(b))[:500] for b in output]
-                                tool_output_preview = "\n".join(parts)[:2000]
-                            else:
-                                tool_output_preview = str(output)[:2000]
-            elif isinstance(content, str):
-                tool_output_preview = content[:2000]
 
-        self._emit("tool_call_completed", message=f"Tool '{tool_name}' completed", duration_ms=tool_ms, details={
+        # Get last message from memory (the tool result)
+        try:
+            msgs = await agent.memory.get_memory()
+            if msgs:
+                last_msg = msgs[-1]
+                content = getattr(last_msg, "content", None)
+                if isinstance(content, list):
+                    for block in content:
+                        btype = bget(block, "type", "")
+                        if btype == "tool_result":
+                            tool_name = bget(block, "name", tool_name)
+                            output = bget(block, "output", "")
+                            if isinstance(output, list):
+                                parts = [str(bget(b, "text", str(b)))[:800] for b in output]
+                                tool_output_preview = "\n".join(parts)[:3000]
+                            elif isinstance(output, str):
+                                tool_output_preview = output[:3000]
+                            else:
+                                tool_output_preview = str(output)[:3000]
+                elif isinstance(content, str):
+                    tool_output_preview = content[:3000]
+        except Exception as e:
+            logger.warning(f"Failed to extract tool result from memory: {e}")
+
+        self._emit("tool_call_completed", message=f"MCP tool '{tool_name}' returned", duration_ms=tool_ms, details={
             "tool_name": tool_name,
-            "output_preview": tool_output_preview[:2000],
+            "output_preview": tool_output_preview,
         })
         self._emit("agent_iteration_completed", message=f"Iteration {self.iteration_count} done", duration_ms=iter_ms)
 
