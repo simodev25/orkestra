@@ -1,5 +1,7 @@
 """SubagentInvocation and MCPInvocation entities."""
 
+from datetime import datetime
+
 from sqlalchemy import String, Text, Float, DateTime, Boolean, Integer
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -21,8 +23,8 @@ class SubagentInvocation(BaseModel):
     output_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     cost: Mapped[float] = mapped_column(Float, default=0.0)
-    started_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ended_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -43,5 +45,5 @@ class MCPInvocation(BaseModel):
     input_fingerprint: Mapped[str | None] = mapped_column(String(255), nullable=True)
     output_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
-    started_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ended_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

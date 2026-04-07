@@ -1,5 +1,7 @@
 """Run and RunNode entities."""
 
+from datetime import datetime
+
 from sqlalchemy import String, Float, DateTime, Integer
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,8 +18,8 @@ class Run(BaseModel):
     plan_id: Mapped[str] = mapped_column(String(36))
     workflow_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default=RunStatus.CREATED)
-    started_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ended_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     estimated_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
     actual_cost: Mapped[float] = mapped_column(Float, default=0.0)
     approval_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -36,6 +38,6 @@ class RunNode(BaseModel):
     depends_on: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     parallel_group: Mapped[str | None] = mapped_column(String(100), nullable=True)
     trigger_condition: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    started_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ended_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
