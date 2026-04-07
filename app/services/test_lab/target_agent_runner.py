@@ -136,7 +136,7 @@ async def run_target_agent(
 
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(react_agent, user_msg),
+            react_agent(user_msg),
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError:

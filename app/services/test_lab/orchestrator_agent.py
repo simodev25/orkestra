@@ -374,7 +374,7 @@ async def chat_with_orchestrator(run_id: str, message: str) -> str:
     try:
         user_msg = Msg("user", message, "user")
         response = await asyncio.wait_for(
-            asyncio.to_thread(orchestrator, user_msg),
+            orchestrator(user_msg),
             timeout=120,
         )
         text = response.content if hasattr(response, "content") else str(response)
@@ -438,15 +438,17 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
         )
 
         response = await asyncio.wait_for(
-            asyncio.to_thread(orchestrator, user_msg),
+            orchestrator(user_msg),
             timeout=ctx.timeout_seconds + 180,
         )
+
+        final_text = response.content if hasattr(response, "content") else str(response)
 
         # Fallback if orchestrator didn't save
         if not ctx.verdict:
             update_run(run_id, status="completed", verdict="unknown", score=0,
                        duration_ms=ctx.target_duration_ms, final_output=ctx.target_output,
-                       summary=response.content if hasattr(response, "content") else str(response),
+                       summary=final_text,
                        ended_at=datetime.now(timezone.utc))
 
     except Exception as exc:
