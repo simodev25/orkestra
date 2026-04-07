@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bot, Wrench, Activity, FlaskConical, Settings,
+  Bot, Wrench, Activity, FlaskConical, Settings, SlidersHorizontal,
 } from "lucide-react";
 
 const NAV = [
@@ -13,6 +13,7 @@ const NAV = [
   { label: "Families", href: "/agents/families", icon: Bot },
   { label: "Agent Skills", href: "/agents/skills", icon: Bot },
   { label: "Test Lab", href: "/test-lab", icon: FlaskConical },
+  { label: "Test Lab Config", href: "/test-lab/config", icon: SlidersHorizontal },
   { label: "MCP Catalog", href: "/mcps", icon: Wrench },
   { section: "Configuration" },
   { label: "Admin", href: "/admin", icon: Settings },
