@@ -6,6 +6,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.auth import ApiKeyMiddleware
 from app.core.config import get_settings
 from app.api.routes import (
     health, requests, cases, agents, mcps, plans, runs,
@@ -55,11 +56,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3300", "http://localhost:5173"],
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",")],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
+app.add_middleware(ApiKeyMiddleware)
 
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(requests.router, prefix="/api/requests", tags=["requests"])

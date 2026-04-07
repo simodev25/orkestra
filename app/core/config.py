@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "orkestra-dev-secret-key-change-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
+    # Authentication
+    API_KEYS: str = "test-orkestra-api-key"  # comma-separated valid API keys
+    AUTH_ENABLED: bool = True
+    PUBLIC_PATHS: str = "/api/health,/api/metrics,/docs,/openapi.json,/redoc"
+
     # Storage
     STORAGE_BACKEND: str = "local"
     STORAGE_LOCAL_PATH: str = "./storage/documents"
@@ -44,6 +49,9 @@ class Settings(BaseSettings):
     OBOT_TIMEOUT_SECONDS: float = 8.0
     OBOT_USE_MOCK: bool = True
     OBOT_FALLBACK_TO_MOCK: bool = True
+
+    # CORS
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3300,http://localhost:5173"
 
     class Config:
         env_file = ".env"
