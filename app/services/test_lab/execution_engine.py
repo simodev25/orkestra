@@ -181,9 +181,10 @@ def _make_model(worker_name: str | None = None):
         model_name = config["workers"][worker_name].get("model")
 
     if not model_name:
-        model_name = config.get("orchestrator", {}).get("model", "gpt-oss:20b-cloud")
+        model_name = config.get("orchestrator", {}).get("model", "mistral")
 
-    host = "https://ollama.com"
+    settings = get_settings()
+    host = getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
     return OllamaChatModel(model_name=model_name, host=host, stream=False)
 
 
