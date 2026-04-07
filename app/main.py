@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.api.routes import (
     health, requests, cases, agents, mcps, plans, runs,
     control, supervision, approvals, audit, workflows, mcp_catalog, metrics,
-    debug_strategy,
+    debug_strategy, test_lab,
 )
 from app.api.routes import settings as settings_routes
 from app.api.routes.families import router as families_router
@@ -79,3 +79,4 @@ app.include_router(workflows.router, prefix="/api/workflow-definitions", tags=["
 app.include_router(settings_routes.router, prefix="/api/settings", tags=["settings"])
 app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 app.include_router(debug_strategy.router, prefix="/api", tags=["debug-strategy"])
+app.include_router(test_lab.router, prefix="/api/test-lab", tags=["test-lab"])

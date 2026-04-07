@@ -18,7 +18,7 @@ const NAV = [
   { label: "Agents", href: "/agents", icon: Bot },
   { label: "Families", href: "/agents/families", icon: Bot },
   { label: "Agent Skills", href: "/agents/skills", icon: Bot },
-  { label: "Test Lab", href: "/agents/test-lab", icon: FlaskConical },
+  { label: "Test Lab", href: "/test-lab", icon: FlaskConical },
   { label: "MCP Catalog", href: "/mcps", icon: Wrench },
   { section: "Governance" },
   { label: "Control", href: "/control", icon: Shield },
