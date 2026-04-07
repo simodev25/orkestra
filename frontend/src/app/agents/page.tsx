@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { StatCard } from "@/components/ui/stat-card";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
 import { GenerateAgentModal } from "@/components/agents/generate-agent-modal";
 import {
@@ -158,13 +159,13 @@ function AgentRegistryPageContent() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Agents actifs" value={stats.active_agents} tone="text-ork-green" />
-        <StatCard label="Agents testés" value={stats.tested_agents} tone="text-ork-cyan" />
-        <StatCard label="Agents dépréciés" value={stats.deprecated_agents} tone="text-ork-amber" />
+        <StatCard label="Agents actifs" value={stats.active_agents} accent="green" />
+        <StatCard label="Agents testés" value={stats.tested_agents} accent="cyan" />
+        <StatCard label="Agents dépréciés" value={stats.deprecated_agents} accent="amber" />
         <StatCard
           label={workflowId ? `Agents workflow ${workflowId}` : "Agents workflow courant"}
           value={workflowId ? stats.current_workflow_agents : 0}
-          tone="text-ork-purple"
+          accent="purple"
         />
       </div>
 
@@ -413,15 +414,6 @@ function AgentRegistryPageContent() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="glass-panel p-3 min-w-[150px]">
-      <p className="data-label">{label}</p>
-      <p className={`text-xl font-semibold mt-1 ${tone}`}>{value}</p>
     </div>
   );
 }

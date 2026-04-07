@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { StatCard } from "@/components/ui/stat-card";
 import {
   bindToAgentFamily,
   bindToWorkflow,
@@ -27,14 +28,6 @@ const DEFAULT_FILTERS: McpCatalogFilters = {
   hidden_from_ai_generator: "all",
 };
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="glass-panel p-3 min-w-[150px]">
-      <p className="data-label">{label}</p>
-      <p className={`text-xl font-semibold mt-1 ${tone}`}>{value}</p>
-    </div>
-  );
-}
 
 export default function McpCatalogPage() {
   const [items, setItems] = useState<CatalogMcpViewModel[]>([]);
@@ -180,12 +173,12 @@ export default function McpCatalogPage() {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        <Stat label="Obot MCPs" value={summary.total} tone="text-ork-cyan" />
-        <Stat label="Enabled in Orkestra" value={summary.enabled} tone="text-ork-green" />
-        <Stat label="Restricted" value={summary.restricted} tone="text-ork-amber" />
-        <Stat label="Critical" value={summary.critical} tone="text-ork-red" />
-        <Stat label="Approval Required" value={summary.approval} tone="text-ork-purple" />
-        <Stat label="Hidden from AI Gen" value={summary.aiHidden} tone="text-ork-muted" />
+        <StatCard label="Obot MCPs" value={summary.total} accent="cyan" />
+        <StatCard label="Enabled in Orkestra" value={summary.enabled} accent="green" />
+        <StatCard label="Restricted" value={summary.restricted} accent="amber" />
+        <StatCard label="Critical" value={summary.critical} accent="red" />
+        <StatCard label="Approval Required" value={summary.approval} accent="purple" />
+        <StatCard label="Hidden from AI Gen" value={summary.aiHidden} />
       </div>
 
       <div className="glass-panel p-4 space-y-3">
