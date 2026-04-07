@@ -70,6 +70,24 @@ function formatDuration(ms: number | null | undefined) {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function getAgentLabel(event: any): string | null {
+  const t = event.event_type;
+  const p = event.phase;
+  if (p === "orchestrator") return "master_orchestrator";
+  if (p === "preparation") return "preparation_worker";
+  if (p === "assertions") return "assertion_worker";
+  if (p === "diagnostics") return "diagnostic_worker";
+  if (p === "report") return "verdict_worker";
+  if (p === "runtime") {
+    if (t === "agent_iteration_started" || t === "agent_iteration_completed") return "target_agent";
+    if (t === "llm_request_started" || t === "llm_request_completed") return "target_agent (LLM)";
+    if (t === "tool_call_started" || t === "tool_call_completed") return "target_agent (MCP)";
+    if (t === "mcp_session_connected") return "MCP";
+    return "runtime_adapter";
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
@@ -169,6 +187,7 @@ export default function TestRunDetailPage() {
   const passedAssertions = assertions.filter((a: any) => a.passed).length;
   const totalAssertions = assertions.length;
   const verdictInfo = run?.verdict ? VERDICT_DISPLAY[run.verdict] : null;
+  const isLive = run?.status === "running" || run?.status === "queued";
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-6 animate-fade-in">
@@ -256,58 +275,120 @@ export default function TestRunDetailPage() {
 
       {/* Execution Timeline */}
       <div>
-        <h2 className="section-title mb-4 flex items-center gap-2"><Clock size={13} /> Execution Timeline ({events.length} events)</h2>
+        <h2 className="section-title mb-4 flex items-center gap-2">
+          <Clock size={13} />
+          Execution Timeline ({events.length} events)
+          {isLive && <span className="w-2 h-2 rounded-full bg-ork-green animate-pulse ml-2" title="Live" />}
+        </h2>
         <div className="glass-panel p-5">
           {events.length === 0 ? (
-            <p className="text-ork-muted font-mono text-xs text-center py-8">
-              {run?.status === "running" || run?.status === "queued" ? "Waiting for events..." : "No timeline events"}
-            </p>
+            <div className="text-center py-8">
+              {isLive ? (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-ork-cyan border-t-transparent rounded-full animate-spin" />
+                  <p className="text-ork-cyan font-mono text-xs">Waiting for events...</p>
+                </div>
+              ) : (
+                <p className="text-ork-muted font-mono text-xs">No timeline events</p>
+              )}
+            </div>
           ) : (
             <div className="space-y-0">
               {events.map((event: any, i: number) => {
                 const phase = event.phase || "unknown";
                 const phaseColor = PHASE_COLORS[phase] || "text-ork-muted border-ork-border bg-ork-surface";
                 const dotColor = PHASE_DOT_COLORS[phase] || "bg-ork-dim";
+                const isLastEvent = i === events.length - 1;
+                const isActive = isLastEvent && isLive;
+                const agentName = getAgentLabel(event);
+
                 return (
-                  <div key={event.id || i} className="flex items-start gap-3">
+                  <div key={event.id || i} className={`flex items-start gap-3 ${isActive ? "animate-fade-in" : ""}`}>
+                    {/* Timeline dot + connector */}
                     <div className="flex flex-col items-center pt-1.5">
-                      <div className={`w-2 h-2 rounded-full ${dotColor}`} />
-                      {i < events.length - 1 && <div className="w-px flex-1 min-h-[20px] border-l border-dashed border-ork-border" />}
+                      {isActive ? (
+                        <div className="w-3 h-3 rounded-full bg-ork-cyan animate-pulse" style={{ boxShadow: "0 0 8px rgba(0,212,255,0.5)" }} />
+                      ) : (
+                        <div className={`w-2 h-2 rounded-full ${dotColor}`} />
+                      )}
+                      {!isLastEvent && <div className="w-px flex-1 min-h-[20px] border-l border-dashed border-ork-border" />}
                     </div>
+
+                    {/* Event content */}
                     <div className="flex-1 pb-3">
                       <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                         <span className={`text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border ${phaseColor}`}>{phase}</span>
                         <span className="text-[10px] font-mono text-ork-cyan">{event.event_type}</span>
+                        {agentName && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-ork-purple/10 text-ork-purple border border-ork-purple/20">
+                            {agentName}
+                          </span>
+                        )}
                         {event.duration_ms != null && (
                           <span className="text-[10px] font-mono text-ork-amber">{formatDuration(event.duration_ms)}</span>
                         )}
                         <span className="text-[10px] font-mono text-ork-dim ml-auto">{formatTimestamp(event.timestamp)}</span>
                       </div>
                       <p className="text-xs text-ork-muted">{event.message}</p>
-                      {/* LLM output details */}
+
+                      {/* LLM thinking/output */}
                       {event.details?.llm_output && (
-                        <pre className="mt-1 text-[10px] font-mono text-ork-text/70 bg-ork-bg border border-ork-border rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                          {event.details.llm_output}
-                        </pre>
+                        <div className="mt-1.5 border-l-2 border-ork-purple/30 pl-3">
+                          <p className="text-[10px] font-mono text-ork-purple mb-1">LLM Output</p>
+                          <pre className="text-[10px] font-mono text-ork-text/70 bg-ork-bg border border-ork-border rounded p-2 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{event.details.llm_output}
+                          </pre>
+                        </div>
                       )}
-                      {/* Tool call details */}
-                      {event.details?.tool_name && event.event_type === "tool_call_completed" && (
-                        <div className="mt-1 text-[10px] font-mono">
-                          <span className="text-ork-cyan">{event.details.tool_name}</span>
+
+                      {/* Tool calls planned by LLM */}
+                      {event.details?.tool_calls_planned && event.details.tool_calls_planned.length > 0 && (
+                        <div className="mt-1.5 border-l-2 border-ork-cyan/30 pl-3">
+                          <p className="text-[10px] font-mono text-ork-cyan mb-1">Tool Calls</p>
+                          <div className="space-y-1">
+                            {event.details.tool_calls_planned.map((tc: any, j: number) => (
+                              <div key={j} className="flex items-start gap-2">
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-ork-cyan/10 text-ork-cyan border border-ork-cyan/20 shrink-0">{tc.tool_name}</span>
+                                {tc.tool_input && <span className="text-[10px] font-mono text-ork-dim truncate">{tc.tool_input}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tool result */}
+                      {event.event_type === "tool_call_completed" && event.details && (
+                        <div className="mt-1.5 border-l-2 border-ork-green/30 pl-3">
+                          <p className="text-[10px] font-mono text-ork-green mb-1">
+                            Tool Result {event.details.tool_name !== "unknown" ? `— ${event.details.tool_name}` : ""}
+                          </p>
                           {event.details.output_preview && (
-                            <pre className="mt-0.5 text-ork-text/60 bg-ork-bg border border-ork-border rounded p-2 max-h-24 overflow-y-auto whitespace-pre-wrap">
-                              {event.details.output_preview}
+                            <pre className="text-[10px] font-mono text-ork-text/60 bg-ork-bg border border-ork-border rounded p-2 max-h-28 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{event.details.output_preview}
                             </pre>
                           )}
                         </div>
                       )}
-                      {event.details?.tool_calls_planned && event.details.tool_calls_planned.length > 0 && (
-                        <div className="mt-1 flex gap-1 flex-wrap">
-                          {event.details.tool_calls_planned.map((tc: any, j: number) => (
-                            <span key={j} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-ork-cyan/10 text-ork-cyan border border-ork-cyan/20">
-                              {tc.tool_name}
-                            </span>
-                          ))}
+
+                      {/* MCP connection */}
+                      {event.event_type === "mcp_session_connected" && event.details && (
+                        <div className="mt-1.5 border-l-2 border-ork-green/30 pl-3">
+                          <p className="text-[10px] font-mono text-ork-green mb-1">MCP Connected</p>
+                          {event.details.tools && (
+                            <div className="flex gap-1 flex-wrap">
+                              {(Array.isArray(event.details.tools) ? event.details.tools : []).map((t: string, j: number) => (
+                                <span key={j} className="text-[10px] font-mono px-1 py-0.5 rounded bg-ork-green/10 text-ork-green/70 border border-ork-green/20">{t}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Spinner for active event */}
+                      {isActive && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="w-3 h-3 border border-ork-cyan border-t-transparent rounded-full animate-spin" />
+                          <span className="text-[10px] font-mono text-ork-cyan animate-pulse">Agent working...</span>
                         </div>
                       )}
                     </div>
