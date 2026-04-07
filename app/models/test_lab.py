@@ -50,7 +50,7 @@ class TestRun(BaseModel):
 class TestRunEvent(BaseModel):
     __tablename__ = "test_run_events"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: new_id("evt_"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: new_id("tevt_"))
     run_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     phase: Mapped[str | None] = mapped_column(String(50), nullable=True)

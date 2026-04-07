@@ -14,8 +14,8 @@ def utcnow():
 
 
 def new_id(prefix: str = ""):
-    """Generate a prefixed UUID (e.g., 'req_abc123')."""
-    uid = uuid.uuid4().hex[:12]
+    """Generate a prefixed UUID (e.g., 'req_abc123...xyz')."""
+    uid = uuid.uuid4().hex
     return f"{prefix}{uid}" if prefix else str(uuid.uuid4())
 
 
