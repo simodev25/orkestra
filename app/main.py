@@ -119,3 +119,5 @@ app.include_router(settings_routes.router, prefix="/api/settings", tags=["settin
 app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 app.include_router(debug_strategy.router, prefix="/api", tags=["debug-strategy"])
 app.include_router(test_lab.router, prefix="/api/test-lab", tags=["test-lab"])
+from app.api.routes import test_lab_session
+app.include_router(test_lab_session.router, tags=["test-lab-sessions"])
