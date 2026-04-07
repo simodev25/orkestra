@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.auth import ApiKeyMiddleware
 from app.core.config import get_settings
+from app.core.logging_config import configure_logging
 from app.api.routes import (
     health, requests, cases, agents, mcps, plans, runs,
     control, supervision, approvals, audit, workflows, mcp_catalog, metrics,
@@ -34,6 +35,7 @@ if settings.OTEL_ENDPOINT:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
     logger.info(f"Orkestra {settings.APP_VERSION} starting")
     try:
         factory = get_async_session_factory()
