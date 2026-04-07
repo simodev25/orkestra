@@ -28,6 +28,8 @@ export default function AdminPage() {
   const [openaiKey, setOpenaiKey] = useState("");
   const [ollamaKey, setOllamaKey] = useState("");
   const [savingSecret, setSavingSecret] = useState(false);
+  const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; message: string } | null>>({});
 
   const loadAll = useCallback(async () => {
     try {
@@ -108,6 +110,46 @@ export default function AdminPage() {
     }
   }
 
+  async function handleTestKey(provider: "openai" | "ollama") {
+    setTestingKey(provider);
+    setTestResult((prev) => ({ ...prev, [provider]: null }));
+    try {
+      if (provider === "openai") {
+        const key = openaiKey.trim() || secrets.find(s => s.id === "OPENAI_API_KEY")?.value;
+        if (!key) {
+          setTestResult((prev) => ({ ...prev, openai: { ok: false, message: "No API key configured or entered" } }));
+          return;
+        }
+        const res = await fetch("https://api.openai.com/v1/models", {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const count = data.data?.length ?? 0;
+          setTestResult((prev) => ({ ...prev, openai: { ok: true, message: `Connected — ${count} models available` } }));
+        } else {
+          const body = await res.json().catch(() => ({}));
+          setTestResult((prev) => ({ ...prev, openai: { ok: false, message: body.error?.message || `HTTP ${res.status}` } }));
+        }
+      } else {
+        // Test Ollama by listing models
+        const ollamaHost = "http://localhost:11434";
+        const res = await fetch(`${ollamaHost}/api/tags`).catch(() => null);
+        if (res && res.ok) {
+          const data = await res.json();
+          const count = data.models?.length ?? 0;
+          setTestResult((prev) => ({ ...prev, ollama: { ok: true, message: `Connected — ${count} models loaded` } }));
+        } else {
+          setTestResult((prev) => ({ ...prev, ollama: { ok: false, message: "Cannot reach Ollama at localhost:11434. Is it running?" } }));
+        }
+      }
+    } catch (err: any) {
+      setTestResult((prev) => ({ ...prev, [provider]: { ok: false, message: err.message || "Connection failed" } }));
+    } finally {
+      setTestingKey(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[60vh]">
@@ -163,13 +205,27 @@ export default function AdminPage() {
               placeholder="sk-..."
               className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono mb-2 text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
             />
-            <button
-              onClick={() => handleSaveSecret("OPENAI_API_KEY", openaiKey, "OpenAI API key")}
-              disabled={!openaiKey.trim() || savingSecret}
-              className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {savingSecret ? "Saving..." : "Save Key"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleSaveSecret("OPENAI_API_KEY", openaiKey, "OpenAI API key")}
+                disabled={!openaiKey.trim() || savingSecret}
+                className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {savingSecret ? "Saving..." : "Save Key"}
+              </button>
+              <button
+                onClick={() => handleTestKey("openai")}
+                disabled={testingKey === "openai"}
+                className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-amber/30 text-ork-amber bg-ork-amber/10 hover:bg-ork-amber/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {testingKey === "openai" ? "Testing..." : "Test"}
+              </button>
+            </div>
+            {testResult.openai && (
+              <p className={`mt-2 text-[10px] font-mono ${testResult.openai.ok ? "text-ork-green" : "text-ork-red"}`}>
+                {testResult.openai.ok ? "\u2713" : "\u2717"} {testResult.openai.message}
+              </p>
+            )}
           </div>
           {/* Ollama */}
           <div className="bg-ork-bg rounded-lg p-4 border border-ork-border/50">
@@ -188,13 +244,27 @@ export default function AdminPage() {
               placeholder="ollama-..."
               className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono mb-2 text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
             />
-            <button
-              onClick={() => handleSaveSecret("OLLAMA_API_KEY", ollamaKey, "Ollama API key")}
-              disabled={!ollamaKey.trim() || savingSecret}
-              className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {savingSecret ? "Saving..." : "Save Key"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleSaveSecret("OLLAMA_API_KEY", ollamaKey, "Ollama API key")}
+                disabled={!ollamaKey.trim() || savingSecret}
+                className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {savingSecret ? "Saving..." : "Save Key"}
+              </button>
+              <button
+                onClick={() => handleTestKey("ollama")}
+                disabled={testingKey === "ollama"}
+                className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-amber/30 text-ork-amber bg-ork-amber/10 hover:bg-ork-amber/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {testingKey === "ollama" ? "Testing..." : "Test"}
+              </button>
+            </div>
+            {testResult.ollama && (
+              <p className={`mt-2 text-[10px] font-mono ${testResult.ollama.ok ? "text-ork-green" : "text-ork-red"}`}>
+                {testResult.ollama.ok ? "\u2713" : "\u2717"} {testResult.ollama.message}
+              </p>
+            )}
           </div>
         </div>
       </div>
