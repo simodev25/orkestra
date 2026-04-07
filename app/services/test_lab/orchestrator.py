@@ -466,4 +466,4 @@ async def _execute_target_agent(run_id: str, db, scenario, agent_def) -> dict:
         pass
 
     return {"status": "completed", "final_output": final_output, "duration_ms": duration_ms,
-            "iteration_count": msg_count, "message_history": message_history}
+            "iteration_count": len(message_history), "message_history": message_history}
