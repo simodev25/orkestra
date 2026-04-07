@@ -1,17 +1,16 @@
-"""Multi-Agent Test Orchestrator — Full LLM-driven evaluation.
+"""Multi-Agent Test Orchestrator — Full LLM-driven, same pattern as orchestrateur_chat.py.
 
 Architecture:
-  OrchestratorAgent (ReActAgent)
-    ├── get_scenario_context      — reads scenario + agent info
-    ├── run_scenario_subagent     — generates test plan (LLM)
-    ├── run_target_agent          — executes the REAL agent under test
-    ├── run_judge_subagent        — evaluates quality, verdict, score (LLM)
-    ├── run_robustness_subagent   — proposes follow-up tests (LLM)
-    ├── run_policy_subagent       — checks governance compliance (LLM)
-    ├── get_run_state             — reads current run state
-    ├── save_run_result           — persists final results to DB
-
-All evaluation is LLM-driven. Tools are SYNC (AgentScope Toolkit requirement).
+  OrchestratorAgent (ReActAgent, persistent)
+    Tools call persistent SubAgents (created ONCE, reused):
+    ├── scenario_subagent   (ScenarioSubAgent)   — generates test plan
+    ├── judge_subagent      (JudgeSubAgent)      — evaluates + verdict + score
+    ├── robustness_subagent (RobustnessSubAgent) — proposes follow-ups
+    ├── policy_subagent     (PolicySubAgent)     — checks governance
+    Plus platform tools:
+    ├── run_target_agent    — executes the REAL agent under test
+    ├── get_scenario_context / get_run_state — reads state
+    ├── save_run_result     — persists to DB
 """
 from __future__ import annotations
 
@@ -41,35 +40,51 @@ logger = logging.getLogger("orkestra.test_lab.orchestrator_agent")
 
 
 def _extract_text(content) -> str:
-    """Extract plain text from AgentScope message content."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict) and "text" in item:
-                parts.append(item["text"])
-            elif isinstance(item, str):
-                parts.append(item)
-            else:
-                parts.append(str(item))
-        return "\n".join(parts)
+        return "\n".join(
+            item.get("text", str(item)) if isinstance(item, dict) else str(item)
+            for item in content
+        )
     return str(content)
 
 
 def _run_async(coro):
-    """Run an async coroutine from sync context."""
+    """Run async coroutine from sync context."""
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, coro)
-                return future.result()
-        else:
-            return loop.run_until_complete(coro)
+                return pool.submit(asyncio.run, coro).result()
+        return loop.run_until_complete(coro)
     except RuntimeError:
         return asyncio.run(coro)
+
+
+def _make_model(worker_name: str | None = None) -> OllamaChatModel:
+    config = _get_config_sync()
+    model_name = None
+    if worker_name and worker_name in config.get("workers", {}):
+        model_name = config["workers"][worker_name].get("model")
+    if not model_name:
+        model_name = config.get("orchestrator", {}).get("model", "mistral")
+    settings = get_settings()
+    host = getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
+    return OllamaChatModel(model_name=model_name, host=host, stream=False)
+
+
+def _build_subagent(name: str, sys_prompt: str, worker_key: str) -> ReActAgent:
+    """Build a persistent SubAgent (created ONCE, reused across tool calls)."""
+    return ReActAgent(
+        name=name,
+        model=_make_model(worker_key),
+        formatter=OllamaChatFormatter(),
+        memory=InMemoryMemory(),
+        sys_prompt=sys_prompt,
+        max_iters=1,
+    )
 
 
 # ─── Run context ─────────────────────────────────────────────────────────────
@@ -96,9 +111,59 @@ class RunContext:
     summary: str = ""
 
 
-# ─── SYNC Tool functions (AgentScope Toolkit requires sync) ──────────────────
+# ─── Build tools + persistent subagents (same pattern as orchestrateur_chat.py)
 
-def _build_tools(ctx: RunContext) -> list:
+def _build_tools_and_subagents(ctx: RunContext) -> list:
+    """Build tools with PERSISTENT subagents — created once, reused."""
+
+    # ── Persistent SubAgents (like orchestrateur_chat.py) ────────────────
+    scenario_subagent = _build_subagent(
+        "ScenarioSubAgent",
+        "Tu es un sous-agent de scenarisation de test.\n"
+        "Tu aides l'orchestrateur a transformer un besoin de test en scenario concret.\n"
+        "Reponds en francais.\n\n"
+        "Format obligatoire :\n"
+        "SCENARIO:\n<description courte et exploitable>\n\n"
+        "SUCCESS_CRITERIA:\n- <critere 1>\n- <critere 2>\n- <critere 3>\n\n"
+        "TEST_INPUT:\n<entree de test realiste>",
+        "preparation",
+    )
+
+    judge_subagent = _build_subagent(
+        "JudgeSubAgent",
+        "Tu es un sous-agent juge.\n"
+        "Tu evalues la sortie d'un agent sous test par rapport a un scenario et des criteres.\n"
+        "Reponds en francais.\n\n"
+        "Format obligatoire :\n"
+        "VERDICT: PASS ou FAIL ou PARTIAL\n"
+        "SCORE: <nombre entre 0 et 100>\n"
+        "RATIONALE:\n<explication courte>",
+        "verdict",
+    )
+
+    robustness_subagent = _build_subagent(
+        "RobustnessSubAgent",
+        "Tu es un sous-agent de robustesse.\n"
+        "Tu proposes un test complementaire plus dur ou un edge case.\n"
+        "Reponds en francais.\n\n"
+        "Format obligatoire :\n"
+        "FOLLOWUP_TEST:\n<test complementaire>\n\n"
+        "WHY_IT_MATTERS:\n<pourquoi ce test est utile>",
+        "diagnostic",
+    )
+
+    policy_subagent = _build_subagent(
+        "PolicySubAgent",
+        "Tu es un sous-agent de conformite policy.\n"
+        "Tu verifies si la sortie d'un agent respecte ses contraintes de gouvernance.\n"
+        "Reponds en francais.\n\n"
+        "Format obligatoire :\n"
+        "COMPLIANCE: OK ou VIOLATION\n"
+        "DETAILS:\n<explication>",
+        "assertion",
+    )
+
+    # ── Tool functions (SYNC, call persistent subagents) ─────────────────
 
     def get_scenario_context() -> ToolResponse:
         """Read the scenario and agent under test information."""
@@ -113,16 +178,10 @@ def _build_tools(ctx: RunContext) -> list:
             f"  max_iterations: {ctx.max_iterations}"
         ))
 
-    def run_scenario_subagent(objective: str) -> ToolResponse:
-        """Generate a structured test plan. Call BEFORE executing the target agent."""
+    def run_scenario_subagent(task: str) -> ToolResponse:
+        """Ask the ScenarioSubAgent to prepare a test plan. Call BEFORE run_target_agent."""
         emit_event(ctx.run_id, "subagent_start", "preparation", "ScenarioSubAgent starting")
-        model = _make_model("preparation")
-        agent = ReActAgent(
-            name="ScenarioSubAgent", model=model, formatter=OllamaChatFormatter(),
-            memory=InMemoryMemory(), max_iters=1,
-            sys_prompt="Tu es un sous-agent de scenarisation de test. Tu transformes un besoin de test en scenario concret. Reponds en francais. Format: SCENARIO / SUCCESS_CRITERIA / TEST_INPUT.",
-        )
-        res = _run_async(agent(Msg("user", objective, "user")))
+        res = _run_async(scenario_subagent(Msg("user", task, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
         emit_event(ctx.run_id, "subagent_done", "preparation", "ScenarioSubAgent done")
         return ToolResponse(content=text)
@@ -133,7 +192,6 @@ def _build_tools(ctx: RunContext) -> list:
 
         async def _execute():
             from app.services.test_lab.target_agent_runner import run_target_agent as _run
-            from app.services.test_lab.target_agent_runner import _build_execution_events
             from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
             from sqlalchemy.orm import sessionmaker
             settings = get_settings()
@@ -153,7 +211,6 @@ def _build_tools(ctx: RunContext) -> list:
         ctx.target_status = result.status
         ctx.target_duration_ms = result.duration_ms
         ctx.target_iteration_count = result.iteration_count
-
         from app.services.test_lab.target_agent_runner import _build_execution_events
         ctx.execution_events = _build_execution_events(result.message_history)
 
@@ -172,25 +229,9 @@ def _build_tools(ctx: RunContext) -> list:
         ))
 
     def run_judge_subagent(analysis_request: str) -> ToolResponse:
-        """Evaluate the target agent output. Produce VERDICT (PASS/FAIL/PARTIAL), SCORE (0-100), RATIONALE. Call AFTER run_target_agent."""
+        """Ask the JudgeSubAgent to evaluate the output. Returns VERDICT, SCORE, RATIONALE. Call AFTER run_target_agent."""
         emit_event(ctx.run_id, "subagent_start", "judgment", "JudgeSubAgent starting")
-        model = _make_model("verdict")
-        agent = ReActAgent(
-            name="JudgeSubAgent", model=model, formatter=OllamaChatFormatter(),
-            memory=InMemoryMemory(), max_iters=1,
-            sys_prompt=(
-                "Tu es un sous-agent juge pour un systeme de test d'agents IA.\n"
-                "Tu evalues la sortie d'un agent sous test.\n"
-                "Tu dois donner:\n"
-                "- VERDICT: PASS, FAIL ou PARTIAL\n"
-                "- SCORE: un nombre entre 0 et 100\n"
-                "- RATIONALE: une explication courte et technique\n"
-                "- ISSUES: liste des problemes detectes\n"
-                "- RECOMMENDATIONS: suggestions\n"
-                "Sois strict mais juste. Reponds en francais."
-            ),
-        )
-        res = _run_async(agent(Msg("user", analysis_request, "user")))
+        res = _run_async(judge_subagent(Msg("user", analysis_request, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
 
         score_match = re.search(r"SCORE[:\s]*(\d+)", text)
@@ -207,25 +248,13 @@ def _build_tools(ctx: RunContext) -> list:
         return ToolResponse(content=text)
 
     def run_robustness_subagent(request: str) -> ToolResponse:
-        """Propose a follow-up edge case or robustness test."""
-        model = _make_model("diagnostic")
-        agent = ReActAgent(
-            name="RobustnessSubAgent", model=model, formatter=OllamaChatFormatter(),
-            memory=InMemoryMemory(), max_iters=1,
-            sys_prompt="Tu es un sous-agent de robustesse. Tu proposes des tests complementaires. Reponds en francais. Format: FOLLOWUP_TEST / WHY_IT_MATTERS.",
-        )
-        res = _run_async(agent(Msg("user", request, "user")))
+        """Ask the RobustnessSubAgent to propose a follow-up edge case test."""
+        res = _run_async(robustness_subagent(Msg("user", request, "user")))
         return ToolResponse(content=_extract_text(res.content if hasattr(res, "content") else str(res)))
 
     def run_policy_subagent(request: str) -> ToolResponse:
-        """Check if the agent output respects governance constraints."""
-        model = _make_model("assertion")
-        agent = ReActAgent(
-            name="PolicySubAgent", model=model, formatter=OllamaChatFormatter(),
-            memory=InMemoryMemory(), max_iters=1,
-            sys_prompt="Tu es un sous-agent de conformite policy. Tu verifies si la sortie d'un agent respecte ses contraintes. Reponds en francais. Format: COMPLIANCE: OK/VIOLATION / DETAILS.",
-        )
-        res = _run_async(agent(Msg("user", request, "user")))
+        """Ask the PolicySubAgent to check governance compliance."""
+        res = _run_async(policy_subagent(Msg("user", request, "user")))
         return ToolResponse(content=_extract_text(res.content if hasattr(res, "content") else str(res)))
 
     def get_run_state() -> ToolResponse:
@@ -242,15 +271,13 @@ def _build_tools(ctx: RunContext) -> list:
         ))
 
     def save_run_result(summary: str) -> ToolResponse:
-        """Persist test results to DB. Call this as the LAST step."""
-        final_summary = summary[:5000] if summary else ctx.summary[:5000] if ctx.summary else ""
+        """Persist test results to DB. ALWAYS call this as the LAST step."""
+        final_summary = (summary or ctx.summary or "")[:5000]
         update_run(
-            ctx.run_id,
-            status="completed",
-            verdict=ctx.verdict or "unknown",
-            score=ctx.score,
+            ctx.run_id, status="completed",
+            verdict=ctx.verdict or "unknown", score=ctx.score,
             duration_ms=ctx.target_duration_ms,
-            final_output=ctx.target_output[:10000] if ctx.target_output else "",
+            final_output=(ctx.target_output or "")[:10000],
             summary=final_summary,
             ended_at=datetime.now(timezone.utc),
             agent_version=ctx.agent_version,
@@ -271,68 +298,68 @@ def _build_tools(ctx: RunContext) -> list:
     ]
 
 
-# ─── Model factory ───────────────────────────────────────────────────────────
-
-def _make_model(worker_name: str | None = None) -> OllamaChatModel:
-    config = _get_config_sync()
-    model_name = None
-    if worker_name and worker_name in config.get("workers", {}):
-        model_name = config["workers"][worker_name].get("model")
-    if not model_name:
-        model_name = config.get("orchestrator", {}).get("model", "mistral")
-    settings = get_settings()
-    host = getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-    return OllamaChatModel(model_name=model_name, host=host, stream=False)
-
-
 # ─── OrchestratorAgent ───────────────────────────────────────────────────────
 
-ORCHESTRATOR_PROMPT = """Tu es OrchestratorAgent, l'orchestrateur de test d'agents d'Orkestra.
+ORCHESTRATOR_PROMPT = """Tu es OrchestratorAgent, l'orchestrateur interactif de test d'agents d'Orkestra.
 
-Mission :
-- Tu testes un agent sous test en coordonnant des sous-agents specialises.
-- TOUT est evalue par LLM, pas de moteur deterministe.
+Mission centrale :
+- tu testes des agents
+- tu pilotes des sous-agents specialises
+- tu executes l'agent sous test
+- tu rends un verdict
+- puis tu redonnes la main a l'utilisateur
 
-Tools :
+Tu disposes des tools suivants :
 - get_scenario_context : lis le contexte du scenario
-- run_scenario_subagent : prepare un plan de test
-- run_target_agent : execute le VRAI agent sous test (PAS une simulation)
-- run_judge_subagent : evalue la sortie (verdict + score + rationale)
-- run_robustness_subagent : propose des tests complementaires
+- run_scenario_subagent : construit un scenario de test
+- run_target_agent : execute le vrai agent sous test
+- run_judge_subagent : juge le resultat (VERDICT + SCORE + RATIONALE)
+- run_robustness_subagent : propose un test complementaire
 - run_policy_subagent : verifie la conformite policy
-- get_run_state : lis l'etat courant
-- save_run_result : sauvegarde (TOUJOURS en dernier)
+- get_run_state : lis l'etat de session
+- save_run_result : sauvegarde un run termine
 
-Workflow :
-1. get_scenario_context
-2. run_scenario_subagent
-3. run_target_agent avec l'input_prompt du scenario
-4. run_judge_subagent en lui passant le contexte du scenario ET la sortie de l'agent
-5. save_run_result avec un resume
+Regles de comportement :
+1. Tu reponds toujours en francais.
+2. Tu restes direct, technique, utile.
+3. Tu dois :
+   - lire le contexte du scenario (get_scenario_context)
+   - construire le scenario (run_scenario_subagent)
+   - executer l'agent sous test (run_target_agent) avec l'input_prompt du scenario
+   - faire juger le resultat (run_judge_subagent) en passant le scenario + la sortie
+   - sauvegarder le run (save_run_result)
+   - puis restituer un bilan
+4. Apres un test termine, tu dois proposer des suites possibles :
+   - test plus strict
+   - cas ambigu
+   - robustesse
+   - comparaison
+   - nouvelle variante
+5. Ne fais pas de blabla.
 
-Regles :
-1. Reponds en francais.
-2. TOUJOURS executer run_target_agent.
-3. TOUJOURS executer run_judge_subagent.
-4. TOUJOURS finir par save_run_result.
-5. Apres save, donne un resume structure.
+Quand tu rends un resultat final, utilise cette structure :
 
-Format du resume :
-RESUME: <resume court>
-STATUT: <PASS | FAIL | PARTIAL>
-AGENT_SOUS_TEST: <agent_id>
-SCORE: <score>/100
-DETAILS: <points importants>
+RESUME:
+<resume court>
+
+STATUT:
+<PASS | FAIL | PARTIAL>
+
+AGENT_SOUS_TEST:
+<agent_id>
+
+DETAILS:
+<points importants>
+
 OPTIONS_SUIVANTES:
-- test plus strict
-- edge case
-- test policy
-- rejouer
+- <option 1>
+- <option 2>
+- <option 3>
 """
 
 
 def build_orchestrator_agent(ctx: RunContext) -> ReActAgent:
-    tools = _build_tools(ctx)
+    tools = _build_tools_and_subagents(ctx)
     toolkit = Toolkit()
     for fn in tools:
         toolkit.register_tool_function(fn)
@@ -412,7 +439,6 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
             "user",
         )
 
-        # Run orchestrator (it's async but tools are sync via _run_async)
         response = await asyncio.wait_for(
             orchestrator(user_msg),
             timeout=ctx.timeout_seconds + 180,
@@ -423,7 +449,7 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
         if not ctx.verdict:
             update_run(run_id, status="completed", verdict="unknown", score=0,
                        duration_ms=ctx.target_duration_ms,
-                       final_output=ctx.target_output[:10000] if ctx.target_output else "",
+                       final_output=(ctx.target_output or "")[:10000],
                        summary=final_text[:5000],
                        ended_at=datetime.now(timezone.utc))
 
