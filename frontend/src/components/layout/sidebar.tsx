@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bot, Wrench, Activity, FlaskConical,
+  Bot, Wrench, Activity, FlaskConical, Settings,
 } from "lucide-react";
 
 const NAV = [
@@ -14,6 +14,8 @@ const NAV = [
   { label: "Agent Skills", href: "/agents/skills", icon: Bot },
   { label: "Test Lab", href: "/test-lab", icon: FlaskConical },
   { label: "MCP Catalog", href: "/mcps", icon: Wrench },
+  { section: "Configuration" },
+  { label: "Admin", href: "/admin", icon: Settings },
 ];
 
 export function Sidebar() {
