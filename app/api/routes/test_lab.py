@@ -90,60 +90,61 @@ async def start_run(scenario_id: str, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(run)
 
-    # Launch test in background
-    run_id = run.id
-    scenario_id_copy = scenario.id
-
-    async def _run_in_background():
-        from app.core.database import get_async_session_factory
-        factory = get_async_session_factory()
-        async with factory() as bg_db:
-            bg_scenario = await scenario_service.get_scenario(bg_db, scenario_id_copy)
-            if bg_scenario:
-                await run_test(bg_db, bg_scenario, existing_run_id=run_id)
-
-    asyncio.get_event_loop().create_task(_run_in_background())
+    # Dispatch to Celery worker
+    from app.tasks.test_lab import run_test_task
+    run_test_task.delay(run.id, scenario.id)
 
     return {"id": run.id, "status": "queued", "scenario_id": scenario.id, "agent_id": scenario.agent_id}
 
 
 @router.get("/runs/{run_id}/stream")
 async def stream_run_events(run_id: str, db: AsyncSession = Depends(get_db)):
-    """SSE endpoint — polls DB for new events and streams them live."""
+    """SSE endpoint — subscribes to Redis pub/sub for real-time events."""
     run = await db.get(TestRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
     async def event_generator():
-        last_count = 0
-        while True:
+        import redis.asyncio as aioredis
+        from app.core.config import get_settings
+
+        r = aioredis.from_url(get_settings().REDIS_URL)
+        pubsub = r.pubsub()
+        await pubsub.subscribe(f"test_lab:run:{run_id}")
+
+        try:
+            # First, send any existing events from DB
             result = await db.execute(
                 select(TestRunEvent).where(TestRunEvent.run_id == run_id).order_by(TestRunEvent.timestamp)
             )
-            events = list(result.scalars().all())
+            for evt in result.scalars().all():
+                data = json.dumps({
+                    "id": evt.id, "event_type": evt.event_type, "phase": evt.phase,
+                    "message": evt.message, "details": evt.details,
+                    "timestamp": evt.timestamp.isoformat() if evt.timestamp else None,
+                    "duration_ms": evt.duration_ms,
+                })
+                yield f"data: {data}\n\n"
 
-            if len(events) > last_count:
-                for evt in events[last_count:]:
-                    data = json.dumps({
-                        "id": evt.id,
-                        "event_type": evt.event_type,
-                        "phase": evt.phase,
-                        "message": evt.message,
-                        "details": evt.details,
-                        "timestamp": evt.timestamp.isoformat() if evt.timestamp else None,
-                        "duration_ms": evt.duration_ms,
-                    })
-                    yield f"data: {data}\n\n"
-                last_count = len(events)
+            # Then stream new events from Redis pub/sub
+            while True:
+                msg = await asyncio.wait_for(pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0), timeout=120)
+                if msg and msg["type"] == "message":
+                    event = json.loads(msg["data"])
+                    yield f"data: {json.dumps(event)}\n\n"
 
-            # Check if run is terminal
+                    # Check if run completed
+                    if event.get("event_type") in ("run_completed", "run_failed", "run_timeout"):
+                        await db.refresh(run)
+                        yield f"data: {json.dumps({'event_type': 'stream_end', 'status': run.status, 'verdict': run.verdict, 'score': run.score, 'summary': run.summary})}\n\n"
+                        break
+        except asyncio.TimeoutError:
+            # Stream timed out — send final status
             await db.refresh(run)
-            if run.status in ("completed", "failed", "timed_out", "cancelled"):
-                # Send final status
-                yield f"data: {json.dumps({'event_type': 'stream_end', 'status': run.status, 'verdict': run.verdict, 'score': run.score, 'summary': run.summary})}\n\n"
-                break
-
-            await asyncio.sleep(1)
+            yield f"data: {json.dumps({'event_type': 'stream_end', 'status': run.status, 'verdict': run.verdict, 'score': run.score, 'summary': run.summary})}\n\n"
+        finally:
+            await pubsub.unsubscribe(f"test_lab:run:{run_id}")
+            await r.close()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

@@ -111,6 +111,34 @@ services:
       start_period: 15s
 
   # ---------------------------------------------------------------------------
+  # Celery Worker (test lab agent execution)
+  # ---------------------------------------------------------------------------
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=2
+    environment:
+      PYTHONPATH: /app
+      ORKESTRA_DATABASE_URL: postgresql+asyncpg://orkestra:orkestra@postgres:5432/orkestra
+      ORKESTRA_REDIS_URL: redis://redis:6379/0
+      ORKESTRA_SECRET_KEY: orkestra-dev-secret-change-in-prod
+      ORKESTRA_DEBUG: "true"
+      ORKESTRA_LOG_LEVEL: INFO
+      ORKESTRA_OBOT_BASE_URL: http://obot:8080
+      ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app:ro
+      - ./storage:/app/storage
+
+  # ---------------------------------------------------------------------------
   # Frontend
   # ---------------------------------------------------------------------------
 
