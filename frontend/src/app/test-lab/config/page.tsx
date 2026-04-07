@@ -11,31 +11,31 @@ import {
 const AGENT_DEFS = [
   {
     key: "preparation",
-    name: "Preparation Agent",
+    name: "ScenarioSubAgent",
     icon: FileText,
     color: "purple",
-    description: "Analyzes the scenario and produces a structured test plan before execution.",
+    description: "Generates and adapts test scenarios. Produces a structured test plan before the target agent is executed.",
   },
   {
     key: "assertion",
-    name: "Assertion Agent",
+    name: "PolicySubAgent",
     icon: Target,
     color: "green",
-    description: "Evaluates assertion results and provides human-readable analysis of pass/fail outcomes.",
+    description: "Checks governance compliance: forbidden effects, scope boundaries, family rules. Verifies the agent respects its constraints.",
   },
   {
     key: "diagnostic",
-    name: "Diagnostic Agent",
+    name: "RobustnessSubAgent",
     icon: Shield,
     color: "amber",
-    description: "Analyzes diagnostic findings, identifies root causes, and recommends corrective actions.",
+    description: "Proposes follow-up edge cases, adversarial inputs, and robustness tests based on previous run results.",
   },
   {
     key: "verdict",
-    name: "Verdict Agent",
+    name: "JudgeSubAgent",
     icon: Brain,
     color: "cyan",
-    description: "Produces the final test summary with score interpretation and overall verdict.",
+    description: "Evaluates the target agent output. Produces verdict (PASS/FAIL/PARTIAL), score (0-100), and rationale.",
   },
 ];
 
@@ -143,8 +143,8 @@ export default function TestLabConfigPage() {
 
       {/* Global LLM */}
       <section className="glass-panel p-5 space-y-4">
-        <h2 className="section-title flex items-center gap-2"><Brain size={13} /> Default LLM</h2>
-        <p className="text-[11px] text-ork-dim">Used by all agents unless overridden individually.</p>
+        <h2 className="section-title flex items-center gap-2"><Brain size={13} /> OrchestratorAgent LLM</h2>
+        <p className="text-[11px] text-ork-dim">Model used by the OrchestratorAgent and as default for SubAgents unless overridden.</p>
         <div className="grid grid-cols-[200px_1fr] gap-4">
           <div>
             <label className="data-label block mb-1.5">Provider</label>
@@ -179,7 +179,7 @@ export default function TestLabConfigPage() {
 
       {/* Agent Cards */}
       <section className="space-y-3">
-        <h2 className="section-title flex items-center gap-2"><Bot size={13} /> Test Agents</h2>
+        <h2 className="section-title flex items-center gap-2"><Bot size={13} /> SubAgents (used by OrchestratorAgent during test runs)</h2>
         <p className="text-[11px] text-ork-dim mb-2">Each phase of the test is handled by a specialized agent. Click to expand and configure.</p>
 
         {AGENT_DEFS.map((agent) => {
