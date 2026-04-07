@@ -208,7 +208,7 @@ async def generate_agent_draft(
     available = await agent_registry_service.available_mcp_summaries(db)
     catalog = [McpCatalogSummary.model_validate(item) for item in available]
     draft = agent_generation_service.generate_agent_draft(data, catalog)
-    return AgentGenerationResponse(draft=draft, available_mcps=catalog, source="mock_llm")
+    return AgentGenerationResponse(draft=draft, available_mcps=catalog, source="heuristic_template")
 
 
 @router.post("/save-generated-draft", response_model=AgentOut, status_code=201)
