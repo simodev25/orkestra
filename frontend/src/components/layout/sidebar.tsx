@@ -3,30 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Inbox, FolderOpen, GitBranch, Play, Bot, Wrench,
-  Shield, Eye, CheckCircle, FileSearch, Workflow, Settings, Activity, FlaskConical,
+  Bot, Wrench, Activity, FlaskConical,
 } from "lucide-react";
 
 const NAV = [
   { label: "Dashboard", href: "/", icon: Activity },
-  { section: "Operations" },
-  { label: "Requests", href: "/requests", icon: Inbox },
-  { label: "Cases", href: "/cases", icon: FolderOpen },
-  { label: "Plans", href: "/plans", icon: GitBranch },
-  { label: "Runs", href: "/runs", icon: Play },
   { section: "Registries" },
   { label: "Agents", href: "/agents", icon: Bot },
   { label: "Families", href: "/agents/families", icon: Bot },
   { label: "Agent Skills", href: "/agents/skills", icon: Bot },
   { label: "Test Lab", href: "/test-lab", icon: FlaskConical },
   { label: "MCP Catalog", href: "/mcps", icon: Wrench },
-  { section: "Governance" },
-  { label: "Control", href: "/control", icon: Shield },
-  { label: "Approvals", href: "/approvals", icon: CheckCircle },
-  { label: "Audit", href: "/audit", icon: FileSearch },
-  { section: "Configuration" },
-  { label: "Workflows", href: "/workflows", icon: Workflow },
-  { label: "Admin", href: "/admin", icon: Settings },
 ];
 
 export function Sidebar() {
