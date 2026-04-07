@@ -9,20 +9,9 @@ import type {
   GeneratedAgentDraft,
   McpCatalogSummary,
 } from "./types";
+import { request } from "../api-client";
 
 const BASE = "/api/agents";
-
-async function request<R>(url: string, opts?: RequestInit): Promise<R> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...opts?.headers },
-    ...opts,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || res.statusText);
-  }
-  return res.json();
-}
 
 function asBoolParam(value: boolean | undefined): string | undefined {
   if (value === undefined) return undefined;

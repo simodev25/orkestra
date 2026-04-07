@@ -1,18 +1,7 @@
 import type * as T from "./types";
+import { request } from "../api-client";
 
 const BASE = "/api/test-lab";
-
-async function request<R>(url: string, opts?: RequestInit): Promise<R> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...opts?.headers },
-    ...opts,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || res.statusText);
-  }
-  return res.json();
-}
 
 export const testLabApi = {
   // Scenarios

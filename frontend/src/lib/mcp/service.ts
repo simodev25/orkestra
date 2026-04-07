@@ -15,20 +15,9 @@ import type {
   McpUpdatePayload,
   McpCompatibilityHint,
 } from "./types";
+import { request } from "../api-client";
 
 const BASE = "/api/mcps";
-
-async function request<R>(url: string, opts?: RequestInit): Promise<R> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...opts?.headers },
-    ...opts,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || res.statusText);
-  }
-  return res.json();
-}
 
 // ────────────────────────────────────────────────────────────
 // Catalog

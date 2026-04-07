@@ -10,20 +10,9 @@ import type {
   OrkestraBindingUpdatePayload,
   SyncCatalogResult,
 } from "./types";
+import { request } from "../api-client";
 
 const BASE = "/api/mcp-catalog";
-
-async function request<R>(url: string, opts?: RequestInit): Promise<R> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...opts?.headers },
-    ...opts,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || res.statusText);
-  }
-  return res.json();
-}
 
 function boolParam(value: "all" | "true" | "false" | undefined): boolean | undefined {
   if (value === "true") return true;

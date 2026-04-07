@@ -8,18 +8,7 @@ import type {
   SkillUpdatePayload,
   SkillWithAgents,
 } from "./types";
-
-async function request<R>(url: string, opts?: RequestInit): Promise<R> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...opts?.headers },
-    ...opts,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || res.statusText);
-  }
-  return res.json();
-}
+import { request } from "../api-client";
 
 // Families
 export async function listFamilies(includeArchived = false): Promise<FamilyDefinition[]> {
