@@ -33,7 +33,7 @@ async def list_skills_with_agents(db: AsyncSession = Depends(get_db)):
     from app.models.registry import AgentDefinition
     from sqlalchemy import select
 
-    all_skills = await skill_service.list_skills(db)
+    all_skills, _ = await skill_service.list_skills(db, limit=10000)
 
     skill_agent_map: dict[str, list[AgentSummary]] = {s["skill_id"]: [] for s in all_skills}
 
@@ -63,12 +63,15 @@ async def list_skills_with_agents(db: AsyncSession = Depends(get_db)):
     ]
 
 
-@router.get("", response_model=list[SkillOut])
+@router.get("")
 async def list_skills(
     include_archived: bool = Query(False, alias="include_archived"),
+    offset: int = 0,
+    limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
-    return await skill_service.list_skills(db, include_archived=include_archived)
+    items, total = await skill_service.list_skills(db, include_archived=include_archived, offset=offset, limit=limit)
+    return {"items": items, "total": total, "offset": offset, "limit": limit, "has_more": offset + limit < total}
 
 
 @router.get("/{skill_id}/history")

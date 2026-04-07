@@ -32,14 +32,16 @@ async def create_scenario(data: ScenarioCreate, db: AsyncSession = Depends(get_d
     return await scenario_service.create_scenario(db, data)
 
 
-@router.get("/scenarios", response_model=list[ScenarioOut])
+@router.get("/scenarios")
 async def list_scenarios(
     agent_id: str | None = None,
     enabled: bool | None = None,
+    offset: int = 0,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
-    return await scenario_service.list_scenarios(db, agent_id=agent_id, enabled=enabled, limit=limit)
+    items, total = await scenario_service.list_scenarios(db, agent_id=agent_id, enabled=enabled, offset=offset, limit=limit)
+    return {"items": items, "total": total, "offset": offset, "limit": limit, "has_more": offset + limit < total}
 
 
 @router.get("/scenarios/{scenario_id}", response_model=ScenarioOut)
@@ -150,21 +152,26 @@ async def stream_run_events(run_id: str, db: AsyncSession = Depends(get_db)):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get("/runs", response_model=list[RunOut])
+@router.get("/runs")
 async def list_runs(
     scenario_id: str | None = None,
     agent_id: str | None = None,
+    offset: int = 0,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
-    q = select(TestRun)
+    from sqlalchemy import func as sa_func
+    base_q = select(TestRun)
     if scenario_id:
-        q = q.where(TestRun.scenario_id == scenario_id)
+        base_q = base_q.where(TestRun.scenario_id == scenario_id)
     if agent_id:
-        q = q.where(TestRun.agent_id == agent_id)
-    q = q.order_by(TestRun.created_at.desc()).limit(limit)
-    result = await db.execute(q)
-    return list(result.scalars().all())
+        base_q = base_q.where(TestRun.agent_id == agent_id)
+    count_result = await db.execute(select(sa_func.count()).select_from(base_q.subquery()))
+    total = count_result.scalar() or 0
+    paged_q = base_q.order_by(TestRun.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(paged_q)
+    items = list(result.scalars().all())
+    return {"items": items, "total": total, "offset": offset, "limit": limit, "has_more": offset + limit < total}
 
 
 @router.get("/runs/{run_id}", response_model=RunOut)

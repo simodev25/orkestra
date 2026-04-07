@@ -19,19 +19,27 @@ from app.services.version_utils import bump_patch
 logger = logging.getLogger("orkestra.skills")
 
 
-async def list_skills(db: AsyncSession, *, include_archived: bool = False) -> list[dict]:
+async def list_skills(
+    db: AsyncSession,
+    *,
+    include_archived: bool = False,
+    offset: int = 0,
+    limit: int = 50,
+) -> tuple[list[dict], int]:
     stmt = select(SkillDefinition).options(
         selectinload(SkillDefinition.skill_families),
     ).order_by(SkillDefinition.label)
     if not include_archived:
         stmt = stmt.where(SkillDefinition.status != "archived")
-    result = await db.execute(stmt)
+    count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total = count_result.scalar() or 0
+    result = await db.execute(stmt.offset(offset).limit(limit))
     skills = list(result.scalars().all())
     out = []
     for s in skills:
         families = [sf.family_id for sf in s.skill_families]
         out.append(_skill_to_dict(s, families))
-    return out
+    return out, total
 
 
 async def get_skill(db: AsyncSession, skill_id: str) -> dict | None:

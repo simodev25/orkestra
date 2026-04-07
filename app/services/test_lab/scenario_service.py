@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.test_lab import TestScenario
@@ -44,16 +44,19 @@ async def list_scenarios(
     db: AsyncSession,
     agent_id: str | None = None,
     enabled: bool | None = None,
+    offset: int = 0,
     limit: int = 50,
-) -> list[TestScenario]:
-    q = select(TestScenario)
+) -> tuple[list[TestScenario], int]:
+    base_q = select(TestScenario)
     if agent_id:
-        q = q.where(TestScenario.agent_id == agent_id)
+        base_q = base_q.where(TestScenario.agent_id == agent_id)
     if enabled is not None:
-        q = q.where(TestScenario.enabled == enabled)
-    q = q.order_by(TestScenario.created_at.desc()).limit(limit)
-    result = await db.execute(q)
-    return list(result.scalars().all())
+        base_q = base_q.where(TestScenario.enabled == enabled)
+    count_result = await db.execute(select(func.count()).select_from(base_q.subquery()))
+    total = count_result.scalar() or 0
+    paged_q = base_q.order_by(TestScenario.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(paged_q)
+    return list(result.scalars().all()), total
 
 
 async def update_scenario(db: AsyncSession, scenario_id: str, data: ScenarioUpdate) -> TestScenario:

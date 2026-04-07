@@ -12,12 +12,15 @@ from app.services import family_service
 router = APIRouter()
 
 
-@router.get("", response_model=list[FamilyOut])
+@router.get("")
 async def list_families(
     include_archived: bool = Query(False, alias="include_archived"),
+    offset: int = 0,
+    limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
-    return await family_service.list_families(db, include_archived=include_archived)
+    items, total = await family_service.list_families(db, include_archived=include_archived, offset=offset, limit=limit)
+    return {"items": items, "total": total, "offset": offset, "limit": limit, "has_more": offset + limit < total}
 
 
 @router.get("/{family_id}/history")

@@ -613,7 +613,9 @@ async def list_catalog_items(
     allowed_workflow: str | None = None,
     allowed_agent_family: str | None = None,
     hidden_from_ai_generator: bool | None = None,
-) -> list[CatalogMcpViewModel]:
+    offset: int = 0,
+    limit: int = 50,
+) -> tuple[list[CatalogMcpViewModel], int]:
     servers, _ = await fetch_obot_servers()
     bindings = await _get_bindings_map(db)
 
@@ -647,7 +649,8 @@ async def list_catalog_items(
         out.append(view)
 
     out.sort(key=lambda item: item.obot_server.name.lower())
-    return out
+    total = len(out)
+    return out[offset : offset + limit], total
 
 
 async def get_catalog_item(db: AsyncSession, obot_server_id: str) -> CatalogMcpDetailsViewModel:
@@ -668,7 +671,7 @@ async def get_catalog_item(db: AsyncSession, obot_server_id: str) -> CatalogMcpD
 
 
 async def get_catalog_stats(db: AsyncSession) -> McpCatalogStats:
-    items = await list_catalog_items(db)
+    items, _ = await list_catalog_items(db, limit=100000)
     return McpCatalogStats(
         obot_total=len(items),
         obot_active=sum(1 for item in items if item.obot_state == "active"),

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -410,7 +410,7 @@ async def list_agents(
     used_in_workflow_only: bool = False,
     limit: int = 50,
     offset: int = 0,
-) -> list[AgentDefinition]:
+) -> tuple[list[AgentDefinition], int]:
     stmt = select(AgentDefinition).options(
         selectinload(AgentDefinition.family_rel),
         selectinload(AgentDefinition.agent_skills),
@@ -437,7 +437,8 @@ async def list_agents(
         # Keep workflow_id as soft context without forcing filter when toggle is off.
         pass
 
-    return items[offset : offset + limit]
+    total = len(items)
+    return items[offset : offset + limit], total
 
 
 async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
@@ -494,7 +495,7 @@ async def get_registry_stats(db: AsyncSession, workflow_id: str | None = None) -
 
 
 async def available_mcp_summaries(db: AsyncSession) -> list[dict[str, str | bool]]:
-    items = await obot_catalog_service.list_catalog_items(db)
+    items, _ = await obot_catalog_service.list_catalog_items(db, limit=100000)
     return [
         {
             "id": item.obot_server.id,

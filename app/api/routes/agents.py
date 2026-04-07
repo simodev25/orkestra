@@ -50,7 +50,7 @@ async def create_agent(data: AgentCreate, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.get("", response_model=list[AgentOut])
+@router.get("")
 async def list_agents(
     q: str | None = None,
     family: str | None = None,
@@ -60,11 +60,11 @@ async def list_agents(
     mcp_id: str | None = None,
     workflow_id: str | None = None,
     used_in_workflow_only: bool = False,
-    limit: int = 100,
     offset: int = 0,
+    limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
-    agents = await agent_registry_service.list_agents(
+    agents, total = await agent_registry_service.list_agents(
         db,
         q=q,
         family=family,
@@ -77,7 +77,8 @@ async def list_agents(
         limit=limit,
         offset=offset,
     )
-    return [await agent_registry_service.enrich_agent(db, a) for a in agents]
+    items = [await agent_registry_service.enrich_agent(db, a) for a in agents]
+    return {"items": items, "total": total, "offset": offset, "limit": limit, "has_more": offset + limit < total}
 
 
 @router.get("/llm-models/{provider}")

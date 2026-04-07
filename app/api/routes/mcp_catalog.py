@@ -21,7 +21,7 @@ from app.services import obot_catalog_service
 router = APIRouter()
 
 
-@router.get("", response_model=list[CatalogMcpViewModel])
+@router.get("")
 async def list_mcp_catalog(
     search: str | None = None,
     obot_status: str | None = None,
@@ -32,9 +32,11 @@ async def list_mcp_catalog(
     allowed_workflow: str | None = None,
     allowed_agent_family: str | None = None,
     hidden_from_ai_generator: bool | None = None,
+    offset: int = 0,
+    limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
-    return await obot_catalog_service.list_catalog_items(
+    items, total = await obot_catalog_service.list_catalog_items(
         db,
         search=search,
         obot_status=obot_status,
@@ -45,7 +47,10 @@ async def list_mcp_catalog(
         allowed_workflow=allowed_workflow,
         allowed_agent_family=allowed_agent_family,
         hidden_from_ai_generator=hidden_from_ai_generator,
+        offset=offset,
+        limit=limit,
     )
+    return {"items": items, "total": total, "offset": offset, "limit": limit, "has_more": offset + limit < total}
 
 
 @router.get("/stats", response_model=McpCatalogStats)
