@@ -40,7 +40,7 @@ def _make_model():
     from app.services.agent_factory import _docker_safe_host
     from app.core.config import get_settings
     host = _docker_safe_host(get_settings().OLLAMA_HOST)
-    return OllamaChatModel(model_name="gpt-oss:120b-cloud", host=host, stream=False)
+    return OllamaChatModel(model_name="gpt-oss:20b-cloud", host=host, stream=False)
 
 
 def _make_formatter():

@@ -45,16 +45,34 @@ class RuntimeEventCollector:
 
     async def on_post_reasoning(self, agent, response, *args, **kwargs):
         llm_ms = int((time.time() - self._llm_start) * 1000) if self._llm_start else 0
-        self._emit("llm_request_completed", message=f"LLM responded", duration_ms=llm_ms)
 
-        # Check for tool calls in response
-        if hasattr(response, "content") and isinstance(response.content, list):
-            for block in response.content:
-                if hasattr(block, "type") and block.type == "tool_use":
-                    self._emit("tool_call_started", message=f"Calling {block.name}", details={
-                        "tool_name": block.name,
-                        "tool_input": str(getattr(block, "input", {}))[:500],
-                    })
+        # Extract LLM thinking and decision
+        llm_text = ""
+        tool_calls = []
+        if hasattr(response, "content"):
+            content = response.content
+            if isinstance(content, list):
+                for block in content:
+                    btype = getattr(block, "type", "")
+                    if btype == "thinking":
+                        llm_text += getattr(block, "text", "")[:1000]
+                    elif btype == "text":
+                        llm_text += getattr(block, "text", "")[:1000]
+                    elif btype == "tool_use":
+                        tool_calls.append({
+                            "tool_name": getattr(block, "name", "unknown"),
+                            "tool_input": str(getattr(block, "input", {}))[:500],
+                        })
+            elif isinstance(content, str):
+                llm_text = content[:1000]
+
+        self._emit("llm_request_completed", message=f"LLM responded", duration_ms=llm_ms, details={
+            "llm_output": llm_text[:2000],
+            "tool_calls_planned": tool_calls,
+        })
+
+        for tc in tool_calls:
+            self._emit("tool_call_started", message=f"Calling {tc['tool_name']}", details=tc)
 
     async def on_pre_acting(self, agent, *args, **kwargs):
         self._tool_start = time.time()

@@ -107,13 +107,38 @@ export default function TestRunDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // SSE streaming for live events
+  useEffect(() => {
+    if (!id) return;
+    const evtSource = new EventSource(`/api/test-lab/runs/${id}/stream`);
+    evtSource.onmessage = (msg) => {
+      try {
+        const evt = JSON.parse(msg.data);
+        if (evt.event_type === "stream_end") {
+          setRun((prev: any) => prev ? { ...prev, status: evt.status, verdict: evt.verdict, score: evt.score, summary: evt.summary } : prev);
+          statusRef.current = evt.status;
+          evtSource.close();
+          // Final fetch to get assertions + diagnostics
+          fetchData();
+          return;
+        }
+        setEvents((prev) => {
+          if (prev.some((e: any) => e.id === evt.id)) return prev;
+          return [...prev, evt];
+        });
+      } catch { /* ignore parse errors */ }
+    };
+    evtSource.onerror = () => { evtSource.close(); };
+    return () => evtSource.close();
+  }, [id, fetchData]);
+
   useEffect(() => {
     fetchData();
     const interval = setInterval(() => {
       if (statusRef.current === "running" || statusRef.current === "queued" || statusRef.current === null) {
         fetchData();
       }
-    }, 5000);
+    }, 10000); // Slower polling since SSE handles live updates
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -237,6 +262,32 @@ export default function TestRunDetailPage() {
                         <span className="text-[10px] font-mono text-ork-dim ml-auto">{formatTimestamp(event.timestamp)}</span>
                       </div>
                       <p className="text-xs text-ork-muted">{event.message}</p>
+                      {/* LLM output details */}
+                      {event.details?.llm_output && (
+                        <pre className="mt-1 text-[10px] font-mono text-ork-text/70 bg-ork-bg border border-ork-border rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
+                          {event.details.llm_output}
+                        </pre>
+                      )}
+                      {/* Tool call details */}
+                      {event.details?.tool_name && event.event_type === "tool_call_completed" && (
+                        <div className="mt-1 text-[10px] font-mono">
+                          <span className="text-ork-cyan">{event.details.tool_name}</span>
+                          {event.details.output_preview && (
+                            <pre className="mt-0.5 text-ork-text/60 bg-ork-bg border border-ork-border rounded p-2 max-h-24 overflow-y-auto whitespace-pre-wrap">
+                              {event.details.output_preview}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                      {event.details?.tool_calls_planned && event.details.tool_calls_planned.length > 0 && (
+                        <div className="mt-1 flex gap-1 flex-wrap">
+                          {event.details.tool_calls_planned.map((tc: any, j: number) => (
+                            <span key={j} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-ork-cyan/10 text-ork-cyan border border-ork-cyan/20">
+                              {tc.tool_name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

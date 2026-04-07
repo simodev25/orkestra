@@ -3,7 +3,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,6 +77,47 @@ async def start_run(scenario_id: str, db: AsyncSession = Depends(get_db)):
         return run
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/runs/{run_id}/stream")
+async def stream_run_events(run_id: str, db: AsyncSession = Depends(get_db)):
+    """SSE endpoint — polls DB for new events and streams them live."""
+    run = await db.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    async def event_generator():
+        last_count = 0
+        while True:
+            result = await db.execute(
+                select(TestRunEvent).where(TestRunEvent.run_id == run_id).order_by(TestRunEvent.timestamp)
+            )
+            events = list(result.scalars().all())
+
+            if len(events) > last_count:
+                for evt in events[last_count:]:
+                    data = json.dumps({
+                        "id": evt.id,
+                        "event_type": evt.event_type,
+                        "phase": evt.phase,
+                        "message": evt.message,
+                        "details": evt.details,
+                        "timestamp": evt.timestamp.isoformat() if evt.timestamp else None,
+                        "duration_ms": evt.duration_ms,
+                    })
+                    yield f"data: {data}\n\n"
+                last_count = len(events)
+
+            # Check if run is terminal
+            await db.refresh(run)
+            if run.status in ("completed", "failed", "timed_out", "cancelled"):
+                # Send final status
+                yield f"data: {json.dumps({'event_type': 'stream_end', 'status': run.status, 'verdict': run.verdict, 'score': run.score, 'summary': run.summary})}\n\n"
+                break
+
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.get("/runs", response_model=list[RunOut])
