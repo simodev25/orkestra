@@ -79,23 +79,23 @@ export default function TestLabConfigPage() {
   }, [config?.orchestrator?.provider]);
 
   useEffect(() => {
-    fetch("/api/test-lab/config/skills").then((r) => r.json()).then(setAvailableSkills).catch(() => {});
+    request<any>("/api/test-lab/config/skills")
+      .then((data) => setAvailableSkills(Array.isArray(data) ? data : data.items ?? []))
+      .catch(() => {});
   }, []);
 
   async function handleSave() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch("/api/test-lab/config", {
+      const updated = await request<any>("/api/test-lab/config", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
-      if (!res.ok) throw new Error("Failed to save");
-      setConfig(await res.json());
+      setConfig(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setError(e.message || "Failed to save"); }
     finally { setSaving(false); }
   }
 
@@ -333,6 +333,8 @@ function ModelSelect({ value, options, onChange, placeholder, allowEmpty }: {
         placeholder={placeholder}
         className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
       />
+      {/* Backdrop must be BEFORE dropdown so dropdown buttons receive clicks */}
+      {open && <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setSearch(""); }} />}
       {open && (
         <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto bg-ork-surface border border-ork-border rounded shadow-lg">
           {allowEmpty && (
@@ -352,7 +354,6 @@ function ModelSelect({ value, options, onChange, placeholder, allowEmpty }: {
           ))}
         </div>
       )}
-      {open && <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setSearch(""); }} />}
     </div>
   );
 }
