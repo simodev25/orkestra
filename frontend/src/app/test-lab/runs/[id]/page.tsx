@@ -70,6 +70,97 @@ function formatDuration(ms: number | null | undefined) {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function EventDetails({ event }: { event: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const d = event.details || {};
+  const hasLlm = !!d.llm_output;
+  const hasToolCalls = d.tool_calls_planned && d.tool_calls_planned.length > 0;
+  const hasToolResult = event.event_type === "tool_call_completed" && d.output_preview;
+  const hasMcp = event.event_type === "mcp_session_connected" && d.tools;
+  const hasLongMessage = event.message && event.message.length > 120;
+  const hasContent = hasLlm || hasToolCalls || hasToolResult || hasMcp || hasLongMessage;
+
+  if (!hasContent) return null;
+
+  return (
+    <div className="mt-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-[10px] font-mono text-ork-cyan/70 hover:text-ork-cyan transition-colors flex items-center gap-1"
+      >
+        <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>&#9654;</span>
+        {expanded ? "Hide details" : "Show details"}
+        {hasLlm && <span className="text-ork-purple/60 ml-1">LLM</span>}
+        {hasToolCalls && <span className="text-ork-cyan/60 ml-1">Tools</span>}
+        {hasToolResult && <span className="text-ork-green/60 ml-1">Result</span>}
+        {hasMcp && <span className="text-ork-green/60 ml-1">MCP</span>}
+      </button>
+
+      {expanded && (
+        <div className="mt-1.5 space-y-2 animate-fade-in">
+          {/* Full message if truncated */}
+          {hasLongMessage && (
+            <pre className="text-[10px] font-mono text-ork-muted bg-ork-bg border border-ork-border rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{event.message}
+            </pre>
+          )}
+
+          {/* LLM output */}
+          {hasLlm && (
+            <div className="border-l-2 border-ork-purple/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-purple mb-1 font-semibold">LLM Response</p>
+              <pre className="text-[10px] font-mono text-ork-text/70 bg-ork-bg border border-ork-border rounded p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{d.llm_output}
+              </pre>
+            </div>
+          )}
+
+          {/* Tool calls */}
+          {hasToolCalls && (
+            <div className="border-l-2 border-ork-cyan/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-cyan mb-1 font-semibold">Tool Calls</p>
+              <div className="space-y-1.5">
+                {d.tool_calls_planned.map((tc: any, j: number) => (
+                  <div key={j} className="bg-ork-bg border border-ork-border rounded p-2">
+                    <span className="text-[10px] font-mono font-semibold text-ork-cyan">{tc.tool_name}</span>
+                    {tc.tool_input && (
+                      <pre className="text-[10px] font-mono text-ork-dim mt-1 whitespace-pre-wrap">{tc.tool_input}</pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tool result */}
+          {hasToolResult && (
+            <div className="border-l-2 border-ork-green/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-green mb-1 font-semibold">
+                Tool Result {d.tool_name && d.tool_name !== "unknown" ? `— ${d.tool_name}` : ""}
+              </p>
+              <pre className="text-[10px] font-mono text-ork-text/60 bg-ork-bg border border-ork-border rounded p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{d.output_preview}
+              </pre>
+            </div>
+          )}
+
+          {/* MCP tools */}
+          {hasMcp && (
+            <div className="border-l-2 border-ork-green/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-green mb-1 font-semibold">MCP Tools Available</p>
+              <div className="flex gap-1 flex-wrap">
+                {(Array.isArray(d.tools) ? d.tools : []).map((t: string, j: number) => (
+                  <span key={j} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-ork-green/10 text-ork-green/80 border border-ork-green/20">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getAgentLabel(event: any): string | null {
   const t = event.event_type;
   const p = event.phase;
@@ -329,60 +420,14 @@ export default function TestRunDetailPage() {
                         )}
                         <span className="text-[10px] font-mono text-ork-dim ml-auto">{formatTimestamp(event.timestamp)}</span>
                       </div>
-                      <p className="text-xs text-ork-muted">{event.message}</p>
+                      <p className="text-xs text-ork-muted">
+                        {event.message && event.message.length > 120
+                          ? event.message.slice(0, 120) + "..."
+                          : event.message}
+                      </p>
 
-                      {/* LLM thinking/output */}
-                      {event.details?.llm_output && (
-                        <div className="mt-1.5 border-l-2 border-ork-purple/30 pl-3">
-                          <p className="text-[10px] font-mono text-ork-purple mb-1">LLM Output</p>
-                          <pre className="text-[10px] font-mono text-ork-text/70 bg-ork-bg border border-ork-border rounded p-2 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-{event.details.llm_output}
-                          </pre>
-                        </div>
-                      )}
-
-                      {/* Tool calls planned by LLM */}
-                      {event.details?.tool_calls_planned && event.details.tool_calls_planned.length > 0 && (
-                        <div className="mt-1.5 border-l-2 border-ork-cyan/30 pl-3">
-                          <p className="text-[10px] font-mono text-ork-cyan mb-1">Tool Calls</p>
-                          <div className="space-y-1">
-                            {event.details.tool_calls_planned.map((tc: any, j: number) => (
-                              <div key={j} className="flex items-start gap-2">
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-ork-cyan/10 text-ork-cyan border border-ork-cyan/20 shrink-0">{tc.tool_name}</span>
-                                {tc.tool_input && <span className="text-[10px] font-mono text-ork-dim truncate">{tc.tool_input}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Tool result */}
-                      {event.event_type === "tool_call_completed" && event.details && (
-                        <div className="mt-1.5 border-l-2 border-ork-green/30 pl-3">
-                          <p className="text-[10px] font-mono text-ork-green mb-1">
-                            Tool Result {event.details.tool_name !== "unknown" ? `— ${event.details.tool_name}` : ""}
-                          </p>
-                          {event.details.output_preview && (
-                            <pre className="text-[10px] font-mono text-ork-text/60 bg-ork-bg border border-ork-border rounded p-2 max-h-28 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-{event.details.output_preview}
-                            </pre>
-                          )}
-                        </div>
-                      )}
-
-                      {/* MCP connection */}
-                      {event.event_type === "mcp_session_connected" && event.details && (
-                        <div className="mt-1.5 border-l-2 border-ork-green/30 pl-3">
-                          <p className="text-[10px] font-mono text-ork-green mb-1">MCP Connected</p>
-                          {event.details.tools && (
-                            <div className="flex gap-1 flex-wrap">
-                              {(Array.isArray(event.details.tools) ? event.details.tools : []).map((t: string, j: number) => (
-                                <span key={j} className="text-[10px] font-mono px-1 py-0.5 rounded bg-ork-green/10 text-ork-green/70 border border-ork-green/20">{t}</span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {/* Expandable details */}
+                      <EventDetails event={event} />
 
                       {/* Spinner for active event */}
                       {isActive && (

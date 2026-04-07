@@ -71,29 +71,49 @@ class RuntimeEventCollector:
     async def on_post_reasoning(self, agent, response, *args, **kwargs):
         llm_ms = int((time.time() - self._llm_start) * 1000) if self._llm_start else 0
 
-        # Extract LLM thinking and decision
+        # Extract LLM thinking, text, and tool decisions
         llm_text = ""
         tool_calls = []
         if hasattr(response, "content"):
             content = response.content
             if isinstance(content, list):
                 for block in content:
-                    btype = getattr(block, "type", "")
-                    if btype == "thinking":
-                        llm_text += getattr(block, "text", "")[:1000]
-                    elif btype == "text":
-                        llm_text += getattr(block, "text", "")[:1000]
-                    elif btype == "tool_use":
-                        tool_calls.append({
-                            "tool_name": getattr(block, "name", "unknown"),
-                            "tool_input": str(getattr(block, "input", {}))[:500],
-                        })
+                    if isinstance(block, dict):
+                        btype = block.get("type", "")
+                        if btype == "thinking":
+                            llm_text += block.get("text", "")[:1000] + "\n"
+                        elif btype == "text":
+                            llm_text += block.get("text", "")[:1000] + "\n"
+                        elif btype == "tool_use":
+                            name = block.get("name", "unknown")
+                            self._last_tool_name = name
+                            tool_calls.append({
+                                "tool_name": name,
+                                "tool_input": str(block.get("input", block.get("raw_input", "")))[:500],
+                            })
+                    elif hasattr(block, "type"):
+                        btype = getattr(block, "type", "")
+                        if btype == "thinking":
+                            llm_text += getattr(block, "text", "")[:1000] + "\n"
+                        elif btype == "text":
+                            llm_text += getattr(block, "text", "")[:1000] + "\n"
+                        elif btype == "tool_use":
+                            name = getattr(block, "name", "unknown")
+                            self._last_tool_name = name
+                            tool_calls.append({
+                                "tool_name": name,
+                                "tool_input": str(getattr(block, "input", getattr(block, "raw_input", "")))[:500],
+                            })
             elif isinstance(content, str):
-                llm_text = content[:1000]
+                llm_text = content[:2000]
+
+        # Also try get_text_content
+        if not llm_text and hasattr(response, "get_text_content"):
+            llm_text = (response.get_text_content() or "")[:2000]
 
         self._emit("llm_request_completed", message=f"LLM responded", duration_ms=llm_ms, details={
-            "llm_output": llm_text[:2000],
-            "tool_calls_planned": tool_calls,
+            "llm_output": llm_text.strip()[:2000] if llm_text.strip() else None,
+            "tool_calls_planned": tool_calls if tool_calls else None,
         })
 
         for tc in tool_calls:
@@ -107,23 +127,36 @@ class RuntimeEventCollector:
         iter_ms = int((time.time() - self._iter_start) * 1000) if self._iter_start else 0
 
         # Extract tool result info
-        tool_name = "unknown"
+        tool_name = getattr(self, "_last_tool_name", "unknown")
         tool_output_preview = ""
-        if hasattr(response, "content") and isinstance(response.content, list):
-            for block in response.content:
-                if hasattr(block, "type"):
-                    if block.type == "tool_result":
-                        tool_name = getattr(block, "name", "unknown")
-                        output = getattr(block, "output", "")
-                        if isinstance(output, list):
-                            parts = [getattr(b, "text", str(b))[:300] for b in output]
-                            tool_output_preview = "\n".join(parts)[:1000]
-                        else:
-                            tool_output_preview = str(output)[:1000]
+        if hasattr(response, "content"):
+            content = response.content
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "tool_result":
+                            tool_name = block.get("name", tool_name)
+                            output = block.get("output", "")
+                            if isinstance(output, list):
+                                parts = [b.get("text", str(b))[:500] if isinstance(b, dict) else getattr(b, "text", str(b))[:500] for b in output]
+                                tool_output_preview = "\n".join(parts)[:2000]
+                            else:
+                                tool_output_preview = str(output)[:2000]
+                    elif hasattr(block, "type"):
+                        if getattr(block, "type", "") == "tool_result":
+                            tool_name = getattr(block, "name", tool_name)
+                            output = getattr(block, "output", "")
+                            if isinstance(output, list):
+                                parts = [getattr(b, "text", str(b))[:500] for b in output]
+                                tool_output_preview = "\n".join(parts)[:2000]
+                            else:
+                                tool_output_preview = str(output)[:2000]
+            elif isinstance(content, str):
+                tool_output_preview = content[:2000]
 
         self._emit("tool_call_completed", message=f"Tool '{tool_name}' completed", duration_ms=tool_ms, details={
             "tool_name": tool_name,
-            "output_preview": tool_output_preview,
+            "output_preview": tool_output_preview[:2000],
         })
         self._emit("agent_iteration_completed", message=f"Iteration {self.iteration_count} done", duration_ms=iter_ms)
 
