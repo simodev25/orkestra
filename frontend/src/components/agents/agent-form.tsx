@@ -8,6 +8,7 @@ import type {
   AgentUpdatePayload,
   McpCatalogSummary,
 } from "@/lib/agent-registry/types";
+import { request } from "@/lib/api-client";
 import type { FamilyDefinition, SkillDefinition } from "@/lib/families/types";
 import { listSkillsByFamily } from "@/lib/families/service";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -108,9 +109,8 @@ export function AgentForm({
 
   useEffect(() => {
     if (initial?.llm_provider) {
-      fetch(`/api/agents/llm-models/${initial.llm_provider}`)
-        .then(r => r.json())
-        .then(data => setAvailableModels(data.models || []))
+      request<{ models: any[] }>(`/api/agents/llm-models/${initial.llm_provider}`)
+        .then(data => setAvailableModels((data.models || []).map((m: any) => typeof m === "string" ? m : m.name)))
         .catch(() => setAvailableModels([]));
     }
   }, []);
@@ -588,9 +588,8 @@ export function AgentForm({
                 setLlmModel("");
                 setAvailableModels([]);
                 if (e.target.value) {
-                  fetch(`/api/agents/llm-models/${e.target.value}`)
-                    .then(r => r.json())
-                    .then(data => setAvailableModels(data.models || []))
+                  request<{ models: any[] }>(`/api/agents/llm-models/${e.target.value}`)
+                    .then(data => setAvailableModels((data.models || []).map((m: any) => typeof m === "string" ? m : m.name)))
                     .catch(() => setAvailableModels([]));
                 }
               }}
