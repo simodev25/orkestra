@@ -1,4 +1,4 @@
-"""Subagent executor -- invokes sub-agents via AgentScope, falls back to simulation."""
+"""Subagent executor -- invokes sub-agents via AgentScope, fails explicitly on errors."""
 
 import json
 import logging
@@ -22,7 +22,7 @@ async def execute_subagent(
 ) -> SubagentInvocation:
     """Execute a sub-agent for a given run node.
 
-    Tries AgentScope ReActAgent first; falls back to simulation if unavailable.
+    Tries AgentScope ReActAgent first; fails explicitly if execution fails or is unavailable.
     """
     agent_id = node.node_ref
 
@@ -66,29 +66,24 @@ async def execute_subagent(
                              run_id=run_id, payload={"agent_id": agent_id, "mode": "agentscope"})
             await db.flush()
             return invocation
-    except Exception as e:
-        logger.warning(f"AgentScope execution failed for {agent_id}, falling back to simulation: {e}")
+    except Exception as exc:
+        invocation.status = "failed"
+        invocation.confidence_score = 0.0
+        invocation.output_summary = f"Agent {agent_id} execution failed: {exc}"
+        invocation.cost = 0.0
+        invocation.ended_at = datetime.now(timezone.utc)
+        invocation.result_payload = {
+            "agent_id": agent_id,
+            "status": "failed",
+            "error": str(exc),
+        }
 
-    # Fallback: simulated execution
-    invocation.status = "completed"
-    invocation.confidence_score = 0.85
-    invocation.output_summary = f"Agent {agent_id} completed successfully (simulated)"
-    invocation.cost = 0.5
-    invocation.ended_at = datetime.now(timezone.utc)
-    invocation.result_payload = {
-        "agent_id": agent_id,
-        "status": "success",
-        "confidence_score": 0.85,
-        "findings": [],
-        "missing_data": [],
-        "blocking_flags": [],
-        "mode": "simulated",
-    }
+        await emit_event(db, "agent.failed", "runtime", "subagent_executor",
+                         run_id=run_id,
+                         payload={"agent_id": agent_id, "error": str(exc)})
 
-    await emit_event(db, "subagent.completed", "runtime", "subagent_executor",
-                     run_id=run_id, payload={"agent_id": agent_id, "mode": "simulated"})
-    await db.flush()
-    return invocation
+        await db.flush()
+        return invocation
 
 
 async def _execute_with_agentscope(

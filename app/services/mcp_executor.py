@@ -109,21 +109,19 @@ async def invoke_mcp(
                              payload={"mcp_id": mcp_id, "mode": "real", "latency_ms": elapsed_ms})
             await db.flush()
             return inv
-    except Exception as e:
-        logger.warning(f"Real MCP execution failed for {mcp_id}, using fallback: {e}")
+    except Exception as exc:
+        inv.status = "failed"
+        inv.latency_ms = 0
+        inv.cost = 0.0
+        inv.output_summary = f"MCP {mcp_id} execution failed: {exc}"
+        inv.ended_at = datetime.now(timezone.utc)
 
-    # Fallback: simulated execution
-    inv.status = "completed"
-    inv.latency_ms = 120
-    inv.cost = 0.02
-    inv.output_summary = f"MCP {mcp_id} completed (simulated)"
-    inv.ended_at = datetime.now(timezone.utc)
+        await emit_event(db, "mcp.failed", "runtime", "mcp_executor",
+                         run_id=run_id,
+                         payload={"mcp_id": mcp_id, "error": str(exc)})
 
-    await emit_event(db, "mcp.completed", "runtime", "mcp_executor",
-                     run_id=run_id, payload={"mcp_id": mcp_id, "mode": "simulated", "latency_ms": 120})
-
-    await db.flush()
-    return inv
+        await db.flush()
+        return inv
 
 
 async def _execute_mcp_tool(mcp_id: str, action: str | None, kwargs: dict) -> str | None:
