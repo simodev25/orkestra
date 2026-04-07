@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { request } from "@/lib/api-client";
 import {
   FlaskConical,
   CheckCircle,
@@ -245,26 +246,28 @@ export default function TestRunDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<string | null>(null);
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback(async () => {
     if (!id) return;
-    Promise.all([
-      fetch(`/api/test-lab/runs/${id}`).then((r) => r.ok ? r.json() : null),
-      fetch(`/api/test-lab/runs/${id}/events`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/test-lab/runs/${id}/assertions`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/test-lab/runs/${id}/diagnostics`).then((r) => r.ok ? r.json() : []),
-    ])
-      .then(([runData, eventsData, assertionsData, diagnosticsData]) => {
-        if (runData) {
-          setRun(runData);
-          statusRef.current = runData.status;
-        }
-        setEvents(eventsData || []);
-        setAssertions(assertionsData || []);
-        setDiagnostics(diagnosticsData || []);
-        setError(null);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    try {
+      const [runData, eventsData, assertionsData, diagnosticsData] = await Promise.all([
+        request<any>(`/api/test-lab/runs/${id}`).catch(() => null),
+        request<any>(`/api/test-lab/runs/${id}/events`).catch(() => []),
+        request<any>(`/api/test-lab/runs/${id}/assertions`).catch(() => []),
+        request<any>(`/api/test-lab/runs/${id}/diagnostics`).catch(() => []),
+      ]);
+      if (runData) {
+        setRun(runData);
+        statusRef.current = runData.status;
+      }
+      setEvents(Array.isArray(eventsData) ? eventsData : eventsData?.items ?? []);
+      setAssertions(Array.isArray(assertionsData) ? assertionsData : assertionsData?.items ?? []);
+      setDiagnostics(Array.isArray(diagnosticsData) ? diagnosticsData : diagnosticsData?.items ?? []);
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || "Failed to load run data");
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   // SSE streaming for live events
@@ -357,11 +360,8 @@ export default function TestRunDetailPage() {
             onClick={async () => {
               setRerunning(true);
               try {
-                const res = await fetch(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: "POST" });
-                if (res.ok) {
-                  const newRun = await res.json();
-                  router.push(`/test-lab/runs/${newRun.id}`);
-                }
+                const newRun = await request<{ id: string }>(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: "POST" });
+                router.push(`/test-lab/runs/${newRun.id}`);
               } catch { /* ignore */ }
               finally { setRerunning(false); }
             }}

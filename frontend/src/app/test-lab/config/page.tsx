@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { request } from "@/lib/api-client";
 import {
   Settings, Save, Bot, Brain, Wrench, Clock, Shield, Target, FileText,
   ChevronDown, ChevronUp, RefreshCw, Check,
@@ -57,17 +58,15 @@ export default function TestLabConfigPage() {
   const [availableSkills, setAvailableSkills] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch("/api/test-lab/config")
-      .then((r) => r.json())
+    request<any>("/api/test-lab/config")
       .then(setConfig)
-      .catch((e) => setError(e.message))
+      .catch((e: any) => setError(e.message || "Failed to load config"))
       .finally(() => setLoading(false));
   }, []);
 
   function loadModels(provider: string) {
     setLoadingModels(true);
-    fetch(`/api/test-lab/config/models/${provider}`)
-      .then((r) => r.json())
+    request<{ models: string[] }>(`/api/test-lab/config/models/${provider}`)
       .then((data) => setModels(data.models || []))
       .catch(() => {})
       .finally(() => setLoadingModels(false));
