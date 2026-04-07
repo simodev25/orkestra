@@ -122,11 +122,14 @@ services:
     environment:
       PYTHONPATH: /app
       ORKESTRA_DATABASE_URL: postgresql+asyncpg://orkestra:orkestra@postgres:5432/orkestra
+      ORKESTRA_DATABASE_URL_SYNC: postgresql://orkestra:orkestra@postgres:5432/orkestra
       ORKESTRA_REDIS_URL: redis://redis:6379/0
       ORKESTRA_SECRET_KEY: orkestra-dev-secret-change-in-prod
       ORKESTRA_DEBUG: "true"
       ORKESTRA_LOG_LEVEL: INFO
       ORKESTRA_OBOT_BASE_URL: http://obot:8080
+      ORKESTRA_OBOT_USE_MOCK: "true"
+      ORKESTRA_OBOT_FALLBACK_TO_MOCK: "true"
       ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
     depends_on:
       postgres:
