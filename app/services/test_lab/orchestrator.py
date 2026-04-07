@@ -97,7 +97,10 @@ async def prepare_test_scenario(scenario_summary: str) -> Any:
     res = await worker(Msg("user", f"Validate this test scenario configuration:\n{json.dumps(config, indent=2)}", "user"))
     text = res.get_text_content() if hasattr(res, "get_text_content") else str(res)
 
-    await _emit("phase_completed", "preparation", f"Scenario validated: {text[:200]}", details=config)
+    await _emit("phase_completed", "preparation", "Scenario validated", details={
+        **config,
+        "worker_response": text[:3000],
+    })
     return _tool_response(f"Scenario validated. Config: {json.dumps(config)}\nAnalysis: {text}")
 
 
@@ -207,6 +210,11 @@ async def run_assertion_evaluation(execution_summary: str) -> Any:
     res = await worker(Msg("user", f"Analyze these assertion results:\n{assertion_summary}", "user"))
     analysis = res.get_text_content() if hasattr(res, "get_text_content") else str(res)
 
+    await _emit("phase_completed", "assertions", f"Assertions evaluated: {passed}/{len(_assertion_results)} passed", details={
+        "worker_response": analysis[:3000],
+        "passed": passed,
+        "total": len(_assertion_results),
+    })
     return _tool_response(f"Assertions evaluated: {passed}/{len(_assertion_results)} passed.\n{assertion_summary}\nAnalysis: {analysis}")
 
 
@@ -263,6 +271,10 @@ async def run_diagnostic_analysis(test_context: str) -> Any:
     res = await worker(Msg("user", f"Analyze these diagnostic findings:\n{diag_summary}", "user"))
     analysis = res.get_text_content() if hasattr(res, "get_text_content") else str(res)
 
+    await _emit("phase_completed", "diagnostics", f"Diagnostics: {len(_diagnostic_results)} findings", details={
+        "worker_response": analysis[:3000],
+        "findings_count": len(_diagnostic_results),
+    })
     return _tool_response(f"Diagnostics: {len(_diagnostic_results)} findings.\n{diag_summary}\nAnalysis: {analysis}")
 
 
@@ -304,6 +316,11 @@ async def compute_final_verdict(all_results: str) -> Any:
 
     _run.summary = f"Score: {score}/100 — Verdict: {verdict} — {summary_text[:200]}"
 
+    await _emit("phase_completed", "report", f"Score: {score}/100 — Verdict: {verdict}", details={
+        "worker_response": summary_text[:3000],
+        "score": score,
+        "verdict": verdict,
+    })
     await _emit("run_completed", "orchestrator", f"Run completed: {verdict} ({score}/100)")
 
     return _tool_response(f"Final verdict: {verdict} — Score: {score}/100\n{summary_text}")

@@ -77,8 +77,9 @@ function EventDetails({ event }: { event: any }) {
   const hasToolCalls = d.tool_calls_planned && d.tool_calls_planned.length > 0;
   const hasToolResult = event.event_type === "tool_call_completed" && d.output_preview;
   const hasMcp = event.event_type === "mcp_session_connected" && d.tools;
+  const hasWorkerResponse = !!d.worker_response;
   const hasLongMessage = event.message && event.message.length > 120;
-  const hasContent = hasLlm || hasToolCalls || hasToolResult || hasMcp || hasLongMessage;
+  const hasContent = hasLlm || hasToolCalls || hasToolResult || hasMcp || hasWorkerResponse || hasLongMessage;
 
   if (!hasContent) return null;
 
@@ -90,6 +91,7 @@ function EventDetails({ event }: { event: any }) {
       >
         <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>&#9654;</span>
         {expanded ? "Hide details" : "Show details"}
+        {hasWorkerResponse && <span className="text-ork-amber/60 ml-1">Agent</span>}
         {hasLlm && <span className="text-ork-purple/60 ml-1">LLM</span>}
         {hasToolCalls && <span className="text-ork-cyan/60 ml-1">Tools</span>}
         {hasToolResult && <span className="text-ork-green/60 ml-1">Result</span>}
@@ -103,6 +105,16 @@ function EventDetails({ event }: { event: any }) {
             <pre className="text-[10px] font-mono text-ork-muted bg-ork-bg border border-ork-border rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
 {event.message}
             </pre>
+          )}
+
+          {/* Worker agent response */}
+          {hasWorkerResponse && (
+            <div className="border-l-2 border-ork-amber/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-amber mb-1 font-semibold">Agent Response</p>
+              <pre className="text-[10px] font-mono text-ork-text/80 bg-ork-bg border border-ork-border rounded p-2.5 max-h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{d.worker_response}
+              </pre>
+            </div>
           )}
 
           {/* LLM output */}
