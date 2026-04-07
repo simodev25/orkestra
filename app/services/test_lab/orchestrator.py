@@ -29,18 +29,34 @@ from app.core.config import get_settings
 logger = logging.getLogger("orkestra.test_lab.orchestrator")
 
 
+# ── Shared sync engine singleton (F17) ────────────────────────────────
+
+_sync_engine = None
+
+
+def _get_sync_engine():
+    global _sync_engine
+    if _sync_engine is None:
+        from sqlalchemy import create_engine
+        settings = get_settings()
+        sync_url = getattr(settings, 'DATABASE_URL_SYNC', None)
+        if not sync_url:
+            sync_url = settings.DATABASE_URL.replace("+asyncpg", "").replace("asyncpg", "psycopg2")
+        _sync_engine = create_engine(sync_url, pool_size=5, max_overflow=3)
+    return _sync_engine
+
+
 # ── Event publishing ──────────────────────────────────────────────────
 
 
 def emit(run_id: str, event_type: str, phase: str, message: str,
          details: dict | None = None, duration_ms: int | None = None):
     """Persist event to DB + publish to Redis pub/sub for SSE."""
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import text
     settings = get_settings()
-    sync_url = settings.DATABASE_URL.replace("asyncpg", "psycopg2").replace("+asyncpg", "")
     evt_id = f"evt_{datetime.now(timezone.utc).strftime('%H%M%S%f')}"
 
-    engine = create_engine(sync_url)
+    engine = _get_sync_engine()
     with engine.connect() as conn:
         conn.execute(text(
             "INSERT INTO test_run_events (id, run_id, event_type, phase, message, details, timestamp, duration_ms, created_at, updated_at) "
@@ -48,7 +64,6 @@ def emit(run_id: str, event_type: str, phase: str, message: str,
         ), {"id": evt_id, "rid": run_id, "et": event_type, "ph": phase,
             "msg": message, "det": json.dumps(details) if details else None, "dur": duration_ms})
         conn.commit()
-    engine.dispose()
 
     # Publish to Redis for SSE
     try:
@@ -65,15 +80,12 @@ def emit(run_id: str, event_type: str, phase: str, message: str,
 
 def update_run(run_id: str, **fields):
     """Update run record in DB."""
-    from sqlalchemy import create_engine, text
-    settings = get_settings()
-    sync_url = settings.DATABASE_URL.replace("asyncpg", "psycopg2").replace("+asyncpg", "")
+    from sqlalchemy import text
     sets = ", ".join(f"{k} = :{k}" for k in fields)
-    engine = create_engine(sync_url)
+    engine = _get_sync_engine()
     with engine.connect() as conn:
         conn.execute(text(f"UPDATE test_runs SET {sets}, updated_at = NOW() WHERE id = :id"), {"id": run_id, **fields})
         conn.commit()
-    engine.dispose()
 
 
 # ── LLM model factory ────────────────────────────────────────────────
