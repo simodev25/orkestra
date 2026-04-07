@@ -123,9 +123,6 @@ async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payloa
 
 async def _sync_agent_skills(db: AsyncSession, agent_id: str, skill_ids: list[str]) -> None:
     """Replace agent's AgentSkill rows with the given skill_ids list."""
-    await db.execute(
-        select(AgentSkill).where(AgentSkill.agent_id == agent_id)
-    )
     # Delete existing entries via ORM
     existing_result = await db.execute(
         select(AgentSkill).where(AgentSkill.agent_id == agent_id)
