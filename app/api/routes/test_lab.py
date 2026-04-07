@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -332,14 +332,18 @@ async def list_models(provider: str):
 
 
 @router.put("/config")
-async def update_config(data: TestLabConfig, db: AsyncSession = Depends(get_db)):
-    """Update test lab configuration."""
+async def update_config(request: Request, db: AsyncSession = Depends(get_db)):
+    """Update test lab configuration.
+
+    Accepts the full nested config structure:
+    {orchestrator: {provider, model, max_iters}, workers: {...}, defaults: {...}}
+    """
     from sqlalchemy import text
-    config_dict = data.model_dump(exclude_none=True)
-    for key, value in config_dict.items():
+    data = await request.json()
+    for key, value in data.items():
         await db.execute(text(
             "INSERT INTO test_lab_config (key, value, updated_at) VALUES (:key, :val, NOW()) "
             "ON CONFLICT (key) DO UPDATE SET value = :val, updated_at = NOW()"
-        ), {"key": key, "val": json.dumps(value)})
+        ), {"key": key, "val": json.dumps(value) if not isinstance(value, str) else value})
     await db.commit()
     return await get_config(db)
