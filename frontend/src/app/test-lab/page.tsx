@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { FlaskConical, Play, Eye, Plus } from "lucide-react";
+import { FlaskConical, Play, Eye, Plus, Settings } from "lucide-react";
 
 interface Scenario {
   id: string;
@@ -95,6 +95,13 @@ export default function TestLabPage() {
         >
           <Plus size={13} />
           Create Scenario
+        </Link>
+        <Link
+          href="/test-lab/config"
+          className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-surface text-ork-muted border border-ork-border rounded hover:text-ork-text hover:border-ork-dim transition-colors"
+        >
+          <Settings size={13} />
+          Config
         </Link>
       </div>
 

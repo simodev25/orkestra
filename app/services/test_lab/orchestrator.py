@@ -79,16 +79,52 @@ def update_run(run_id: str, **fields):
 # ── LLM model factory ────────────────────────────────────────────────
 
 
-def make_model():
-    """Create the LLM for worker agents (gpt-oss:20b-cloud via Ollama)."""
-    from agentscope.model import OllamaChatModel
+def _get_config_sync() -> dict:
+    """Read test lab config from DB (sync for Celery worker)."""
+    from sqlalchemy import create_engine, text
     settings = get_settings()
-    host = settings.OLLAMA_HOST
-    # Docker: replace localhost with host.docker.internal
+    sync_url = settings.DATABASE_URL.replace("asyncpg", "psycopg2").replace("+asyncpg", "")
+    engine = create_engine(sync_url)
+    config = {
+        "orchestrator": {"provider": "ollama", "model": "gpt-oss:20b-cloud"},
+        "workers": {
+            "preparation": {"prompt": "You are a test preparation worker. Produce a structured TEST PLAN.", "model": None},
+            "assertion": {"prompt": "Analyze assertion results briefly.", "model": None},
+            "diagnostic": {"prompt": "Analyze diagnostic findings and recommend fixes.", "model": None},
+            "verdict": {"prompt": "Produce a concise final test summary.", "model": None},
+        },
+    }
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT key, value FROM test_lab_config"))
+            for row in result.fetchall():
+                if row[0] in config and isinstance(config[row[0]], dict):
+                    config[row[0]] = {**config[row[0]], **row[1]}
+    except Exception:
+        pass
+    engine.dispose()
+    return config
+
+
+def make_model(worker_name: str | None = None):
+    """Create the LLM for worker agents. Reads model from config."""
+    from agentscope.model import OllamaChatModel
     import os
-    if os.path.exists("/.dockerenv") or os.environ.get("ORKESTRA_DATABASE_URL", "").startswith("postgresql"):
-        host = host.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
-    return OllamaChatModel(model_name="gpt-oss:20b-cloud", host=host, stream=False)
+    settings = get_settings()
+    config = _get_config_sync()
+
+    # Check worker-specific model override
+    model_name = None
+    if worker_name and worker_name in config.get("workers", {}):
+        model_name = config["workers"][worker_name].get("model")
+
+    # Fall back to orchestrator model
+    if not model_name:
+        model_name = config.get("orchestrator", {}).get("model", "gpt-oss:20b-cloud")
+
+    # Always use ollama.com cloud API
+    host = "https://ollama.com"
+    return OllamaChatModel(model_name=model_name, host=host, stream=False)
 
 
 def make_formatter():
@@ -99,32 +135,33 @@ def make_formatter():
 # ── Worker helper ─────────────────────────────────────────────────────
 
 
-async def run_worker(run_id: str, phase: str, worker_name: str, sys_prompt: str, user_prompt: str) -> str:
-    """Create a worker ReActAgent, run it, capture output via stream_printing_messages."""
+async def run_worker(run_id: str, phase: str, worker_name: str, default_prompt: str, user_prompt: str) -> str:
+    """Create a worker ReActAgent, run it, return response."""
     from agentscope.agent import ReActAgent
     from agentscope.tool import Toolkit
     from agentscope.memory import InMemoryMemory
     from agentscope.message import Msg
-    from agentscope.pipeline import stream_printing_messages
+
+    # Read prompt from config (override default)
+    config = _get_config_sync()
+    config_prompt = config.get("workers", {}).get(worker_name.replace("_worker", ""), {}).get("prompt")
+    sys_prompt = config_prompt or default_prompt
 
     worker = ReActAgent(
         name=worker_name, sys_prompt=sys_prompt,
-        model=make_model(), formatter=make_formatter(),
+        model=make_model(worker_name.replace("_worker", "")),
+        formatter=make_formatter(),
         toolkit=Toolkit(), memory=InMemoryMemory(), max_iters=1,
     )
-    worker.set_console_output_enabled(False)
 
     task_msg = Msg("user", user_prompt, "user")
+    response = await worker(task_msg)
+    text = response.get_text_content() if hasattr(response, "get_text_content") else str(response)
 
-    async for msg, is_last in stream_printing_messages(agents=[worker], coroutine_task=worker(task_msg)):
-        text = msg.get_text_content() if hasattr(msg, "get_text_content") else ""
-        if text:
-            emit(run_id, "agent_message", phase, f"{worker_name}: {text[:100]}...",
-                 details={"agent": worker_name, "content": text[:3000]})
+    emit(run_id, "agent_message", phase, f"{worker_name}: {text[:100]}...",
+         details={"agent": worker_name, "content": text[:3000]})
 
-    # Get final response
-    msgs = await worker.memory.get_memory()
-    return msgs[-1].get_text_content() if msgs else ""
+    return text or ""
 
 
 # ── Main entry point ──────────────────────────────────────────────────

@@ -215,3 +215,68 @@ async def get_run_report(run_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/agents/{agent_id}/summary", response_model=AgentTestSummary)
 async def get_agent_summary(agent_id: str, db: AsyncSession = Depends(get_db)):
     return await get_agent_test_summary(db, agent_id)
+
+
+# ── Configuration ─────────────────────────────────────────
+
+DEFAULT_CONFIG = {
+    "orchestrator": {
+        "provider": "ollama",
+        "model": "gpt-oss:20b-cloud",
+        "max_iters": 10,
+    },
+    "workers": {
+        "preparation": {
+            "prompt": "You are a test preparation worker. Produce a structured TEST PLAN: Objective, Target agent, Input, Expected behavior, Assertions, Constraints, Risks. Be concise.",
+            "model": None,
+        },
+        "assertion": {
+            "prompt": "Analyze assertion results briefly.",
+            "model": None,
+        },
+        "diagnostic": {
+            "prompt": "Analyze diagnostic findings and recommend fixes.",
+            "model": None,
+        },
+        "verdict": {
+            "prompt": "Produce a concise final test summary.",
+            "model": None,
+        },
+    },
+    "defaults": {
+        "timeout_seconds": 120,
+        "max_iterations": 5,
+        "retry_count": 0,
+    },
+}
+
+
+@router.get("/config")
+async def get_config(db: AsyncSession = Depends(get_db)):
+    """Get test lab configuration."""
+    from sqlalchemy import text
+    result = await db.execute(text("SELECT key, value FROM test_lab_config"))
+    rows = {r[0]: r[1] for r in result.fetchall()}
+    config = {**DEFAULT_CONFIG}
+    for key in config:
+        if key in rows:
+            if isinstance(config[key], dict):
+                config[key] = {**config[key], **rows[key]}
+            else:
+                config[key] = rows[key]
+    return config
+
+
+@router.put("/config")
+async def update_config(data: dict, db: AsyncSession = Depends(get_db)):
+    """Update test lab configuration."""
+    from sqlalchemy import text
+    for key, value in data.items():
+        if key not in DEFAULT_CONFIG:
+            continue
+        await db.execute(text(
+            "INSERT INTO test_lab_config (key, value, updated_at) VALUES (:key, :val, NOW()) "
+            "ON CONFLICT (key) DO UPDATE SET value = :val, updated_at = NOW()"
+        ), {"key": key, "val": json.dumps(value)})
+    await db.commit()
+    return await get_config(db)
