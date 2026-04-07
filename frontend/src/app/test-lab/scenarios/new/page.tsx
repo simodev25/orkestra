@@ -1,17 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FlaskConical, Save } from "lucide-react";
+import { request } from "@/lib/api-client";
+import { listAgents } from "@/lib/agent-registry/service";
+import type { AgentDefinition } from "@/lib/agent-registry/types";
 
 export default function CreateScenarioPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agents, setAgents] = useState<AgentDefinition[]>([]);
 
   const [name, setName] = useState("");
   const [agentId, setAgentId] = useState("");
+
+  useEffect(() => {
+    listAgents().then(setAgents).catch(() => {});
+  }, []);
   const [description, setDescription] = useState("");
   const [inputPrompt, setInputPrompt] = useState("");
   const [timeoutSeconds, setTimeoutSeconds] = useState(120);
@@ -59,16 +67,10 @@ export default function CreateScenarioPage() {
         tags,
       };
 
-      const res = await fetch("/api/test-lab/scenarios", {
+      await request("/api/test-lab/scenarios", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail || res.statusText);
-      }
 
       router.push("/test-lab");
     } catch (e: any) {
@@ -123,15 +125,20 @@ export default function CreateScenarioPage() {
               />
             </div>
             <div>
-              <label className={labelClasses}>Agent ID *</label>
-              <input
-                type="text"
+              <label className={labelClasses}>Agent to test *</label>
+              <select
                 value={agentId}
                 onChange={(e) => setAgentId(e.target.value)}
                 required
-                placeholder="UUID of the agent to test"
                 className={inputClasses}
-              />
+              >
+                <option value="">-- Select an agent --</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.id}) — {a.family_id} — {a.status}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className={labelClasses}>Description</label>
