@@ -44,3 +44,11 @@ def get_local_tools() -> dict:
 def get_tools_for_mcp(mcp_id: str) -> list | None:
     """Get tool functions for a given MCP ID, or None if not found locally."""
     return get_local_tools().get(mcp_id)
+
+
+def get_mcp_id_for_tool(tool_func) -> str | None:
+    """Return the MCP ID that owns *tool_func*, or None if not found in the local registry."""
+    for mcp_id, tools in get_local_tools().items():
+        if tool_func in tools:
+            return mcp_id
+    return None
