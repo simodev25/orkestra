@@ -94,6 +94,9 @@ async def state_violation_handler(request, exc):
 
 @app.exception_handler(Exception)
 async def generic_handler(request, exc):
+    from fastapi import HTTPException
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     logger.exception("Unhandled error")
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
