@@ -86,7 +86,18 @@ async def prepare_test_scenario(scenario_summary: str) -> Any:
 
     worker = ReActAgent(
         name="preparation_worker",
-        sys_prompt="You are a test preparation worker. Validate the scenario configuration and report any issues. Check that timeout, iterations, and assertions are reasonable.",
+        sys_prompt="""You are a test preparation worker. Your job is to analyze the scenario and produce a structured TEST PLAN.
+
+Your test plan must include:
+1. **Objective** — what is being tested and why
+2. **Target agent** — which agent, what is its purpose
+3. **Input** — what prompt/data will be sent
+4. **Expected behavior** — what the agent should do (tools to call, output format)
+5. **Assertions** — what will be checked automatically
+6. **Constraints** — timeout, max iterations, allowed tools
+7. **Risk factors** — what could go wrong
+
+Be concise. Use bullet points. This plan will guide the test execution.""",
         model=_make_model(),
         formatter=_make_formatter(),
         toolkit=Toolkit(),
@@ -94,14 +105,14 @@ async def prepare_test_scenario(scenario_summary: str) -> Any:
         max_iters=1,
     )
 
-    res = await worker(Msg("user", f"Validate this test scenario configuration:\n{json.dumps(config, indent=2)}", "user"))
+    res = await worker(Msg("user", f"Prepare a test plan for this scenario:\n{json.dumps(config, indent=2)}\n\nFull input prompt: {_scenario.input_prompt}", "user"))
     text = res.get_text_content() if hasattr(res, "get_text_content") else str(res)
 
-    await _emit("phase_completed", "preparation", "Scenario validated", details={
+    await _emit("phase_completed", "preparation", "Test plan ready", details={
         **config,
         "worker_response": text[:3000],
     })
-    return _tool_response(f"Scenario validated. Config: {json.dumps(config)}\nAnalysis: {text}")
+    return _tool_response(f"Test plan ready.\nConfig: {json.dumps(config)}\nPlan: {text}")
 
 
 async def execute_target_agent(test_instructions: str) -> Any:
