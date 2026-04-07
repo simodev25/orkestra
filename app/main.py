@@ -5,10 +5,13 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.auth import ApiKeyMiddleware
 from app.core.config import get_settings
 from app.core.logging_config import configure_logging
+from app.core.exceptions import NotFoundError, ValidationError, StateViolationError
+from app.core.correlation import CorrelationIdMiddleware
 from app.api.routes import (
     health, requests, cases, agents, mcps, plans, runs,
     control, supervision, approvals, audit, workflows, mcp_catalog, metrics,
@@ -64,6 +67,28 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 app.add_middleware(ApiKeyMiddleware)
+
+
+# Exception handlers
+@app.exception_handler(NotFoundError)
+async def not_found_handler(request, exc):
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(ValidationError)
+async def validation_handler(request, exc):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(StateViolationError)
+async def state_violation_handler(request, exc):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(Exception)
+async def generic_handler(request, exc):
+    logger.exception("Unhandled error")
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(requests.router, prefix="/api/requests", tags=["requests"])
