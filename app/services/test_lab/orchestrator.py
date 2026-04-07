@@ -71,6 +71,9 @@ async def prepare_test_scenario(scenario_summary: str) -> Any:
     from agentscope.memory import InMemoryMemory
     from agentscope.message import Msg
 
+    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → prepare_test_scenario", details={
+        "tool_name": "prepare_test_scenario", "tool_input": scenario_summary[:300],
+    })
     await _emit("phase_started", "preparation", "Preparation worker started")
 
     config = {
@@ -126,6 +129,9 @@ async def execute_target_agent(test_instructions: str) -> Any:
     """
     global _runtime_result
 
+    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → execute_target_agent", details={
+        "tool_name": "execute_target_agent", "tool_input": test_instructions[:300],
+    })
     await _emit("handoff_started", "orchestrator", "Dispatching target agent execution")
 
     from app.services.test_lab.runtime_adapter import execute_with_event_capture
@@ -181,6 +187,9 @@ async def run_assertion_evaluation(execution_summary: str) -> Any:
     from agentscope.memory import InMemoryMemory
     from agentscope.message import Msg
 
+    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → run_assertion_evaluation", details={
+        "tool_name": "run_assertion_evaluation", "tool_input": execution_summary[:300],
+    })
     await _emit("assertion_phase_started", "assertions", "Assertion worker started")
 
     # Run deterministic assertions
@@ -244,6 +253,9 @@ async def run_diagnostic_analysis(test_context: str) -> Any:
     from agentscope.memory import InMemoryMemory
     from agentscope.message import Msg
 
+    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → run_diagnostic_analysis", details={
+        "tool_name": "run_diagnostic_analysis", "tool_input": test_context[:300],
+    })
     await _emit("diagnostic_phase_started", "diagnostics", "Diagnostic worker started")
 
     # Run deterministic diagnostics
@@ -303,6 +315,9 @@ async def compute_final_verdict(all_results: str) -> Any:
     from agentscope.memory import InMemoryMemory
     from agentscope.message import Msg
 
+    await _emit("orchestrator_tool_call", "orchestrator", f"Master calls → compute_final_verdict", details={
+        "tool_name": "compute_final_verdict", "tool_input": all_results[:300],
+    })
     await _emit("report_phase_started", "report", "Verdict worker started")
 
     # Compute score deterministically

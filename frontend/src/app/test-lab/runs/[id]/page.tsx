@@ -74,12 +74,15 @@ function EventDetails({ event }: { event: any }) {
   const [expanded, setExpanded] = useState(false);
   const d = event.details || {};
   const hasLlm = !!d.llm_output;
+  const hasLlmReasoning = !!d.llm_reasoning;
   const hasToolCalls = d.tool_calls_planned && d.tool_calls_planned.length > 0;
   const hasToolResult = event.event_type === "tool_call_completed" && d.output_preview;
+  const hasOrchestratorToolCall = event.event_type === "orchestrator_tool_call" && d.tool_name;
+  const hasOrchestratorResult = event.event_type === "orchestrator_tool_result" && d.result_preview;
   const hasMcp = event.event_type === "mcp_session_connected" && d.tools;
   const hasWorkerResponse = !!d.worker_response;
   const hasLongMessage = event.message && event.message.length > 120;
-  const hasContent = hasLlm || hasToolCalls || hasToolResult || hasMcp || hasWorkerResponse || hasLongMessage;
+  const hasContent = hasLlm || hasLlmReasoning || hasToolCalls || hasToolResult || hasOrchestratorToolCall || hasOrchestratorResult || hasMcp || hasWorkerResponse || hasLongMessage;
 
   if (!hasContent) return null;
 
@@ -105,6 +108,35 @@ function EventDetails({ event }: { event: any }) {
             <pre className="text-[10px] font-mono text-ork-muted bg-ork-bg border border-ork-border rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
 {event.message}
             </pre>
+          )}
+
+          {/* Master orchestrator tool call */}
+          {hasOrchestratorToolCall && (
+            <div className="border-l-2 border-ork-purple/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-purple mb-1 font-semibold">Master → {d.tool_name}</p>
+              {d.tool_input && (
+                <pre className="text-[10px] font-mono text-ork-dim bg-ork-bg border border-ork-border rounded p-2 whitespace-pre-wrap">{d.tool_input}</pre>
+              )}
+              {d.llm_reasoning && (
+                <pre className="text-[10px] font-mono text-ork-purple/60 mt-1 whitespace-pre-wrap">{d.llm_reasoning}</pre>
+              )}
+            </div>
+          )}
+
+          {/* Master orchestrator received tool result */}
+          {hasOrchestratorResult && (
+            <div className="border-l-2 border-ork-purple/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-purple mb-1 font-semibold">Master ← {d.tool_name}</p>
+              <pre className="text-[10px] font-mono text-ork-text/60 bg-ork-bg border border-ork-border rounded p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">{d.result_preview}</pre>
+            </div>
+          )}
+
+          {/* LLM reasoning (from master thinking) */}
+          {hasLlmReasoning && !hasOrchestratorToolCall && (
+            <div className="border-l-2 border-ork-purple/20 pl-3">
+              <p className="text-[10px] font-mono text-ork-purple/60 mb-1">Reasoning</p>
+              <pre className="text-[10px] font-mono text-ork-text/50 whitespace-pre-wrap">{d.llm_reasoning}</pre>
+            </div>
           )}
 
           {/* Worker agent response */}
@@ -176,7 +208,11 @@ function EventDetails({ event }: { event: any }) {
 function getAgentLabel(event: any): string | null {
   const t = event.event_type;
   const p = event.phase;
-  if (p === "orchestrator") return "master_orchestrator";
+  if (t === "orchestrator_thinking") return "master (thinking)";
+  if (t === "orchestrator_tool_call") return "master → worker";
+  if (t === "orchestrator_tool_result") return "worker → master";
+  if (t === "orchestrator_response") return "master (response)";
+  if (p === "orchestrator") return "master";
   if (p === "preparation") return "preparation_worker";
   if (p === "assertions") return "assertion_worker";
   if (p === "diagnostics") return "diagnostic_worker";
