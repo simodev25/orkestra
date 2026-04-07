@@ -18,7 +18,7 @@ def upgrade() -> None:
     op.create_table(
         "mcp_definition_history",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("mcp_id", sa.String(100), sa.ForeignKey("mcp_definitions.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("mcp_id", sa.String(100), sa.ForeignKey("mcp_definitions.id", ondelete="CASCADE"), nullable=False),
         sa.Column("snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("version", sa.String(20), nullable=True),
         sa.Column("replaced_at", sa.DateTime(timezone=True), nullable=True),
