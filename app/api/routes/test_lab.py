@@ -268,11 +268,16 @@ async def get_config(db: AsyncSession = Depends(get_db)):
     """Get test lab configuration."""
     from sqlalchemy import text
     result = await db.execute(text("SELECT key, value FROM test_lab_config"))
-    rows = {r[0]: r[1] for r in result.fetchall()}
+    rows = {}
+    for r in result.fetchall():
+        try:
+            rows[r[0]] = json.loads(r[1]) if isinstance(r[1], str) else r[1]
+        except (json.JSONDecodeError, TypeError):
+            rows[r[0]] = r[1]
     config = {**DEFAULT_CONFIG}
     for key in config:
         if key in rows:
-            if isinstance(config[key], dict):
+            if isinstance(config[key], dict) and isinstance(rows[key], dict):
                 config[key] = {**config[key], **rows[key]}
             else:
                 config[key] = rows[key]
