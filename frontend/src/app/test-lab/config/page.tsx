@@ -2,7 +2,48 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Settings, Save, Bot, Brain, Wrench, Clock } from "lucide-react";
+import {
+  Settings, Save, Bot, Brain, Wrench, Clock, Shield, Target, FileText,
+  ChevronDown, ChevronUp, RefreshCw, Check,
+} from "lucide-react";
+
+const AGENT_DEFS = [
+  {
+    key: "preparation",
+    name: "Preparation Agent",
+    icon: FileText,
+    color: "purple",
+    description: "Analyzes the scenario and produces a structured test plan before execution.",
+  },
+  {
+    key: "assertion",
+    name: "Assertion Agent",
+    icon: Target,
+    color: "green",
+    description: "Evaluates assertion results and provides human-readable analysis of pass/fail outcomes.",
+  },
+  {
+    key: "diagnostic",
+    name: "Diagnostic Agent",
+    icon: Shield,
+    color: "amber",
+    description: "Analyzes diagnostic findings, identifies root causes, and recommends corrective actions.",
+  },
+  {
+    key: "verdict",
+    name: "Verdict Agent",
+    icon: Brain,
+    color: "cyan",
+    description: "Produces the final test summary with score interpretation and overall verdict.",
+  },
+];
+
+const COLOR_MAP: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  purple: { bg: "bg-ork-purple/5", border: "border-ork-purple/20", text: "text-ork-purple", dot: "bg-ork-purple" },
+  green: { bg: "bg-ork-green/5", border: "border-ork-green/20", text: "text-ork-green", dot: "bg-ork-green" },
+  amber: { bg: "bg-ork-amber/5", border: "border-ork-amber/20", text: "text-ork-amber", dot: "bg-ork-amber" },
+  cyan: { bg: "bg-ork-cyan/5", border: "border-ork-cyan/20", text: "text-ork-cyan", dot: "bg-ork-cyan" },
+};
 
 export default function TestLabConfigPage() {
   const [config, setConfig] = useState<any>(null);
@@ -10,6 +51,9 @@ export default function TestLabConfigPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [models, setModels] = useState<any[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/test-lab/config")
@@ -19,10 +63,24 @@ export default function TestLabConfigPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  function loadModels(provider: string) {
+    setLoadingModels(true);
+    fetch(`/api/test-lab/config/models/${provider}`)
+      .then((r) => r.json())
+      .then((data) => setModels(data.models || []))
+      .catch(() => {})
+      .finally(() => setLoadingModels(false));
+  }
+
+  useEffect(() => {
+    if (config?.orchestrator?.provider) {
+      loadModels(config.orchestrator.provider);
+    }
+  }, [config?.orchestrator?.provider]);
+
   async function handleSave() {
     setSaving(true);
     setSaved(false);
-    setError(null);
     try {
       const res = await fetch("/api/test-lab/config", {
         method: "PUT",
@@ -30,256 +88,225 @@ export default function TestLabConfigPage() {
         body: JSON.stringify(config),
       });
       if (!res.ok) throw new Error("Failed to save");
-      const updated = await res.json();
-      setConfig(updated);
+      setConfig(await res.json());
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
+    } catch (e: any) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  function updateWorker(key: string, field: string, value: any) {
+    setConfig({
+      ...config,
+      workers: {
+        ...config.workers,
+        [key]: { ...config.workers?.[key], [field]: value },
+      },
+    });
   }
 
   if (loading) {
     return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <div className="glass-panel p-16 text-center text-sm font-mono text-ork-cyan animate-pulse">Loading configuration...</div>
+      <div className="p-6 max-w-5xl mx-auto">
+        <div className="glass-panel p-16 text-center text-sm font-mono text-ork-cyan animate-pulse">Loading...</div>
       </div>
     );
   }
 
+  const modelOptions = models.map((m: any) => m.name);
+
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6 animate-fade-in">
+    <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-3">
+          <Link href="/test-lab" className="text-xs font-mono text-ork-dim hover:text-ork-cyan">← Back to Test Lab</Link>
+          <div className="flex items-center gap-3 mt-1">
             <Settings size={20} className="text-ork-cyan" />
             <h1 className="text-xl font-semibold">Test Lab Configuration</h1>
           </div>
-          <p className="text-xs text-ork-muted mt-1">Configure LLM models, worker prompts, and default settings for the Agentic Test Lab</p>
         </div>
         <div className="flex items-center gap-3">
-          {saved && <span className="text-xs font-mono text-ork-green">Saved!</span>}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider rounded border bg-ork-cyan/10 text-ork-cyan border-ork-cyan/30 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40"
-          >
-            <Save size={13} /> {saving ? "Saving..." : "Save"}
+          {saved && <span className="text-xs font-mono text-ork-green flex items-center gap-1"><Check size={12} /> Saved</span>}
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider rounded border bg-ork-cyan/10 text-ork-cyan border-ork-cyan/30 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40">
+            <Save size={13} /> {saving ? "Saving..." : "Save all"}
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="glass-panel p-3 border-ork-red/30 bg-ork-red/5">
-          <p className="text-xs font-mono text-ork-red">{error}</p>
-        </div>
-      )}
+      {error && <div className="glass-panel p-3 border-ork-red/30 bg-ork-red/5"><p className="text-xs font-mono text-ork-red">{error}</p></div>}
 
-      {/* Orchestrator Model */}
+      {/* Global LLM */}
       <section className="glass-panel p-5 space-y-4">
-        <h2 className="section-title flex items-center gap-2"><Brain size={13} /> Orchestrator & Worker Model</h2>
-        <p className="text-[11px] text-ork-dim">LLM model used for orchestrator decisions and worker agents (preparation, assertion, diagnostic, verdict)</p>
-
-        <div className="grid grid-cols-2 gap-4">
+        <h2 className="section-title flex items-center gap-2"><Brain size={13} /> Default LLM</h2>
+        <p className="text-[11px] text-ork-dim">Used by all agents unless overridden individually.</p>
+        <div className="grid grid-cols-[200px_1fr] gap-4">
           <div>
             <label className="data-label block mb-1.5">Provider</label>
             <select
               value={config?.orchestrator?.provider || "ollama"}
-              onChange={(e) => setConfig({ ...config, orchestrator: { ...config.orchestrator, provider: e.target.value } })}
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40"
-            >
-              <option value="ollama">Ollama (cloud)</option>
+              onChange={(e) => {
+                setConfig({ ...config, orchestrator: { ...config.orchestrator, provider: e.target.value } });
+                loadModels(e.target.value);
+              }}
+              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40">
+              <option value="ollama">Ollama Cloud</option>
               <option value="openai">OpenAI / Mistral</option>
             </select>
           </div>
           <div>
-            <label className="data-label block mb-1.5">Model</label>
-            <input
-              type="text"
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="data-label">Model</label>
+              <button onClick={() => loadModels(config?.orchestrator?.provider || "ollama")} disabled={loadingModels}
+                className="text-[10px] font-mono text-ork-dim hover:text-ork-cyan flex items-center gap-1">
+                <RefreshCw size={10} className={loadingModels ? "animate-spin" : ""} /> {loadingModels ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+            <ModelSelect
               value={config?.orchestrator?.model || ""}
-              onChange={(e) => setConfig({ ...config, orchestrator: { ...config.orchestrator, model: e.target.value } })}
-              placeholder="gpt-oss:20b-cloud"
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+              options={modelOptions}
+              onChange={(v) => setConfig({ ...config, orchestrator: { ...config.orchestrator, model: v } })}
+              placeholder="Select a model..."
             />
           </div>
         </div>
       </section>
 
-      {/* Worker Prompts */}
-      <section className="glass-panel p-5 space-y-4">
-        <h2 className="section-title flex items-center gap-2"><Bot size={13} /> Worker Agent Prompts</h2>
-        <p className="text-[11px] text-ork-dim">System prompts for each worker agent. These define how each phase analyzes the test results.</p>
+      {/* Agent Cards */}
+      <section className="space-y-3">
+        <h2 className="section-title flex items-center gap-2"><Bot size={13} /> Test Agents</h2>
+        <p className="text-[11px] text-ork-dim mb-2">Each phase of the test is handled by a specialized agent. Click to expand and configure.</p>
 
-        {["preparation", "assertion", "diagnostic", "verdict"].map((worker) => (
-          <div key={worker} className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="data-label capitalize">{worker} worker</label>
-              <span className="text-[10px] font-mono text-ork-dim">
-                {(config?.workers?.[worker]?.model) ? `model: ${config.workers[worker].model}` : "uses default model"}
-              </span>
+        {AGENT_DEFS.map((agent) => {
+          const Icon = agent.icon;
+          const colors = COLOR_MAP[agent.color];
+          const isExpanded = expandedAgent === agent.key;
+          const workerConfig = config?.workers?.[agent.key] || {};
+          const hasOverride = !!workerConfig.model;
+
+          return (
+            <div key={agent.key} className={`rounded-lg border transition-all ${isExpanded ? colors.border : "border-ork-border"} ${isExpanded ? colors.bg : "bg-ork-surface"}`}>
+              {/* Card header */}
+              <button
+                onClick={() => setExpandedAgent(isExpanded ? null : agent.key)}
+                className="w-full px-4 py-3 flex items-center gap-3 text-left"
+              >
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${colors.bg} border ${colors.border}`}>
+                  <Icon size={16} className={colors.text} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-ork-text">{agent.name}</span>
+                    {hasOverride && (
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-ork-amber/10 text-ork-amber border border-ork-amber/20">
+                        custom model
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-ork-dim truncate">{agent.description}</p>
+                </div>
+                <div className={`text-ork-dim transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                  <ChevronDown size={16} />
+                </div>
+              </button>
+
+              {/* Expanded config */}
+              {isExpanded && (
+                <div className="px-4 pb-4 space-y-4 animate-fade-in border-t border-ork-border/50">
+                  <div className="pt-3">
+                    <label className="data-label block mb-1.5">System prompt</label>
+                    <textarea
+                      value={workerConfig.prompt || ""}
+                      onChange={(e) => updateWorker(agent.key, "prompt", e.target.value)}
+                      rows={5}
+                      className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40 resize-y"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <label className="data-label">Model override</label>
+                      <span className="text-[10px] text-ork-dim">(leave empty to use default LLM)</span>
+                    </div>
+                    <ModelSelect
+                      value={workerConfig.model || ""}
+                      options={modelOptions}
+                      onChange={(v) => updateWorker(agent.key, "model", v || null)}
+                      placeholder="Use default model"
+                      allowEmpty
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            <textarea
-              value={config?.workers?.[worker]?.prompt || ""}
-              onChange={(e) => setConfig({
-                ...config,
-                workers: {
-                  ...config.workers,
-                  [worker]: { ...config.workers?.[worker], prompt: e.target.value },
-                },
-              })}
-              rows={3}
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40 resize-y"
-            />
-            <div>
-              <label className="data-label block mb-1">Model override (optional)</label>
-              <input
-                type="text"
-                value={config?.workers?.[worker]?.model || ""}
-                onChange={(e) => setConfig({
-                  ...config,
-                  workers: {
-                    ...config.workers,
-                    [worker]: { ...config.workers?.[worker], model: e.target.value || null },
-                  },
-                })}
-                placeholder="Leave empty to use orchestrator model"
-                className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </section>
 
-      {/* Default Scenario Settings */}
+      {/* Default Settings */}
       <section className="glass-panel p-5 space-y-4">
         <h2 className="section-title flex items-center gap-2"><Clock size={13} /> Default Scenario Settings</h2>
-
         <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className="data-label block mb-1.5">Timeout (seconds)</label>
-            <input
-              type="number"
-              value={config?.defaults?.timeout_seconds || 120}
-              onChange={(e) => setConfig({ ...config, defaults: { ...config.defaults, timeout_seconds: parseInt(e.target.value) } })}
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40"
-            />
-          </div>
-          <div>
-            <label className="data-label block mb-1.5">Max iterations</label>
-            <input
-              type="number"
-              value={config?.defaults?.max_iterations || 5}
-              onChange={(e) => setConfig({ ...config, defaults: { ...config.defaults, max_iterations: parseInt(e.target.value) } })}
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40"
-            />
-          </div>
-          <div>
-            <label className="data-label block mb-1.5">Retry count</label>
-            <input
-              type="number"
-              value={config?.defaults?.retry_count || 0}
-              onChange={(e) => setConfig({ ...config, defaults: { ...config.defaults, retry_count: parseInt(e.target.value) } })}
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40"
-            />
-          </div>
+          {[
+            { key: "timeout_seconds", label: "Timeout (s)", default: 120 },
+            { key: "max_iterations", label: "Max iterations", default: 5 },
+            { key: "retry_count", label: "Retry count", default: 0 },
+          ].map((f) => (
+            <div key={f.key}>
+              <label className="data-label block mb-1.5">{f.label}</label>
+              <input type="number"
+                value={config?.defaults?.[f.key] ?? f.default}
+                onChange={(e) => setConfig({ ...config, defaults: { ...config.defaults, [f.key]: parseInt(e.target.value) || 0 } })}
+                className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40"
+              />
+            </div>
+          ))}
         </div>
       </section>
-
-      {/* Available Models */}
-      <ModelBrowser
-        provider={config?.orchestrator?.provider || "ollama"}
-        onSelect={(model: string) => setConfig({ ...config, orchestrator: { ...config.orchestrator, model } })}
-        currentModel={config?.orchestrator?.model}
-      />
     </div>
   );
 }
 
 
-function ModelBrowser({ provider, onSelect, currentModel }: { provider: string; onSelect: (m: string) => void; currentModel: string }) {
-  const [models, setModels] = useState<any[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [modelError, setModelError] = useState<string | null>(null);
+function ModelSelect({ value, options, onChange, placeholder, allowEmpty }: {
+  value: string; options: string[]; onChange: (v: string) => void; placeholder: string; allowEmpty?: boolean;
+}) {
   const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
 
-  function loadModels() {
-    setLoadingModels(true);
-    setModelError(null);
-    fetch(`/api/test-lab/config/models/${provider}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) setModelError(data.error);
-        setModels(data.models || []);
-      })
-      .catch((e) => setModelError(e.message))
-      .finally(() => setLoadingModels(false));
-  }
-
-  const filtered = search
-    ? models.filter((m: any) => m.name.toLowerCase().includes(search.toLowerCase()))
-    : models;
-
-  function formatSize(bytes: number) {
-    if (!bytes) return "";
-    if (bytes > 1e12) return `${(bytes / 1e12).toFixed(0)}T`;
-    if (bytes > 1e9) return `${(bytes / 1e9).toFixed(0)}G`;
-    if (bytes > 1e6) return `${(bytes / 1e6).toFixed(0)}M`;
-    return `${bytes}`;
-  }
+  const filtered = search ? options.filter((o) => o.toLowerCase().includes(search.toLowerCase())) : options;
 
   return (
-    <section className="glass-panel p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="section-title flex items-center gap-2">
-          <Wrench size={13} />
-          Available Models ({provider})
-        </h2>
-        <button
-          onClick={loadModels}
-          disabled={loadingModels}
-          className="text-[10px] font-mono px-3 py-1 rounded border border-ork-border text-ork-muted hover:text-ork-cyan hover:border-ork-cyan/30 transition-colors disabled:opacity-40"
-        >
-          {loadingModels ? "Loading..." : models.length > 0 ? "Refresh" : "Load models"}
-        </button>
-      </div>
-
-      {modelError && <p className="text-[10px] font-mono text-ork-red">{modelError}</p>}
-
-      {models.length > 0 && (
-        <>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search models..."
-            className="w-full px-3 py-1.5 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
-          />
-          <div className="max-h-64 overflow-y-auto space-y-1">
-            {filtered.map((m: any) => (
-              <button
-                key={m.name}
-                onClick={() => onSelect(m.name)}
-                className={`w-full text-left px-3 py-1.5 text-xs font-mono rounded border transition-colors flex items-center justify-between ${
-                  currentModel === m.name
-                    ? "bg-ork-cyan/10 text-ork-cyan border-ork-cyan/30"
-                    : "bg-ork-bg text-ork-muted border-ork-border hover:text-ork-text hover:border-ork-dim"
-                }`}
-              >
-                <span>{m.name}</span>
-                {m.size > 0 && <span className="text-[9px] text-ork-dim">{formatSize(m.size)}</span>}
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-ork-dim">{filtered.length} models — click to select</p>
-        </>
+    <div className="relative">
+      <input
+        type="text"
+        value={open ? search : value || ""}
+        onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+      />
+      {open && (
+        <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto bg-ork-surface border border-ork-border rounded shadow-lg">
+          {allowEmpty && (
+            <button onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+              className="w-full text-left px-3 py-1.5 text-xs font-mono text-ork-dim hover:bg-ork-hover">
+              — None (use default) —
+            </button>
+          )}
+          {filtered.length === 0 && <p className="px-3 py-2 text-xs text-ork-dim">No models found</p>}
+          {filtered.map((m) => (
+            <button key={m} onClick={() => { onChange(m); setOpen(false); setSearch(""); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-ork-hover transition-colors ${
+                m === value ? "text-ork-cyan bg-ork-cyan/5" : "text-ork-text"
+              }`}>
+              {m}
+            </button>
+          ))}
+        </div>
       )}
-
-      {models.length === 0 && !loadingModels && (
-        <p className="text-[10px] text-ork-dim">Click &quot;Load models&quot; to fetch available models from {provider}</p>
-      )}
-    </section>
+      {open && <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setSearch(""); }} />}
+    </div>
   );
 }

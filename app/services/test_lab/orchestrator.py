@@ -207,7 +207,7 @@ async def run_test(run_id: str, scenario_id: str):
             "assertions": len(scenario.assertions or []),
             "expected_tools": scenario.expected_tools or [],
         })
-        plan = await run_worker(run_id, "preparation", "preparation_worker",
+        plan = await run_worker(run_id, "preparation", "preparation_agent",
             "You are a test preparation worker. Produce a structured TEST PLAN: Objective, Target agent, Input, Expected behavior, Assertions, Constraints, Risks. Be concise.",
             f"Prepare test plan for:\n{config}\n\nPrompt: {scenario.input_prompt}")
 
@@ -261,7 +261,7 @@ async def run_test(run_id: str, scenario_id: str):
         await db.commit()
 
         passed = sum(1 for a in assertion_results if a["passed"])
-        analysis = await run_worker(run_id, "assertions", "assertion_worker",
+        analysis = await run_worker(run_id, "assertions", "assertion_agent",
             "Analyze assertion results briefly.",
             json.dumps({"passed": passed, "total": len(assertion_results),
                         "results": [{"type": a["assertion_type"], "passed": a["passed"], "message": a["message"]} for a in assertion_results]}))
@@ -291,7 +291,7 @@ async def run_test(run_id: str, scenario_id: str):
                 evidence=dr.get("evidence")))
         await db.commit()
 
-        diag_analysis = await run_worker(run_id, "diagnostics", "diagnostic_worker",
+        diag_analysis = await run_worker(run_id, "diagnostics", "diagnostic_agent",
             "Analyze diagnostic findings and recommend fixes.",
             json.dumps([{"code": d["code"], "severity": d["severity"], "message": d["message"]} for d in diagnostic_results]))
 
@@ -306,7 +306,7 @@ async def run_test(run_id: str, scenario_id: str):
         from app.services.test_lab.scoring import compute_score_and_verdict
         score, verdict = compute_score_and_verdict(assertion_results, diagnostic_results)
 
-        summary = await run_worker(run_id, "report", "verdict_worker",
+        summary = await run_worker(run_id, "report", "verdict_agent",
             "Produce a concise final test summary.",
             json.dumps({"score": score, "verdict": verdict,
                         "assertions_passed": passed, "assertions_total": len(assertion_results),

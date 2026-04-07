@@ -213,10 +213,10 @@ function getAgentLabel(event: any): string | null {
   if (t === "orchestrator_tool_result") return "worker → master";
   if (t === "orchestrator_response") return "master (response)";
   if (p === "orchestrator") return "master";
-  if (p === "preparation") return "preparation_worker";
-  if (p === "assertions") return "assertion_worker";
-  if (p === "diagnostics") return "diagnostic_worker";
-  if (p === "report") return "verdict_worker";
+  if (p === "preparation") return "preparation_agent";
+  if (p === "assertions") return "assertion_agent";
+  if (p === "diagnostics") return "diagnostic_agent";
+  if (p === "report") return "verdict_agent";
   if (p === "runtime") {
     if (t === "agent_iteration_started" || t === "agent_iteration_completed") return "target_agent";
     if (t === "llm_request_started" || t === "llm_request_completed") return "target_agent (LLM)";
