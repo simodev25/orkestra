@@ -82,6 +82,32 @@ async def update_mcp(db: AsyncSession, mcp_id: str, data) -> MCPDefinition:
     if not mcp:
         raise ValueError(f"MCP {mcp_id} not found")
 
+    # Snapshot current state to history before applying changes
+    from app.models.mcp_history import MCPDefinitionHistory
+
+    history = MCPDefinitionHistory(
+        mcp_id=mcp.id,
+        snapshot={
+            "name": mcp.name,
+            "purpose": mcp.purpose,
+            "description": mcp.description,
+            "effect_type": mcp.effect_type,
+            "input_contract_ref": mcp.input_contract_ref,
+            "output_contract_ref": mcp.output_contract_ref,
+            "allowed_agents": mcp.allowed_agents,
+            "criticality": mcp.criticality,
+            "timeout_seconds": mcp.timeout_seconds,
+            "retry_policy": mcp.retry_policy,
+            "cost_profile": mcp.cost_profile,
+            "approval_required": mcp.approval_required,
+            "audit_required": mcp.audit_required,
+            "status": mcp.status,
+            "owner": mcp.owner,
+        },
+        version=mcp.version or "1.0.0",
+    )
+    db.add(history)
+
     update_data = data.model_dump(exclude_none=True) if hasattr(data, 'model_dump') else data
     if "effect_type" in update_data:
         valid_effects = [e.value for e in MCPEffectType]
