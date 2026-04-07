@@ -30,7 +30,8 @@ export async function listAgents(filters?: AgentRegistryFilters): Promise<AgentD
   const workflowOnly = asBoolParam(filters?.used_in_workflow_only);
   if (workflowOnly) q.set("used_in_workflow_only", workflowOnly);
   const qs = q.toString();
-  return request<AgentDefinition[]>(`${BASE}${qs ? `?${qs}` : ""}`);
+  const res = await request<{ items: AgentDefinition[] }>(`${BASE}${qs ? `?${qs}` : ""}`);
+  return Array.isArray(res) ? res : res.items;
 }
 
 export async function getAgent(agentId: string): Promise<AgentDefinition> {

@@ -34,7 +34,8 @@ export async function listMcps(params?: {
   if (params?.criticality && params.criticality !== "all") query.set("criticality", params.criticality);
   const qs = query.toString();
   try {
-    return await request<McpDefinition[]>(`${BASE}${qs ? `?${qs}` : ""}`);
+    const res = await request<{ items: McpDefinition[] } | McpDefinition[]>(`${BASE}${qs ? `?${qs}` : ""}`);
+    return Array.isArray(res) ? res : res.items;
   } catch (err) {
     console.error("Failed to list MCPs:", err);
     throw err;

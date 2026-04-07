@@ -57,7 +57,8 @@ export async function listCatalogItems(filters?: McpCatalogFilters): Promise<Cat
   if (filters?.allowed_agent_family) query.set("allowed_agent_family", filters.allowed_agent_family);
 
   const qs = query.toString();
-  return request<CatalogMcpViewModel[]>(`${BASE}${qs ? `?${qs}` : ""}`);
+  const res = await request<{ items: CatalogMcpViewModel[] } | CatalogMcpViewModel[]>(`${BASE}${qs ? `?${qs}` : ""}`);
+  return Array.isArray(res) ? res : res.items;
 }
 
 export async function fetchObotServers(): Promise<ObotServerSummary[]> {
