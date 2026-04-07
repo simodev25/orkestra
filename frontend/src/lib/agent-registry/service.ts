@@ -97,20 +97,20 @@ export async function restoreAgent(agentId: string, historyId: string): Promise<
 }
 
 export async function listMcpCatalogForAgentDesign(): Promise<McpCatalogSummary[]> {
-  const items = await request<
-    Array<{
-      obot_server: {
-        id: string;
-        name: string;
-        purpose: string;
-        effect_type: string;
-        criticality: string;
-        approval_required: boolean;
-      };
-      obot_state: string;
-      orkestra_state: string;
-    }>
-  >("/api/mcp-catalog");
+  type CatalogItem = {
+    obot_server: {
+      id: string;
+      name: string;
+      purpose: string;
+      effect_type: string;
+      criticality: string;
+      approval_required: boolean;
+    };
+    obot_state: string;
+    orkestra_state: string;
+  };
+  const res = await request<{ items: CatalogItem[] } | CatalogItem[]>("/api/mcp-catalog");
+  const items = Array.isArray(res) ? res : res.items;
 
   return items.map((item) => ({
     id: item.obot_server.id,
