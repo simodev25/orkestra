@@ -13,10 +13,11 @@ logger = logging.getLogger("orkestra.test_lab.runtime")
 
 
 class RuntimeEventCollector:
-    """Collects normalized events during agent execution via AgentScope hooks."""
+    """Collects and persists events during agent execution via AgentScope hooks."""
 
-    def __init__(self, run_id: str):
+    def __init__(self, run_id: str, db=None):
         self.run_id = run_id
+        self.db = db
         self.events: list[dict] = []
         self.iteration_count = 0
         self._iter_start: float | None = None
@@ -24,7 +25,7 @@ class RuntimeEventCollector:
         self._tool_start: float | None = None
 
     def _emit(self, event_type: str, phase: str = "runtime", message: str = "", details: dict | None = None, duration_ms: int | None = None):
-        self.events.append({
+        evt = {
             "run_id": self.run_id,
             "event_type": event_type,
             "phase": phase,
@@ -32,7 +33,31 @@ class RuntimeEventCollector:
             "details": details or {},
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "duration_ms": duration_ms,
-        })
+        }
+        self.events.append(evt)
+
+        # Persist to DB immediately for SSE streaming (separate sync connection)
+        if self.db:
+            try:
+                from app.core.config import get_settings
+                from sqlalchemy import create_engine, text
+                import json as _json
+                settings = get_settings()
+                sync_url = settings.DATABASE_URL.replace("asyncpg", "psycopg2").replace("+asyncpg", "")
+                engine = create_engine(sync_url)
+                with engine.connect() as conn:
+                    conn.execute(text(
+                        "INSERT INTO test_run_events (id, run_id, event_type, phase, message, details, timestamp, duration_ms, created_at, updated_at) "
+                        "VALUES (:id, :run_id, :etype, :phase, :msg, :details, NOW(), :dur, NOW(), NOW())"
+                    ), {
+                        "id": f"evt_{datetime.now(timezone.utc).strftime('%H%M%S%f')[:12]}",
+                        "run_id": self.run_id, "etype": event_type, "phase": phase,
+                        "msg": message, "details": _json.dumps(details) if details else None, "dur": duration_ms,
+                    })
+                    conn.commit()
+                engine.dispose()
+            except Exception:
+                pass
 
     # ── AgentScope hooks ───────────────────────────────────
 
@@ -118,7 +143,7 @@ async def execute_with_event_capture(
     from app.services.agent_factory import create_agentscope_agent, get_tools_for_agent
     from agentscope.message import Msg
 
-    collector = RuntimeEventCollector(run_id)
+    collector = RuntimeEventCollector(run_id, db=db)
 
     # Create agent
     collector._emit("phase_started", phase="runtime", message="Creating ReActAgent")

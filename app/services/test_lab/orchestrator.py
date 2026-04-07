@@ -31,7 +31,7 @@ _diagnostic_results: list[dict] = []
 async def _emit(etype: str, phase: str, msg: str, details: dict | None = None, dur: int | None = None):
     if _db and _run:
         _db.add(TestRunEvent(run_id=_run.id, event_type=etype, phase=phase, message=msg, details=details, duration_ms=dur))
-        await _db.flush()
+        await _db.commit()  # Commit immediately so SSE can see it
 
 
 def _make_model():
@@ -125,15 +125,8 @@ async def execute_target_agent(test_instructions: str) -> Any:
         run_id=_run.id,
     )
 
-    # Persist runtime events
-    for evt in _runtime_result.get("events", []):
-        _db.add(TestRunEvent(
-            run_id=_run.id, event_type=evt["event_type"], phase=evt.get("phase"),
-            message=evt.get("message"), details=evt.get("details"),
-            timestamp=datetime.fromisoformat(evt["timestamp"]) if isinstance(evt.get("timestamp"), str) else datetime.now(timezone.utc),
-            duration_ms=evt.get("duration_ms"),
-        ))
-    await _db.flush()
+    # Runtime events already persisted live by RuntimeEventCollector
+    await _db.commit()
 
     _run.final_output = _runtime_result.get("final_output")
     _run.duration_ms = _runtime_result.get("duration_ms", 0)
