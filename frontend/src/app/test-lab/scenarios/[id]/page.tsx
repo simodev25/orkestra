@@ -70,8 +70,8 @@ export default function ScenarioDetailPage() {
         if (!r.ok) throw new Error(r.statusText);
         return r.json();
       }),
-      fetch(`/api/test-lab/scenarios/${id}/runs`).then((r) => {
-        if (!r.ok) throw new Error(r.statusText);
+      fetch(`/api/test-lab/runs?scenario_id=${id}`).then((r) => {
+        if (!r.ok) return [];
         return r.json();
       }),
     ])
