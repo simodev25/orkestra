@@ -86,7 +86,9 @@ function EventDetails({ event }: { event: any }) {
   const hasMcp = event.event_type === "mcp_session_connected" && d.tools;
   const hasWorkerResponse = !!d.worker_response;
   const hasLongMessage = event.message && event.message.length > 120;
-  const hasContent = hasLlm || hasLlmReasoning || hasToolCalls || hasToolResult || hasOrchestratorToolCall || hasOrchestratorResult || hasMcp || hasWorkerResponse || hasLongMessage;
+  const hasSubagentPrompt = !!d.subagent && !!d.prompt;
+  const hasSubagentResponse = !!d.subagent && !!d.response;
+  const hasContent = hasLlm || hasLlmReasoning || hasToolCalls || hasToolResult || hasOrchestratorToolCall || hasOrchestratorResult || hasMcp || hasWorkerResponse || hasLongMessage || hasSubagentPrompt || hasSubagentResponse;
 
   if (!hasContent) return null;
 
@@ -98,6 +100,8 @@ function EventDetails({ event }: { event: any }) {
       >
         <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>&#9654;</span>
         {expanded ? "Hide details" : "Show details"}
+        {hasSubagentPrompt && <span className="text-ork-cyan/60 ml-1">Prompt</span>}
+        {hasSubagentResponse && <span className="text-ork-purple/60 ml-1">LLM</span>}
         {hasWorkerResponse && <span className="text-ork-amber/60 ml-1">Agent</span>}
         {hasLlm && <span className="text-ork-purple/60 ml-1">LLM</span>}
         {hasToolCalls && <span className="text-ork-cyan/60 ml-1">Tools</span>}
@@ -107,6 +111,36 @@ function EventDetails({ event }: { event: any }) {
 
       {expanded && (
         <div className="mt-1.5 space-y-2 animate-fade-in">
+          {/* SubAgent prompt (input) */}
+          {hasSubagentPrompt && (
+            <div className="border-l-2 border-ork-cyan/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-cyan mb-1 font-semibold">
+                {d.subagent} — Prompt
+              </p>
+              <pre className="text-[10px] font-mono text-ork-muted bg-ork-bg border border-ork-border rounded p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{d.prompt}
+              </pre>
+            </div>
+          )}
+
+          {/* SubAgent response (LLM output) */}
+          {hasSubagentResponse && (
+            <div className="border-l-2 border-ork-purple/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-purple mb-1 font-semibold">
+                {d.subagent} — Response
+                {d.verdict && <span className="text-ork-green/70 ml-2">({d.verdict}, {d.score}/100)</span>}
+              </p>
+              <pre className="text-[10px] font-mono text-ork-text/80 bg-ork-bg border border-ork-border rounded p-2.5 max-h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{d.response}
+              </pre>
+              {d.response_length && (
+                <p className="text-[9px] font-mono text-ork-dim mt-1">
+                  {d.response_length} chars
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Full message if truncated */}
           {hasLongMessage && (
             <pre className="text-[10px] font-mono text-ork-muted bg-ork-bg border border-ork-border rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">

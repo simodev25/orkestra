@@ -180,10 +180,18 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
 
     def run_scenario_subagent(task: str) -> ToolResponse:
         """Ask the ScenarioSubAgent to prepare a test plan. Call BEFORE run_target_agent."""
-        emit_event(ctx.run_id, "subagent_start", "preparation", "ScenarioSubAgent starting")
+        emit_event(ctx.run_id, "subagent_start", "preparation",
+                   "ScenarioSubAgent starting",
+                   details={"subagent": "ScenarioSubAgent", "prompt": task[:3000]})
+        t0 = time.time()
         res = _run_async(scenario_subagent(Msg("user", task, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
-        emit_event(ctx.run_id, "subagent_done", "preparation", "ScenarioSubAgent done")
+        duration_ms = int((time.time() - t0) * 1000)
+        emit_event(ctx.run_id, "subagent_done", "preparation",
+                   f"ScenarioSubAgent done ({duration_ms}ms)",
+                   details={"subagent": "ScenarioSubAgent", "response": text[:3000],
+                            "response_length": len(text)},
+                   duration_ms=duration_ms)
         return ToolResponse(content=text)
 
     def run_target_agent(task: str) -> ToolResponse:
@@ -233,9 +241,13 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
 
     def run_judge_subagent(analysis_request: str) -> ToolResponse:
         """Ask the JudgeSubAgent to evaluate the output. Returns VERDICT, SCORE, RATIONALE. Call AFTER run_target_agent."""
-        emit_event(ctx.run_id, "subagent_start", "judgment", "JudgeSubAgent starting")
+        emit_event(ctx.run_id, "subagent_start", "judgment",
+                   "JudgeSubAgent starting",
+                   details={"subagent": "JudgeSubAgent", "prompt": analysis_request[:3000]})
+        t0 = time.time()
         res = _run_async(judge_subagent(Msg("user", analysis_request, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
+        duration_ms = int((time.time() - t0) * 1000)
 
         score_match = re.search(r"SCORE[:\s]*(\d+)", text)
         verdict_match = re.search(r"VERDICT[:\s]*(PASS|FAIL|PARTIAL)", text, re.IGNORECASE)
@@ -247,18 +259,42 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         ctx.summary = text
 
         emit_event(ctx.run_id, "subagent_done", "judgment",
-                   f"JudgeSubAgent: {ctx.verdict} ({ctx.score}/100)")
+                   f"JudgeSubAgent: {ctx.verdict} ({ctx.score}/100) in {duration_ms}ms",
+                   details={"subagent": "JudgeSubAgent", "response": text[:3000],
+                            "verdict": ctx.verdict, "score": ctx.score,
+                            "response_length": len(text)},
+                   duration_ms=duration_ms)
         return ToolResponse(content=text)
 
     def run_robustness_subagent(request: str) -> ToolResponse:
         """Ask the RobustnessSubAgent to propose a follow-up edge case test."""
+        emit_event(ctx.run_id, "subagent_start", "diagnostic",
+                   "RobustnessSubAgent starting",
+                   details={"subagent": "RobustnessSubAgent", "prompt": request[:3000]})
+        t0 = time.time()
         res = _run_async(robustness_subagent(Msg("user", request, "user")))
-        return ToolResponse(content=_extract_text(res.content if hasattr(res, "content") else str(res)))
+        text = _extract_text(res.content if hasattr(res, "content") else str(res))
+        duration_ms = int((time.time() - t0) * 1000)
+        emit_event(ctx.run_id, "subagent_done", "diagnostic",
+                   f"RobustnessSubAgent done ({duration_ms}ms)",
+                   details={"subagent": "RobustnessSubAgent", "response": text[:3000]},
+                   duration_ms=duration_ms)
+        return ToolResponse(content=text)
 
     def run_policy_subagent(request: str) -> ToolResponse:
         """Ask the PolicySubAgent to check governance compliance."""
+        emit_event(ctx.run_id, "subagent_start", "assertion",
+                   "PolicySubAgent starting",
+                   details={"subagent": "PolicySubAgent", "prompt": request[:3000]})
+        t0 = time.time()
         res = _run_async(policy_subagent(Msg("user", request, "user")))
-        return ToolResponse(content=_extract_text(res.content if hasattr(res, "content") else str(res)))
+        text = _extract_text(res.content if hasattr(res, "content") else str(res))
+        duration_ms = int((time.time() - t0) * 1000)
+        emit_event(ctx.run_id, "subagent_done", "assertion",
+                   f"PolicySubAgent done ({duration_ms}ms)",
+                   details={"subagent": "PolicySubAgent", "response": text[:3000]},
+                   duration_ms=duration_ms)
+        return ToolResponse(content=text)
 
     def get_run_state() -> ToolResponse:
         """Get the current state of the test run."""
