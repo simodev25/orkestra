@@ -383,14 +383,14 @@ _active_orchestrators: dict[str, tuple[ReActAgent, RunContext]] = {}
 async def chat_with_orchestrator(run_id: str, message: str) -> str:
     """Chat with the OrchestratorAgent for a given run.
 
-    If the orchestrator is still in memory (same process as the run), reuse it.
-    Otherwise, rebuild it by loading the run + scenario from DB.
+    The orchestrator is stored in _active_orchestrators (in-memory dict)
+    and shared with the run execution since both happen in the same process.
+    If not found (e.g., after API restart), rebuild from DB with pre-populated context.
     """
-    # In-memory fast path (same process as the run)
     if run_id in _active_orchestrators:
         orchestrator, ctx = _active_orchestrators[run_id]
     else:
-        # Rebuild orchestrator from DB state
+        # Rebuild (after restart) with context from DB
         orchestrator, ctx = await _rebuild_orchestrator_from_db(run_id)
         if orchestrator is None:
             return "Run not found. Cannot initialize orchestrator."

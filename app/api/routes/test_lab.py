@@ -93,9 +93,11 @@ async def start_run(scenario_id: str, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(run)
 
-    # Dispatch to Celery worker
-    from app.tasks.test_lab import run_test_task
-    run_test_task.delay(run.id, scenario.id)
+    # Run orchestrator in the SAME process as the API so the orchestrator stays
+    # in memory and can be reused by the chat endpoint (shared _active_orchestrators).
+    import asyncio as _asyncio
+    from app.services.test_lab.orchestrator_agent import run_orchestrated_test
+    _asyncio.create_task(run_orchestrated_test(run.id, scenario.id))
 
     return {"id": run.id, "status": "queued", "scenario_id": scenario.id, "agent_id": scenario.agent_id}
 
