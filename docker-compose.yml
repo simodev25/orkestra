@@ -86,8 +86,8 @@ services:
       ORKESTRA_LOG_LEVEL: INFO
       ORKESTRA_OBOT_BASE_URL: http://obot:8080
       ORKESTRA_OBOT_API_KEY: ""
-      ORKESTRA_OBOT_USE_MOCK: "true"
-      ORKESTRA_OBOT_FALLBACK_TO_MOCK: "true"
+      ORKESTRA_OBOT_USE_MOCK: "false"
+      ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
       ORKESTRA_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
       ORKESTRA_PROMETHEUS_ENABLED: "true"
       ORKESTRA_DEBUG_STRATEGY_DIR: /app/storage/debug-strategy
@@ -131,8 +131,8 @@ services:
       ORKESTRA_DEBUG: "true"
       ORKESTRA_LOG_LEVEL: INFO
       ORKESTRA_OBOT_BASE_URL: http://obot:8080
-      ORKESTRA_OBOT_USE_MOCK: "true"
-      ORKESTRA_OBOT_FALLBACK_TO_MOCK: "true"
+      ORKESTRA_OBOT_USE_MOCK: "false"
+      ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
       ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
     depends_on:
       postgres:
