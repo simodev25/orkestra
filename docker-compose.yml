@@ -92,6 +92,9 @@ services:
       ORKESTRA_PROMETHEUS_ENABLED: "true"
       ORKESTRA_DEBUG_STRATEGY_DIR: /app/storage/debug-strategy
       ORKESTRA_AUTH_ENABLED: "false"
+      ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,6 +137,8 @@ services:
       ORKESTRA_OBOT_USE_MOCK: "false"
       ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
       ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
