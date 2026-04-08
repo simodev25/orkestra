@@ -58,6 +58,9 @@ services:
       - "8080:8080"
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      # Required by Obot to spawn tool containers (dev only — see audit F12)
+      - /var/run/docker.sock:/var/run/docker.sock
 
   # ---------------------------------------------------------------------------
   # Backend API
