@@ -381,16 +381,115 @@ _active_orchestrators: dict[str, tuple[ReActAgent, RunContext]] = {}
 
 
 async def chat_with_orchestrator(run_id: str, message: str) -> str:
-    if run_id not in _active_orchestrators:
-        return "No active orchestrator for this run. Start a new run first."
-    orchestrator, ctx = _active_orchestrators[run_id]
+    """Chat with the OrchestratorAgent for a given run.
+
+    If the orchestrator is still in memory (same process as the run), reuse it.
+    Otherwise, rebuild it by loading the run + scenario from DB.
+    """
+    # In-memory fast path (same process as the run)
+    if run_id in _active_orchestrators:
+        orchestrator, ctx = _active_orchestrators[run_id]
+    else:
+        # Rebuild orchestrator from DB state
+        orchestrator, ctx = await _rebuild_orchestrator_from_db(run_id)
+        if orchestrator is None:
+            return "Run not found. Cannot initialize orchestrator."
+        _active_orchestrators[run_id] = (orchestrator, ctx)
+
     try:
-        res = _run_async(orchestrator(Msg("user", message, "user")))
+        res = await asyncio.wait_for(
+            orchestrator(Msg("user", message, "user")),
+            timeout=120,
+        )
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
         emit_event(run_id, "orchestrator_chat", "interactive", f"User: {message[:100]}")
         return text
     except Exception as exc:
+        logger.exception(f"chat_with_orchestrator failed for {run_id}")
         return f"Orchestrator error: {exc}"
+
+
+async def _rebuild_orchestrator_from_db(run_id: str):
+    """Rebuild an OrchestratorAgent from a completed run in the DB.
+
+    Loads the run, scenario, and agent, then creates a new orchestrator
+    whose RunContext is pre-populated with the run's previous results.
+    The orchestrator can answer questions about the run without re-executing it.
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import select
+    from app.models.test_lab import TestRun, TestScenario
+    from app.services import agent_registry_service
+
+    settings = get_settings()
+    engine = create_async_engine(settings.DATABASE_URL)
+    Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    try:
+        async with Session() as db:
+            run = (await db.execute(
+                select(TestRun).where(TestRun.id == run_id)
+            )).scalar_one_or_none()
+            if not run:
+                return None, None
+
+            scenario = (await db.execute(
+                select(TestScenario).where(TestScenario.id == run.scenario_id)
+            )).scalar_one_or_none()
+            if not scenario:
+                return None, None
+
+            agent_def = await agent_registry_service.get_agent(db, scenario.agent_id)
+            if not agent_def:
+                return None, None
+
+        ctx = RunContext(
+            run_id=run_id,
+            scenario_id=run.scenario_id,
+            agent_id=scenario.agent_id,
+            agent_label=getattr(agent_def, "name", scenario.agent_id),
+            agent_version=run.agent_version or getattr(agent_def, "version", ""),
+            scenario_name=scenario.name,
+            input_prompt=scenario.input_prompt,
+            expected_tools=scenario.expected_tools or [],
+            timeout_seconds=scenario.timeout_seconds or 120,
+            max_iterations=scenario.max_iterations or 5,
+            # Pre-populate from the previous run
+            target_output=run.final_output or "",
+            target_status=run.status or "",
+            target_duration_ms=run.duration_ms or 0,
+            score=run.score or 0.0,
+            verdict=run.verdict or "",
+            summary=run.summary or "",
+        )
+
+        orchestrator = build_orchestrator_agent(ctx)
+
+        # Seed the orchestrator's memory with context about the completed run
+        context_msg = Msg(
+            "system",
+            f"Un test a deja ete execute pour cet agent. Voici le contexte:\n"
+            f"- Scenario: {ctx.scenario_name}\n"
+            f"- Agent: {ctx.agent_id}\n"
+            f"- Input: {ctx.input_prompt[:500]}\n"
+            f"- Verdict: {ctx.verdict}\n"
+            f"- Score: {ctx.score}/100\n"
+            f"- Duration: {ctx.target_duration_ms}ms\n"
+            f"- Output (preview): {ctx.target_output[:1000]}\n"
+            f"- Summary: {ctx.summary[:1000]}\n\n"
+            f"L'utilisateur peut te poser des questions sur ce resultat ou te demander des follow-ups. "
+            f"Reponds en francais.",
+            "system",
+        )
+        try:
+            await orchestrator.memory.add(context_msg)
+        except Exception:
+            pass
+
+        return orchestrator, ctx
+    finally:
+        await engine.dispose()
 
 
 # ─── Main entry point ────────────────────────────────────────────────────────
