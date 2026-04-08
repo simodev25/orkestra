@@ -108,18 +108,28 @@ export async function listMcpCatalogForAgentDesign(): Promise<McpCatalogSummary[
     };
     obot_state: string;
     orkestra_state: string;
+    orkestra_binding?: { enabled_in_orkestra?: boolean };
   };
   const res = await request<{ items: CatalogItem[] } | CatalogItem[]>("/api/mcp-catalog");
   const items = Array.isArray(res) ? res : res.items;
 
-  return items.map((item) => ({
-    id: item.obot_server.id,
-    name: item.obot_server.name,
-    purpose: item.obot_server.purpose,
-    effect_type: item.obot_server.effect_type,
-    criticality: item.obot_server.criticality,
-    approval_required: item.obot_server.approval_required,
-    obot_state: item.obot_state,
-    orkestra_state: item.orkestra_state,
-  }));
+  // Only expose MCPs that are ENABLED in Orkestra to agent design.
+  // Disabled MCPs should not appear in the agent allowed_mcps dropdown.
+  return items
+    .filter((item) => {
+      const enabled = item.orkestra_binding?.enabled_in_orkestra;
+      if (typeof enabled === "boolean") return enabled;
+      // Fallback on orkestra_state if binding not present
+      return item.orkestra_state === "enabled" || item.orkestra_state === "active";
+    })
+    .map((item) => ({
+      id: item.obot_server.id,
+      name: item.obot_server.name,
+      purpose: item.obot_server.purpose,
+      effect_type: item.obot_server.effect_type,
+      criticality: item.obot_server.criticality,
+      approval_required: item.obot_server.approval_required,
+      obot_state: item.obot_state,
+      orkestra_state: item.orkestra_state,
+    }));
 }

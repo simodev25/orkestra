@@ -489,6 +489,7 @@ async def get_registry_stats(db: AsyncSession, workflow_id: str | None = None) -
 
 
 async def available_mcp_summaries(db: AsyncSession) -> list[dict[str, str | bool]]:
+    """Return only MCPs enabled in Orkestra (for agent design, test, runtime)."""
     items, _ = await obot_catalog_service.list_catalog_items(db, limit=100000)
     return [
         {
@@ -502,6 +503,8 @@ async def available_mcp_summaries(db: AsyncSession) -> list[dict[str, str | bool
             "orkestra_state": item.orkestra_state,
         }
         for item in items
+        if (item.orkestra_binding and item.orkestra_binding.enabled_in_orkestra)
+        or item.orkestra_state in ("enabled", "active")
     ]
 
 
