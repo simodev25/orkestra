@@ -179,16 +179,35 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             f"  max_iterations: {ctx.max_iterations}"
         ))
 
-    def run_scenario_subagent(task: str) -> ToolResponse:
+    def run_scenario_subagent(task: str = "") -> ToolResponse:
         """Ask the ScenarioSubAgent to prepare a test plan. Call BEFORE run_target_agent."""
+        # Enrich with full scenario context
+        enriched = (
+            f"Tu dois preparer un plan de test structure pour un agent Orkestra.\n\n"
+            f"=== AGENT SOUS TEST ===\n"
+            f"ID: {ctx.agent_id}\n"
+            f"Nom: {ctx.agent_label}\n\n"
+            f"=== SCENARIO ===\n"
+            f"Nom du scenario: {ctx.scenario_name}\n"
+            f"Input a envoyer a l'agent: {ctx.input_prompt}\n"
+            f"Tools attendus: {', '.join(ctx.expected_tools) or '(aucun)'}\n"
+            f"Timeout: {ctx.timeout_seconds}s\n\n"
+            f"=== DEMANDE ORCHESTRATOR ===\n"
+            f"{task}\n\n"
+            f"Produis un plan structure : SCENARIO / SUCCESS_CRITERIA / TEST_INPUT."
+        )
+
         emit_event(ctx.run_id, "subagent_start", "preparation",
                    "ScenarioSubAgent starting",
-                   details={"subagent": "ScenarioSubAgent", "prompt": task[:3000]})
+                   details={"subagent": "ScenarioSubAgent", "prompt": enriched[:3000]})
         recorder = TraceRecorder.get(ctx.run_id)
         if recorder:
-            recorder.record_orchestrator_tool_call("run_scenario_subagent", {"task": task})
+            recorder.record_orchestrator_tool_call("run_scenario_subagent", {
+                "original_task": task,
+                "enriched_length": len(enriched),
+            })
         t0 = time.time()
-        res = _run_async(scenario_subagent(Msg("user", task, "user")))
+        res = _run_async(scenario_subagent(Msg("user", enriched, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
         duration_ms = int((time.time() - t0) * 1000)
         if recorder:
@@ -196,7 +215,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                 or _get_config_sync().get("orchestrator", {}).get("model", "mistral")
             recorder.record_subagent_call(
                 subagent_name="ScenarioSubAgent", role="preparation",
-                model=model, prompt=task, response=text, duration_ms=duration_ms,
+                model=model, prompt=enriched, response=text, duration_ms=duration_ms,
             )
             recorder.record_orchestrator_tool_result("run_scenario_subagent", text, duration_ms)
         emit_event(ctx.run_id, "subagent_done", "preparation",
@@ -206,38 +225,82 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    duration_ms=duration_ms)
         return ToolResponse(content=text)
 
-    def run_target_agent(task: str) -> ToolResponse:
-        """Execute the REAL agent under test. This is NOT a simulation."""
+    def run_target_agent(task: str = "") -> ToolResponse:
+        """Execute the REAL agent under test with the scenario's input_prompt.
+
+        Note: the 'task' parameter is ignored — we ALWAYS use ctx.input_prompt
+        from the scenario to ensure the test is reproducible and faithful.
+        """
+        # CRITICAL: always use the scenario's input_prompt, never the orchestrator's paraphrase
+        real_input = ctx.input_prompt
+
         emit_event(ctx.run_id, "phase_start", "runtime", f"Executing target agent {ctx.agent_id}")
         recorder = TraceRecorder.get(ctx.run_id)
         if recorder:
-            recorder.record_orchestrator_tool_call("run_target_agent", {"task": task})
+            recorder.record_orchestrator_tool_call("run_target_agent", {
+                "task_ignored": task,
+                "actual_input_prompt": real_input,
+            })
 
-        async def _execute():
+        # Resolve real tools / mcps / skills for this agent (for the trace)
+        real_tools: list[str] = []
+        real_mcps: list[dict] = []
+        real_skills: list[str] = []
+        real_system_prompt: str | None = None
+        real_model: str = "default"
+
+        async def _enrich_trace_and_execute():
             from app.services.test_lab.target_agent_runner import run_target_agent as _run
+            from app.services import agent_registry_service
+            from app.services.mcp_tool_registry import get_tools_for_mcp
             from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
             from sqlalchemy.orm import sessionmaker
+
             settings = get_settings()
             engine = create_async_engine(settings.DATABASE_URL)
             Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
             async with Session() as db:
+                # Resolve real metadata for the trace
+                agent_def = await agent_registry_service.get_agent(db, ctx.agent_id)
+                if agent_def:
+                    real_mcps.extend([{"id": m} for m in (agent_def.allowed_mcps or [])])
+                    real_skills.extend([s.skill_id for s in getattr(agent_def, "agent_skills", [])])
+                    # Resolve tool names from MCP tool registry
+                    for mcp_id in (agent_def.allowed_mcps or []):
+                        tools_for_mcp = get_tools_for_mcp(mcp_id) or []
+                        for t in tools_for_mcp:
+                            if hasattr(t, "__name__"):
+                                real_tools.append(f"{mcp_id}:{t.__name__}")
+                            else:
+                                real_tools.append(f"{mcp_id}:tool")
+                    # Remote MCP tools are discovered inside create_agentscope_agent; we don't have them here
+                    if agent_def.allowed_mcps:
+                        real_tools.append(f"(+ remote MCP tools from {len(agent_def.allowed_mcps)} server(s))")
+
+                    nonlocal real_system_prompt, real_model
+                    real_system_prompt = agent_def.prompt_content
+                    real_model = agent_def.llm_model or "platform_default"
+
                 result = await _run(
                     db=db, agent_id=ctx.agent_id, agent_version=ctx.agent_version,
-                    input_prompt=task, timeout_seconds=ctx.timeout_seconds,
+                    input_prompt=real_input, timeout_seconds=ctx.timeout_seconds,
                     max_iterations=ctx.max_iterations,
                 )
             await engine.dispose()
             return result
 
-        # Record start
+        # Record start with REAL tools/mcps/skills
+        result = _run_async(_enrich_trace_and_execute())
+
         if recorder:
             recorder.record_target_agent_start(
-                agent_id=ctx.agent_id, input_prompt=task,
-                model=ctx.agent_version or "default",
-                tools=[], mcps=[], skills=[],
+                agent_id=ctx.agent_id, input_prompt=real_input,
+                model=real_model,
+                tools=real_tools, mcps=real_mcps, skills=real_skills,
+                system_prompt=real_system_prompt,
             )
 
-        result = _run_async(_execute())
         ctx.target_output = result.final_output
         ctx.target_status = result.status
         ctx.target_duration_ms = result.duration_ms
@@ -280,15 +343,45 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
 
     def run_judge_subagent(analysis_request: str) -> ToolResponse:
         """Ask the JudgeSubAgent to evaluate the output. Returns VERDICT, SCORE, RATIONALE. Call AFTER run_target_agent."""
+        # CRITICAL: enrich the Judge prompt with FULL context automatically.
+        # The orchestrator can pass any request, but we always append the full
+        # scenario + agent output so the Judge has everything to evaluate.
+        enriched_prompt = (
+            f"Tu dois evaluer le resultat d'un test d'agent.\n\n"
+            f"=== SCENARIO ===\n"
+            f"Nom: {ctx.scenario_name}\n"
+            f"Input envoye a l'agent: {ctx.input_prompt}\n"
+            f"Tools attendus: {', '.join(ctx.expected_tools) or '(aucun)'}\n\n"
+            f"=== AGENT SOUS TEST ===\n"
+            f"ID: {ctx.agent_id}\n"
+            f"Nom: {ctx.agent_label}\n\n"
+            f"=== RESULTAT D'EXECUTION ===\n"
+            f"Status: {ctx.target_status}\n"
+            f"Duree: {ctx.target_duration_ms}ms\n"
+            f"Iterations: {ctx.target_iteration_count}\n\n"
+            f"=== OUTPUT COMPLET DE L'AGENT ===\n"
+            f"{(ctx.target_output or 'EMPTY')[:5000]}\n\n"
+            f"=== DEMANDE D'ANALYSE ===\n"
+            f"{analysis_request}\n\n"
+            f"Evalue si l'agent a repondu correctement au scenario.\n"
+            f"Format de reponse OBLIGATOIRE:\n"
+            f"VERDICT: PASS | FAIL | PARTIAL\n"
+            f"SCORE: <nombre 0-100>\n"
+            f"RATIONALE: <explication>"
+        )
+
         emit_event(ctx.run_id, "subagent_start", "judgment",
                    "JudgeSubAgent starting",
-                   details={"subagent": "JudgeSubAgent", "prompt": analysis_request[:3000]})
+                   details={"subagent": "JudgeSubAgent", "prompt": enriched_prompt[:3000]})
         recorder = TraceRecorder.get(ctx.run_id)
         if recorder:
-            recorder.record_orchestrator_tool_call("run_judge_subagent", {"analysis_request": analysis_request})
+            recorder.record_orchestrator_tool_call("run_judge_subagent", {
+                "original_request": analysis_request,
+                "enriched_prompt_length": len(enriched_prompt),
+            })
 
         t0 = time.time()
-        res = _run_async(judge_subagent(Msg("user", analysis_request, "user")))
+        res = _run_async(judge_subagent(Msg("user", enriched_prompt, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
         duration_ms = int((time.time() - t0) * 1000)
 
@@ -306,7 +399,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                 or _get_config_sync().get("orchestrator", {}).get("model", "mistral")
             recorder.record_subagent_call(
                 subagent_name="JudgeSubAgent", role="verdict",
-                model=model, prompt=analysis_request, response=text,
+                model=model, prompt=enriched_prompt, response=text,
                 duration_ms=duration_ms,
                 extracted={"verdict": ctx.verdict, "score": ctx.score},
             )
