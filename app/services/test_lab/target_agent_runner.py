@@ -198,13 +198,42 @@ async def run_target_agent(
 
             message_history.append({"role": role, "name": name, "content": text[:5000]})
 
+        # Find the last assistant message with REAL text content (skip tool_use-only messages)
         if msgs:
-            last = msgs[-1]
-            final_output = (
-                last.get_text_content()
-                if hasattr(last, "get_text_content")
-                else str(getattr(last, "content", ""))[:5000]
-            )
+            for m in reversed(msgs):
+                role = getattr(m, "role", "")
+                if role != "assistant":
+                    continue
+                text = ""
+                if hasattr(m, "get_text_content"):
+                    text = m.get_text_content() or ""
+                if not text:
+                    # Extract text blocks directly
+                    blocks = getattr(m, "content", None)
+                    if isinstance(blocks, list):
+                        text_parts = []
+                        for b in blocks:
+                            bt = _bget(b, "type", "")
+                            if bt == "text":
+                                text_parts.append(str(_bget(b, "text", "")))
+                            elif bt == "thinking":
+                                # Include thinking as last resort
+                                text_parts.append(str(_bget(b, "thinking", "")))
+                        text = "\n".join(p for p in text_parts if p).strip()
+                    elif isinstance(blocks, str):
+                        text = blocks
+
+                if text and text.strip():
+                    final_output = text[:10000]
+                    break
+
+            # Fallback: if no assistant text found, use the last message of any role
+            if not final_output and msgs:
+                last = msgs[-1]
+                final_output = (
+                    (last.get_text_content() if hasattr(last, "get_text_content") else "")
+                    or str(getattr(last, "content", ""))
+                )[:5000]
     except Exception as exc:
         logger.warning(f"Failed to extract memory for agent '{agent_id}': {exc}")
 
