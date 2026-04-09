@@ -295,7 +295,9 @@ class TraceRecorder:
     def record_target_agent_end(self, agent_id: str, status: str, final_output: str,
                                 duration_ms: int, iteration_count: int,
                                 message_history: list[dict], tool_calls: list[dict],
-                                error: str | None = None) -> None:
+                                error: str | None = None,
+                                connected_mcps: list[dict] | None = None,
+                                discovered_tools: list[str] | None = None) -> None:
         self.record_event("target_agent", "end", agent_id, {
             "status": status,
             "final_output": _safe_truncate(final_output, 20000),
@@ -311,6 +313,8 @@ class TraceRecorder:
                 }
                 for m in (message_history or [])[:50]
             ],
+            "connected_mcps": connected_mcps or [],
+            "discovered_tools": discovered_tools or [],
             "error": error,
         })
 

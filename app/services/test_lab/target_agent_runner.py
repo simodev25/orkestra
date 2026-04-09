@@ -21,6 +21,9 @@ class TargetAgentResult:
     message_history: list[dict] = field(default_factory=list)
     tool_calls: list[dict] = field(default_factory=list)
     error: str | None = None
+    # Runtime introspection (populated after agent creation)
+    connected_mcps: list[dict] = field(default_factory=list)  # [{id, url, tools: [name,...]}]
+    discovered_tools: list[str] = field(default_factory=list)  # flat list of all tool names registered
 
 
 def _build_execution_events(message_history: list[dict]) -> list[dict]:
@@ -130,6 +133,29 @@ async def run_target_agent(
             error="Agent creation failed (LLM or AgentScope unavailable)",
         )
 
+    # ── 3b. Introspect the freshly created agent for trace metadata ──────
+    connected_mcps: list[dict] = list(getattr(react_agent, "_connected_mcps", []) or [])
+    discovered_tools: list[str] = []
+    try:
+        toolkit = getattr(react_agent, "toolkit", None)
+        if toolkit is not None:
+            # AgentScope Toolkit exposes its tools via get_json_schemas() which returns list of schemas
+            try:
+                schemas = toolkit.get_json_schemas()
+                for sch in schemas or []:
+                    fn = (sch or {}).get("function") if isinstance(sch, dict) else None
+                    if isinstance(fn, dict) and fn.get("name"):
+                        discovered_tools.append(fn["name"])
+            except Exception:
+                pass
+            # Fallback: walk the private _tools dict if available
+            if not discovered_tools:
+                tools_dict = getattr(toolkit, "_tools", None) or getattr(toolkit, "tools", None)
+                if isinstance(tools_dict, dict):
+                    discovered_tools.extend(list(tools_dict.keys()))
+    except Exception as exc:
+        logger.debug(f"Could not introspect toolkit for agent '{agent_id}': {exc}")
+
     # ── 4. Run the agent with timeout ─────────────────────────────────────
     user_msg = Msg("user", input_prompt, "user")
     t0 = time.time()
@@ -148,6 +174,8 @@ async def run_target_agent(
             duration_ms=duration_ms,
             iteration_count=0,
             error=f"Timed out after {timeout_seconds}s",
+            connected_mcps=connected_mcps,
+            discovered_tools=discovered_tools,
         )
     except Exception as exc:
         duration_ms = int((time.time() - t0) * 1000)
@@ -158,6 +186,8 @@ async def run_target_agent(
             duration_ms=duration_ms,
             iteration_count=0,
             error=f"Execution error: {exc}",
+            connected_mcps=connected_mcps,
+            discovered_tools=discovered_tools,
         )
 
     duration_ms = int((time.time() - t0) * 1000)
@@ -245,4 +275,6 @@ async def run_target_agent(
         iteration_count=len(message_history),
         message_history=message_history,
         tool_calls=tool_calls,
+        connected_mcps=connected_mcps,
+        discovered_tools=discovered_tools,
     )

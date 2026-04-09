@@ -112,6 +112,58 @@ class RunContext:
     summary: str = ""
 
 
+# ─── Real SubAgent system prompts (single source of truth) ───────────────────
+
+SUBAGENT_SYSTEM_PROMPTS: dict[str, dict[str, str]] = {
+    "ScenarioSubAgent": {
+        "role": "preparation",
+        "prompt": (
+            "Tu es un sous-agent de scenarisation de test.\n"
+            "Tu aides l'orchestrateur a transformer un besoin de test en scenario concret.\n"
+            "Reponds en francais.\n\n"
+            "Format obligatoire :\n"
+            "SCENARIO:\n<description courte et exploitable>\n\n"
+            "SUCCESS_CRITERIA:\n- <critere 1>\n- <critere 2>\n- <critere 3>\n\n"
+            "TEST_INPUT:\n<entree de test realiste>"
+        ),
+    },
+    "JudgeSubAgent": {
+        "role": "verdict",
+        "prompt": (
+            "Tu es un sous-agent juge.\n"
+            "Tu evalues la sortie d'un agent sous test par rapport a un scenario et des criteres.\n"
+            "Reponds en francais.\n\n"
+            "Format obligatoire :\n"
+            "VERDICT: PASS ou FAIL ou PARTIAL\n"
+            "SCORE: <nombre entre 0 et 100>\n"
+            "RATIONALE:\n<explication courte>"
+        ),
+    },
+    "RobustnessSubAgent": {
+        "role": "diagnostic",
+        "prompt": (
+            "Tu es un sous-agent de robustesse.\n"
+            "Tu proposes un test complementaire plus dur ou un edge case.\n"
+            "Reponds en francais.\n\n"
+            "Format obligatoire :\n"
+            "FOLLOWUP_TEST:\n<test complementaire>\n\n"
+            "WHY_IT_MATTERS:\n<pourquoi ce test est utile>"
+        ),
+    },
+    "PolicySubAgent": {
+        "role": "assertion",
+        "prompt": (
+            "Tu es un sous-agent de conformite policy.\n"
+            "Tu verifies si la sortie d'un agent respecte ses contraintes de gouvernance.\n"
+            "Reponds en francais.\n\n"
+            "Format obligatoire :\n"
+            "COMPLIANCE: OK ou VIOLATION\n"
+            "DETAILS:\n<explication>"
+        ),
+    },
+}
+
+
 # ─── Build tools + persistent subagents (same pattern as orchestrateur_chat.py)
 
 def _build_tools_and_subagents(ctx: RunContext) -> list:
@@ -120,47 +172,25 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
     # ── Persistent SubAgents (like orchestrateur_chat.py) ────────────────
     scenario_subagent = _build_subagent(
         "ScenarioSubAgent",
-        "Tu es un sous-agent de scenarisation de test.\n"
-        "Tu aides l'orchestrateur a transformer un besoin de test en scenario concret.\n"
-        "Reponds en francais.\n\n"
-        "Format obligatoire :\n"
-        "SCENARIO:\n<description courte et exploitable>\n\n"
-        "SUCCESS_CRITERIA:\n- <critere 1>\n- <critere 2>\n- <critere 3>\n\n"
-        "TEST_INPUT:\n<entree de test realiste>",
+        SUBAGENT_SYSTEM_PROMPTS["ScenarioSubAgent"]["prompt"],
         "preparation",
     )
 
     judge_subagent = _build_subagent(
         "JudgeSubAgent",
-        "Tu es un sous-agent juge.\n"
-        "Tu evalues la sortie d'un agent sous test par rapport a un scenario et des criteres.\n"
-        "Reponds en francais.\n\n"
-        "Format obligatoire :\n"
-        "VERDICT: PASS ou FAIL ou PARTIAL\n"
-        "SCORE: <nombre entre 0 et 100>\n"
-        "RATIONALE:\n<explication courte>",
+        SUBAGENT_SYSTEM_PROMPTS["JudgeSubAgent"]["prompt"],
         "verdict",
     )
 
     robustness_subagent = _build_subagent(
         "RobustnessSubAgent",
-        "Tu es un sous-agent de robustesse.\n"
-        "Tu proposes un test complementaire plus dur ou un edge case.\n"
-        "Reponds en francais.\n\n"
-        "Format obligatoire :\n"
-        "FOLLOWUP_TEST:\n<test complementaire>\n\n"
-        "WHY_IT_MATTERS:\n<pourquoi ce test est utile>",
+        SUBAGENT_SYSTEM_PROMPTS["RobustnessSubAgent"]["prompt"],
         "diagnostic",
     )
 
     policy_subagent = _build_subagent(
         "PolicySubAgent",
-        "Tu es un sous-agent de conformite policy.\n"
-        "Tu verifies si la sortie d'un agent respecte ses contraintes de gouvernance.\n"
-        "Reponds en francais.\n\n"
-        "Format obligatoire :\n"
-        "COMPLIANCE: OK ou VIOLATION\n"
-        "DETAILS:\n<explication>",
+        SUBAGENT_SYSTEM_PROMPTS["PolicySubAgent"]["prompt"],
         "assertion",
     )
 
@@ -181,6 +211,15 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
 
     def run_scenario_subagent(task: str = "") -> ToolResponse:
         """Ask the ScenarioSubAgent to prepare a test plan. Call BEFORE run_target_agent."""
+        # Same semantic fix as in the Judge: empty expected_tools = no constraint
+        if ctx.expected_tools:
+            tools_line = f"Tools attendus (obligatoires): {', '.join(ctx.expected_tools)}"
+        else:
+            tools_line = (
+                "Tools attendus: aucune contrainte — l'agent est libre d'utiliser "
+                "ou non les tools de ses MCP autorises"
+            )
+
         # Enrich with full scenario context
         enriched = (
             f"Tu dois preparer un plan de test structure pour un agent Orkestra.\n\n"
@@ -190,7 +229,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             f"=== SCENARIO ===\n"
             f"Nom du scenario: {ctx.scenario_name}\n"
             f"Input a envoyer a l'agent: {ctx.input_prompt}\n"
-            f"Tools attendus: {', '.join(ctx.expected_tools) or '(aucun)'}\n"
+            f"{tools_line}\n"
             f"Timeout: {ctx.timeout_seconds}s\n\n"
             f"=== DEMANDE ORCHESTRATOR ===\n"
             f"{task}\n\n"
@@ -249,8 +288,8 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         real_system_prompt: str | None = None
         real_model: str = "default"
 
-        async def _enrich_trace_and_execute():
-            from app.services.test_lab.target_agent_runner import run_target_agent as _run
+        async def _resolve_agent_metadata():
+            """Resolve metadata BEFORE running the agent so we can record start accurately."""
             from app.services import agent_registry_service
             from app.services.mcp_tool_registry import get_tools_for_mcp
             from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -260,38 +299,80 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             engine = create_async_engine(settings.DATABASE_URL)
             Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-            async with Session() as db:
-                # Resolve real metadata for the trace
-                agent_def = await agent_registry_service.get_agent(db, ctx.agent_id)
-                if agent_def:
-                    real_mcps.extend([{"id": m} for m in (agent_def.allowed_mcps or [])])
-                    real_skills.extend([s.skill_id for s in getattr(agent_def, "agent_skills", [])])
-                    # Resolve tool names from MCP tool registry
-                    for mcp_id in (agent_def.allowed_mcps or []):
-                        tools_for_mcp = get_tools_for_mcp(mcp_id) or []
-                        for t in tools_for_mcp:
-                            if hasattr(t, "__name__"):
-                                real_tools.append(f"{mcp_id}:{t.__name__}")
-                            else:
-                                real_tools.append(f"{mcp_id}:tool")
-                    # Remote MCP tools are discovered inside create_agentscope_agent; we don't have them here
-                    if agent_def.allowed_mcps:
-                        real_tools.append(f"(+ remote MCP tools from {len(agent_def.allowed_mcps)} server(s))")
+            local_tools: list[str] = []
+            local_mcps: list[dict] = []
+            local_skills: list[str] = []
+            local_system_prompt: str | None = None
+            local_model: str = "default"
 
-                    nonlocal real_system_prompt, real_model
-                    real_system_prompt = agent_def.prompt_content
-                    real_model = agent_def.llm_model or "platform_default"
+            try:
+                async with Session() as db:
+                    agent_def = await agent_registry_service.get_agent(db, ctx.agent_id)
+                    if agent_def:
+                        local_mcps = [{"id": m} for m in (agent_def.allowed_mcps or [])]
+                        local_skills = [
+                            s.skill_id for s in getattr(agent_def, "agent_skills", [])
+                        ]
+                        for mcp_id in (agent_def.allowed_mcps or []):
+                            tools_for_mcp = get_tools_for_mcp(mcp_id) or []
+                            for t in tools_for_mcp:
+                                if hasattr(t, "__name__"):
+                                    local_tools.append(f"{mcp_id}:{t.__name__}")
+                                else:
+                                    local_tools.append(f"{mcp_id}:tool")
+                        local_system_prompt = agent_def.prompt_content
+                        local_model = agent_def.llm_model or "platform_default"
+            finally:
+                await engine.dispose()
 
-                result = await _run(
-                    db=db, agent_id=ctx.agent_id, agent_version=ctx.agent_version,
-                    input_prompt=real_input, timeout_seconds=ctx.timeout_seconds,
-                    max_iterations=ctx.max_iterations,
-                )
-            await engine.dispose()
-            return result
+            return local_tools, local_mcps, local_skills, local_system_prompt, local_model
 
-        # Record start with REAL tools/mcps/skills
-        result = _run_async(_enrich_trace_and_execute())
+        async def _execute_target_and_capture_tools():
+            """Run the agent and also capture the REAL toolkit tools from the AgentScope instance."""
+            from app.services.test_lab.target_agent_runner import run_target_agent as _run
+            from app.services.agent_factory import (
+                create_agentscope_agent, get_tools_for_agent,
+            )
+            from app.services import agent_registry_service
+            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+            from sqlalchemy.orm import sessionmaker
+
+            settings = get_settings()
+            engine = create_async_engine(settings.DATABASE_URL)
+            Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+            runtime_tool_names: list[str] = []
+            try:
+                async with Session() as db:
+                    # Pre-introspect the agent to get runtime tool names for the trace
+                    try:
+                        agent_def = await agent_registry_service.get_agent(db, ctx.agent_id)
+                        if agent_def:
+                            local_tools = get_tools_for_agent(agent_def) or []
+                            for t in local_tools:
+                                name = getattr(t, "__name__", None) or getattr(t, "name", None)
+                                if name:
+                                    runtime_tool_names.append(str(name))
+                    except Exception as exc:
+                        logger.debug(f"Could not pre-introspect tools: {exc}")
+
+                    result = await _run(
+                        db=db, agent_id=ctx.agent_id, agent_version=ctx.agent_version,
+                        input_prompt=real_input, timeout_seconds=ctx.timeout_seconds,
+                        max_iterations=ctx.max_iterations,
+                    )
+            finally:
+                await engine.dispose()
+            return result, runtime_tool_names
+
+        # STEP 1: Resolve metadata and record START event BEFORE executing the agent
+        (
+            real_tools,
+            real_mcps,
+            real_skills,
+            real_system_prompt,
+            real_model,
+        ) = _run_async(_resolve_agent_metadata())
 
         if recorder:
             recorder.record_target_agent_start(
@@ -301,6 +382,35 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                 system_prompt=real_system_prompt,
             )
 
+        # STEP 2: Execute the agent (recording end immediately after)
+        result, runtime_tool_names = _run_async(_execute_target_and_capture_tools())
+
+        # Enrich the start event retroactively with runtime-discovered tools/mcps
+        # so that readers of the trace see the full picture even looking at "start"
+        if recorder and result:
+            discovered = list(getattr(result, "discovered_tools", []) or [])
+            connected = list(getattr(result, "connected_mcps", []) or [])
+            # Walk back through events to find the most recent target_agent start
+            for ev in reversed(recorder.trace.events):
+                if (ev.get("category") == "target_agent"
+                        and ev.get("event_type") == "start"
+                        and ev.get("name") == ctx.agent_id):
+                    data = ev.setdefault("data", {})
+                    if discovered:
+                        # Merge without duplicates, preserving order
+                        merged = list(dict.fromkeys(
+                            (data.get("available_tools") or []) + discovered
+                        ))
+                        data["available_tools"] = merged
+                    if connected:
+                        # Merge mcps by id, keeping richest entry
+                        existing = {m.get("id"): m for m in (data.get("available_mcps") or []) if isinstance(m, dict)}
+                        for m in connected:
+                            if isinstance(m, dict) and m.get("id"):
+                                existing[m["id"]] = {**existing.get(m["id"], {}), **m}
+                        data["available_mcps"] = list(existing.values())
+                    break
+
         ctx.target_output = result.final_output
         ctx.target_status = result.status
         ctx.target_duration_ms = result.duration_ms
@@ -308,7 +418,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         from app.services.test_lab.target_agent_runner import _build_execution_events
         ctx.execution_events = _build_execution_events(result.message_history)
 
-        # Record end
+        # Record end (enriched with runtime discovery)
         if recorder:
             recorder.record_target_agent_end(
                 agent_id=ctx.agent_id, status=result.status,
@@ -317,6 +427,8 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                 message_history=result.message_history or [],
                 tool_calls=result.tool_calls or [],
                 error=result.error,
+                connected_mcps=getattr(result, "connected_mcps", []) or [],
+                discovered_tools=getattr(result, "discovered_tools", []) or [],
             )
             recorder.record_orchestrator_tool_result(
                 "run_target_agent",
@@ -346,12 +458,27 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         # CRITICAL: enrich the Judge prompt with FULL context automatically.
         # The orchestrator can pass any request, but we always append the full
         # scenario + agent output so the Judge has everything to evaluate.
+        #
+        # IMPORTANT semantic fix: when ctx.expected_tools is empty, we must say
+        # "no specific constraint" — NOT "(aucun)" — because some LLMs wrongly
+        # interpret "aucun" as "the agent must NOT use any tools", which is
+        # false (empty expected_tools = no constraint, free to use tools).
+        if ctx.expected_tools:
+            tools_line = (
+                f"Tools attendus (obligatoires): {', '.join(ctx.expected_tools)}"
+            )
+        else:
+            tools_line = (
+                "Tools attendus: aucune contrainte — l'agent est libre d'utiliser ou "
+                "non les tools de ses MCP autorises (ce n'est PAS une interdiction)"
+            )
+
         enriched_prompt = (
             f"Tu dois evaluer le resultat d'un test d'agent.\n\n"
             f"=== SCENARIO ===\n"
             f"Nom: {ctx.scenario_name}\n"
             f"Input envoye a l'agent: {ctx.input_prompt}\n"
-            f"Tools attendus: {', '.join(ctx.expected_tools) or '(aucun)'}\n\n"
+            f"{tools_line}\n\n"
             f"=== AGENT SOUS TEST ===\n"
             f"ID: {ctx.agent_id}\n"
             f"Nom: {ctx.agent_label}\n\n"
@@ -364,10 +491,22 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             f"=== DEMANDE D'ANALYSE ===\n"
             f"{analysis_request}\n\n"
             f"Evalue si l'agent a repondu correctement au scenario.\n"
-            f"Format de reponse OBLIGATOIRE:\n"
+            f"REGLES D'EVALUATION:\n"
+            f"- Si 'Tools attendus: aucune contrainte', NE PENALISE PAS l'agent\n"
+            f"  pour avoir utilise ou non des tools. Seul le contenu de sa reponse\n"
+            f"  et sa fidelite au scenario comptent.\n"
+            f"- Si des tools sont listes comme obligatoires, verifie qu'ils ont\n"
+            f"  effectivement ete appeles.\n"
+            f"- Un agent qui tente de resoudre un probleme et explique clairement\n"
+            f"  pourquoi il echoue (ex: API inaccessible) merite un score partiel\n"
+            f"  (PARTIAL 40-60) et non un FAIL total.\n\n"
+            f"Format de reponse OBLIGATOIRE (respecte-le EXACTEMENT) :\n"
             f"VERDICT: PASS | FAIL | PARTIAL\n"
-            f"SCORE: <nombre 0-100>\n"
-            f"RATIONALE: <explication>"
+            f"SCORE: <entier entre 0 et 100, en CHIFFRES UNIQUEMENT>\n"
+            f"RATIONALE: <explication>\n\n"
+            f"IMPORTANT: Le SCORE doit etre un ENTIER en chiffres (ex: 55), "
+            f"JAMAIS en lettres (pas 'cinquante', pas 'fifty'). "
+            f"Pas de fraction, pas d'intervalle, pas de texte autre que le nombre."
         )
 
         emit_event(ctx.run_id, "subagent_start", "judgment",
@@ -385,12 +524,56 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
         duration_ms = int((time.time() - t0) * 1000)
 
-        score_match = re.search(r"SCORE[:\s]*(\d+)", text)
-        verdict_match = re.search(r"VERDICT[:\s]*(PASS|FAIL|PARTIAL)", text, re.IGNORECASE)
-        if score_match:
-            ctx.score = float(score_match.group(1))
-        if verdict_match:
-            v = verdict_match.group(1).upper()
+        # Strip AgentScope "thinking" blocks before extracting verdict/score.
+        # The LLM can reason freely inside a thinking block (e.g. "SCORE 0-10?")
+        # which would otherwise poison the regex. We only want to parse the
+        # FINAL answer that follows the thinking.
+        def _strip_thinking(raw: str) -> str:
+            # Remove blocks like {'type': 'thinking', 'thinking': '...'}
+            # AgentScope serializes these as plain text in front of the real answer.
+            cleaned = re.sub(
+                r"\{['\"]type['\"]\s*:\s*['\"]thinking['\"][^}]*\}",
+                "",
+                raw,
+                flags=re.DOTALL,
+            )
+            # Also strip any leftover lines that look like thinking preamble
+            return cleaned.strip()
+
+        parse_text = _strip_thinking(text)
+        # Use rfind/last-match semantics: the authoritative verdict/score is the
+        # LAST one emitted by the Judge, not any earlier mention.
+        score_matches = list(re.finditer(r"SCORE\s*[:=]\s*(\d{1,3})\b", parse_text, re.IGNORECASE))
+        verdict_matches = list(re.finditer(r"VERDICT\s*[:=]\s*(PASS|FAIL|PARTIAL)", parse_text, re.IGNORECASE))
+        if score_matches:
+            raw_score = int(score_matches[-1].group(1))
+            ctx.score = float(max(0, min(100, raw_score)))
+        else:
+            # Fallback: the LLM may have written the number in words (e.g. "fifty").
+            # Map common English/French number words to digits.
+            _word_to_num = {
+                "zero": 0, "ten": 10, "twenty": 20, "thirty": 30, "forty": 40,
+                "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+                "hundred": 100, "one hundred": 100,
+                "zero ": 0, "dix": 10, "vingt": 20, "trente": 30, "quarante": 40,
+                "cinquante": 50, "soixante": 60, "soixante-dix": 70, "septante": 70,
+                "quatre-vingt": 80, "huitante": 80, "quatre-vingt-dix": 90, "nonante": 90,
+                "cent": 100,
+            }
+            score_word_match = re.search(
+                r"SCORE\s*[:=]\s*([a-z\-\sà-ÿ]{3,25}?)\s*(?:\n|RATIONALE|$)",
+                parse_text,
+                re.IGNORECASE,
+            )
+            if score_word_match:
+                candidate = score_word_match.group(1).strip().lower()
+                for word, val in sorted(_word_to_num.items(), key=lambda kv: -len(kv[0])):
+                    if word in candidate:
+                        ctx.score = float(val)
+                        logger.info(f"Extracted score from word '{candidate}' -> {val}")
+                        break
+        if verdict_matches:
+            v = verdict_matches[-1].group(1).upper()
             ctx.verdict = {"PASS": "passed", "PARTIAL": "passed_with_warnings", "FAIL": "failed"}.get(v, "unknown")
         ctx.summary = text
 
@@ -530,20 +713,25 @@ Tu disposes des tools suivants :
 Regles de comportement :
 1. Tu reponds toujours en francais.
 2. Tu restes direct, technique, utile.
-3. Tu dois :
-   - lire le contexte du scenario (get_scenario_context)
-   - construire le scenario (run_scenario_subagent)
-   - executer l'agent sous test (run_target_agent) avec l'input_prompt du scenario
-   - faire juger le resultat (run_judge_subagent) en passant le scenario + la sortie
-   - sauvegarder le run (save_run_result)
-   - puis restituer un bilan
-4. Apres un test termine, tu dois proposer des suites possibles :
+3. Tu DOIS TOUJOURS, dans cet ordre precis, executer ces 3 tools (aucun ne peut etre saute) :
+   a) run_scenario_subagent — pour construire le plan de test (passe 'Prepare test plan')
+   b) run_target_agent      — pour executer l'agent sous test (le parametre task est ignore,
+                              le vrai input_prompt du scenario est toujours utilise)
+   c) run_judge_subagent    — pour juger le resultat (VERDICT + SCORE + RATIONALE)
+4. Tools optionnels (tu peux les appeler si utile, mais ce n'est pas obligatoire) :
+   - get_scenario_context : si tu veux relire le contexte du scenario
+   - save_run_result      : Orkestra persiste le run automatiquement, mais tu peux
+                            l'appeler pour forcer la sauvegarde explicite
+   - run_robustness_subagent : pour proposer un test complementaire
+   - run_policy_subagent    : pour verifier la conformite policy
+5. Apres avoir appele les 3 tools obligatoires, tu rends le bilan final au format indique ci-dessous.
+6. Apres le bilan, tu dois proposer des suites possibles :
    - test plus strict
    - cas ambigu
    - robustesse
    - comparaison
    - nouvelle variante
-5. Ne fais pas de blabla.
+7. Ne fais pas de blabla. Pas de texte libre avant d'avoir appele les 3 tools obligatoires.
 
 Quand tu rends un resultat final, utilise cette structure :
 
@@ -744,19 +932,18 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
             system_prompt=ORCHESTRATOR_PROMPT, max_iters=12,
         )
 
-        # Record subagent configs
+        # Record subagent configs — use the REAL runtime system prompts from
+        # SUBAGENT_SYSTEM_PROMPTS (single source of truth), merged with the
+        # per-worker model override from DB config.
         workers = cfg.get("workers", {})
-        for role, sub_name in [
-            ("preparation", "ScenarioSubAgent"),
-            ("verdict", "JudgeSubAgent"),
-            ("diagnostic", "RobustnessSubAgent"),
-            ("assertion", "PolicySubAgent"),
-        ]:
+        for sub_name, sub_def in SUBAGENT_SYSTEM_PROMPTS.items():
+            role = sub_def["role"]
+            real_prompt = sub_def["prompt"]
             worker_cfg = workers.get(role, {})
             sub_model = worker_cfg.get("model") or orch_model
             recorder.add_subagent_config(
                 name=sub_name, role=role, model=sub_model,
-                host=host, system_prompt=worker_cfg.get("prompt", ""), max_iters=1,
+                host=host, system_prompt=real_prompt, max_iters=1,
             )
 
         ctx = RunContext(
@@ -789,12 +976,31 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
 
         final_text = _extract_text(response.content if hasattr(response, "content") else str(response))
 
-        if not ctx.verdict:
-            update_run(run_id, status="completed", verdict="unknown", score=0,
-                       duration_ms=ctx.target_duration_ms,
-                       final_output=(ctx.target_output or "")[:10000],
-                       summary=final_text[:5000],
-                       ended_at=datetime.now(timezone.utc))
+        # Always persist the final run state to DB (idempotent with save_run_result).
+        # This guarantees the run transitions out of "running" even if the LLM
+        # orchestrator skipped calling save_run_result.
+        update_run(
+            run_id,
+            status="completed",
+            verdict=ctx.verdict or "unknown",
+            score=ctx.score or 0,
+            duration_ms=ctx.target_duration_ms,
+            final_output=(ctx.target_output or "")[:10000],
+            summary=(final_text or ctx.summary or "")[:5000],
+            ended_at=datetime.now(timezone.utc),
+            agent_version=ctx.agent_version,
+        )
+        emit_event(run_id, "run_completed", "verdict",
+                   f"Test completed: {ctx.verdict or 'unknown'} ({ctx.score}/100)")
+
+        # Record run_completed lifecycle event BEFORE finalizing the trace
+        recorder.record_lifecycle("run_completed", {
+            "verdict": ctx.verdict or "unknown",
+            "score": ctx.score,
+            "target_duration_ms": ctx.target_duration_ms,
+            "target_iteration_count": ctx.target_iteration_count,
+            "final_output_length": len(ctx.target_output or ""),
+        })
 
         # Finalize and save trace
         recorder.finalize(
