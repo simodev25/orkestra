@@ -365,6 +365,162 @@
       "owner": "platform_ai_team",
       "created_at": "2026-04-05T00:00:00Z",
       "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "skill_id": "test_scenario_design",
+      "label": "Test Scenario Design",
+      "category": "testing",
+      "allowed_families": ["testing", "preparation", "validation"],
+      "description": "Design a concrete, reproducible test scenario for an agent under test: realistic input, clear success criteria, expected tools, and boundary constraints. Dedicated to ScenarioSubAgent in Orkestra Test Lab.",
+      "behavior_templates": [
+        "Translate a test intent into an executable scenario with a realistic input prompt.",
+        "Identify which tools and MCPs the agent should or should not call.",
+        "Derive explicit SUCCESS_CRITERIA lines that can later be checked by a judge.",
+        "Set appropriate timeouts, max iterations, and scope boundaries for the run.",
+        "Surface assumptions about agent behavior that the scenario implicitly tests."
+      ],
+      "output_guidelines": [
+        "Always produce three sections: SCENARIO, SUCCESS_CRITERIA, TEST_INPUT.",
+        "Success criteria must be verifiable — avoid vague adjectives.",
+        "Do not invent tools the agent does not have access to.",
+        "Prefer realistic, representative inputs over edge cases unless explicitly asked.",
+        "Keep the test input self-contained (no external references needed)."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-09T00:00:00Z",
+      "updated_at": "2026-04-09T00:00:00Z"
+    },
+    {
+      "skill_id": "test_verdict_judgment",
+      "label": "Test Verdict Judgment",
+      "category": "testing",
+      "allowed_families": ["testing", "validation", "decision"],
+      "description": "Evaluate the output of an agent under test against a scenario and emit a structured verdict (PASS | FAIL | PARTIAL), a numeric score 0-100, and a concise rationale. Dedicated to JudgeSubAgent in Orkestra Test Lab.",
+      "behavior_templates": [
+        "Compare the agent output to the scenario's stated success criteria, nothing else.",
+        "Distinguish total failure (FAIL) from partial satisfaction (PARTIAL).",
+        "Give partial credit (40-60) when the agent explains clearly why a task could not be completed.",
+        "Never penalize an agent for using or not using tools when expected_tools is unconstrained.",
+        "Keep the rationale grounded in evidence from the actual output and events."
+      ],
+      "output_guidelines": [
+        "Always emit three lines exactly: VERDICT:, SCORE:, RATIONALE:.",
+        "SCORE must be a plain integer 0-100 in digits — never in words, never a range.",
+        "Rationale should be 2-5 sentences, not a long essay.",
+        "Do not introduce new success criteria that were not in the scenario.",
+        "Be strict about the format — downstream parsing depends on it."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-09T00:00:00Z",
+      "updated_at": "2026-04-09T00:00:00Z"
+    },
+    {
+      "skill_id": "edge_case_generation",
+      "label": "Edge Case Generation",
+      "category": "testing",
+      "allowed_families": ["testing", "analysis", "governance"],
+      "description": "Propose follow-up test scenarios that stress the agent's weak points: ambiguous inputs, boundary conditions, contradictory instructions, homonyms, and failure modes. Dedicated to RobustnessSubAgent in Orkestra Test Lab.",
+      "behavior_templates": [
+        "Identify the implicit assumptions a previous test relied on and challenge them.",
+        "Generate ambiguous, contradictory, or boundary inputs that expose fragile behavior.",
+        "Suggest scenarios where the agent lacks a tool, a field, or an authoritative source.",
+        "Propose homonym or disambiguation tests for identity-resolving agents.",
+        "Explain WHY each proposed test matters in terms of production risk."
+      ],
+      "output_guidelines": [
+        "Always emit two sections: FOLLOWUP_TEST and WHY_IT_MATTERS.",
+        "Keep each follow-up test realistic and reproducible.",
+        "Prefer one sharp edge case over three weak variants.",
+        "Do not propose tests that are impossible for the agent's current capabilities.",
+        "Link each edge case to a concrete production failure mode when possible."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-09T00:00:00Z",
+      "updated_at": "2026-04-09T00:00:00Z"
+    },
+    {
+      "skill_id": "policy_compliance_check",
+      "label": "Policy Compliance Check",
+      "category": "testing",
+      "allowed_families": ["testing", "governance", "validation"],
+      "description": "Verify that the output of an agent under test respects its governance constraints: forbidden effects, limitations, data sources, and declared criticality. Dedicated to PolicySubAgent in Orkestra Test Lab.",
+      "behavior_templates": [
+        "Check the agent output against its declared forbidden_effects (act, generate, etc.).",
+        "Verify that the agent respects its documented limitations.",
+        "Detect data sources used that are outside the allowed MCP set.",
+        "Surface any claim the agent makes that cannot be traced to an authoritative source.",
+        "Flag policy violations clearly without auto-correcting them."
+      ],
+      "output_guidelines": [
+        "Always emit two sections: COMPLIANCE (OK or VIOLATION) and DETAILS.",
+        "Cite the specific rule being evaluated when reporting a violation.",
+        "A borderline or interpretive case is a VIOLATION — ask a human rather than assume.",
+        "Keep the report factual — no recommendations, just the finding.",
+        "Do not re-evaluate functional quality — that is the Judge's job."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-09T00:00:00Z",
+      "updated_at": "2026-04-09T00:00:00Z"
+    },
+    {
+      "skill_id": "test_orchestration",
+      "label": "Test Orchestration",
+      "category": "testing",
+      "allowed_families": ["testing", "execution", "governance"],
+      "description": "Coordinate a full test run by calling the right sub-agents in the right order: scenario preparation, target execution, verdict, and persistence. Dedicated to OrchestratorAgent in Orkestra Test Lab.",
+      "behavior_templates": [
+        "Always call run_scenario_subagent → run_target_agent → run_judge_subagent in order.",
+        "Never paraphrase the scenario's input_prompt when calling run_target_agent.",
+        "Reply in French and stay concise; avoid filler text before tool calls.",
+        "After the judge returns, produce a final RESUME / STATUT / DETAILS / OPTIONS_SUIVANTES block.",
+        "Propose concrete follow-up tests (stricter, ambiguous case, robustness, comparison, variant)."
+      ],
+      "output_guidelines": [
+        "Tool calls must come before any free-text reply.",
+        "Never fabricate a verdict — always delegate to the Judge.",
+        "The final bilan must cite the actual agent_id being tested.",
+        "Keep the options_suivantes list to 3-5 concrete, distinct variations.",
+        "If a tool call fails, explain the failure briefly and stop — do not retry blindly."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-09T00:00:00Z",
+      "updated_at": "2026-04-09T00:00:00Z"
+    },
+    {
+      "skill_id": "assertion_rule_definition",
+      "label": "Assertion Rule Definition",
+      "category": "testing",
+      "allowed_families": ["testing", "preparation", "design"],
+      "description": "Define deterministic assertion rules for a test scenario: tool_called, max_duration_ms, output_field_exists, no_tool_failures, etc. Dedicated to scenario authors and ScenarioSubAgent in Orkestra Test Lab.",
+      "behavior_templates": [
+        "Translate a fuzzy success criterion into one or more deterministic assertion rules.",
+        "Pick the most specific assertion type available — avoid vague wrappers.",
+        "Mark assertions as critical when failing them should fail the whole run.",
+        "Prefer runtime observable rules (tools called, duration, iterations) over LLM-judged ones.",
+        "Add upper bounds (max_duration_ms, max_iterations) whenever cost or latency matters."
+      ],
+      "output_guidelines": [
+        "Use only the supported assertion types documented in assertion_engine.py.",
+        "Each assertion must have the fields the backend expects for its type.",
+        "Do not invent assertion types that don't exist.",
+        "Keep assertion_rule sets small — 3 to 6 rules is usually enough.",
+        "Numeric values in expected fields must be strings (the backend casts them)."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-09T00:00:00Z",
+      "updated_at": "2026-04-09T00:00:00Z"
     }
   ]
 }

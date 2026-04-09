@@ -418,6 +418,24 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         from app.services.test_lab.target_agent_runner import _build_execution_events
         ctx.execution_events = _build_execution_events(result.message_history)
 
+        # Emit tool_call_completed events for each tool the target agent called.
+        # This is REQUIRED so the deterministic assertion engine (which reads
+        # from the DB events table) can match `tool_called` / `tool_not_called`
+        # assertions. Without this, assertions always see zero tool calls.
+        for tc in (result.tool_calls or []):
+            tool_name = tc.get("tool_name") if isinstance(tc, dict) else None
+            if tool_name:
+                emit_event(
+                    ctx.run_id,
+                    "tool_call_completed",
+                    "runtime",
+                    f"Tool '{tool_name}' called",
+                    details={
+                        "tool_name": tool_name,
+                        "tool_input": (tc.get("tool_input", "") if isinstance(tc, dict) else "")[:500],
+                    },
+                )
+
         # Record end (enriched with runtime discovery)
         if recorder:
             recorder.record_target_agent_end(
@@ -779,6 +797,9 @@ async def chat_with_orchestrator(run_id: str, message: str) -> str:
     The orchestrator is stored in _active_orchestrators (in-memory dict)
     and shared with the run execution since both happen in the same process.
     If not found (e.g., after API restart), rebuild from DB with pre-populated context.
+
+    Handles transient Ollama 500 errors by retrying up to 2 times before
+    returning a friendly French message to the user.
     """
     if run_id in _active_orchestrators:
         orchestrator, ctx = _active_orchestrators[run_id]
@@ -786,20 +807,59 @@ async def chat_with_orchestrator(run_id: str, message: str) -> str:
         # Rebuild (after restart) with context from DB
         orchestrator, ctx = await _rebuild_orchestrator_from_db(run_id)
         if orchestrator is None:
-            return "Run not found. Cannot initialize orchestrator."
+            return "⚠️ Run introuvable. Impossible d'initialiser l'orchestrateur."
         _active_orchestrators[run_id] = (orchestrator, ctx)
 
-    try:
-        res = await asyncio.wait_for(
-            orchestrator(Msg("user", message, "user")),
-            timeout=120,
+    last_exc: Exception | None = None
+    for attempt in range(1, 4):  # 3 tries total (1 + 2 retries)
+        try:
+            res = await asyncio.wait_for(
+                orchestrator(Msg("user", message, "user")),
+                timeout=120,
+            )
+            text = _extract_text(res.content if hasattr(res, "content") else str(res))
+            emit_event(run_id, "orchestrator_chat", "interactive",
+                       f"User: {message[:100]}")
+            return text or "(L'orchestrateur n'a pas renvoye de texte)"
+        except asyncio.TimeoutError:
+            logger.warning(f"chat_with_orchestrator timeout (attempt {attempt}) for {run_id}")
+            last_exc = Exception("timeout")
+            break  # don't retry on timeout
+        except Exception as exc:
+            last_exc = exc
+            err_str = str(exc)
+            # Retry only on transient Ollama errors (5xx)
+            is_transient = (
+                "500" in err_str
+                or "502" in err_str
+                or "503" in err_str
+                or "504" in err_str
+                or "Internal Server Error" in err_str
+            )
+            if is_transient and attempt < 3:
+                logger.warning(
+                    f"chat_with_orchestrator transient error (attempt {attempt}/3) "
+                    f"for {run_id}: {err_str[:200]}"
+                )
+                await asyncio.sleep(1.0 * attempt)  # 1s, 2s backoff
+                continue
+            logger.exception(f"chat_with_orchestrator failed for {run_id}")
+            break
+
+    # All attempts exhausted — return a friendly message
+    err_str = str(last_exc) if last_exc else "unknown error"
+    if "500" in err_str or "502" in err_str or "503" in err_str or "Internal Server Error" in err_str:
+        return (
+            "⚠️ Le service LLM (Ollama) est temporairement indisponible "
+            "(erreur 5xx). J'ai reessaye 3 fois sans succes. Merci de retenter "
+            "dans quelques secondes."
         )
-        text = _extract_text(res.content if hasattr(res, "content") else str(res))
-        emit_event(run_id, "orchestrator_chat", "interactive", f"User: {message[:100]}")
-        return text
-    except Exception as exc:
-        logger.exception(f"chat_with_orchestrator failed for {run_id}")
-        return f"Orchestrator error: {exc}"
+    if "timeout" in err_str.lower():
+        return (
+            "⚠️ L'orchestrateur n'a pas repondu dans le delai imparti (120s). "
+            "Le service LLM est peut-etre sature. Retente dans un moment."
+        )
+    return f"⚠️ Erreur de l'orchestrateur : {err_str[:300]}"
 
 
 async def _rebuild_orchestrator_from_db(run_id: str):
@@ -975,6 +1035,100 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
         )
 
         final_text = _extract_text(response.content if hasattr(response, "content") else str(response))
+
+        # ── Deterministic assertions evaluation ─────────────────────────────
+        # The LLM Judge gives a subjective verdict/score; here we run the
+        # deterministic assertion engine on the scenario's declared assertions
+        # so users get objective pass/fail rules too.
+        assertion_results: list[dict] = []
+        if scenario.assertions:
+            try:
+                from app.services.test_lab.assertion_engine import evaluate_assertions
+                from app.models.test_lab import TestRunAssertion, TestRunEvent
+                from sqlalchemy import select as _select
+                from sqlalchemy.ext.asyncio import create_async_engine as _cae, AsyncSession as _AS
+                from sqlalchemy.orm import sessionmaker as _sm
+
+                # Fetch all events recorded by execution_engine.emit_event
+                _eng2 = _cae(settings.DATABASE_URL)
+                _Session2 = _sm(_eng2, class_=_AS, expire_on_commit=False)
+                async with _Session2() as db2:
+                    res = await db2.execute(
+                        _select(TestRunEvent)
+                        .where(TestRunEvent.run_id == run_id)
+                        .order_by(TestRunEvent.timestamp)
+                    )
+                    all_events_rows = res.scalars().all()
+                    all_events = [
+                        {
+                            "event_type": e.event_type,
+                            "details": e.details,
+                            "duration_ms": e.duration_ms,
+                        }
+                        for e in all_events_rows
+                    ]
+
+                    assertion_results = evaluate_assertions(
+                        assertion_defs=scenario.assertions or [],
+                        events=all_events,
+                        final_output=ctx.target_output or "",
+                        duration_ms=ctx.target_duration_ms,
+                        iteration_count=ctx.target_iteration_count,
+                        final_status=ctx.target_status or "completed",
+                    )
+
+                    for ar in assertion_results:
+                        db2.add(
+                            TestRunAssertion(
+                                run_id=run_id,
+                                assertion_type=ar["assertion_type"],
+                                target=ar.get("target"),
+                                expected=str(ar.get("expected")) if ar.get("expected") is not None else None,
+                                actual=ar.get("actual"),
+                                passed=ar["passed"],
+                                critical=ar.get("critical", False),
+                                message=ar["message"],
+                                details=ar.get("details"),
+                            )
+                        )
+                    await db2.commit()
+                await _eng2.dispose()
+
+                passed = sum(1 for a in assertion_results if a["passed"])
+                total = len(assertion_results)
+                emit_event(
+                    run_id,
+                    "phase_completed",
+                    "assertions",
+                    f"Assertions: {passed}/{total} passed",
+                    details={"passed": passed, "total": total},
+                )
+                recorder.record_lifecycle(
+                    "assertions_evaluated",
+                    {
+                        "passed": passed,
+                        "total": total,
+                        "results": [
+                            {
+                                "type": a["assertion_type"],
+                                "passed": a["passed"],
+                                "critical": a.get("critical", False),
+                                "message": a["message"],
+                            }
+                            for a in assertion_results
+                        ],
+                    },
+                )
+            except Exception as assertion_exc:
+                logger.warning(
+                    f"Assertion evaluation failed for {run_id}: {assertion_exc}"
+                )
+                emit_event(
+                    run_id,
+                    "assertion_phase_failed",
+                    "assertions",
+                    f"Assertion engine error: {assertion_exc}",
+                )
 
         # Always persist the final run state to DB (idempotent with save_run_result).
         # This guarantees the run transitions out of "running" even if the LLM
