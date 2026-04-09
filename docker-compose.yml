@@ -91,6 +91,7 @@ services:
       ORKESTRA_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
       ORKESTRA_PROMETHEUS_ENABLED: "true"
       ORKESTRA_DEBUG_STRATEGY_DIR: /app/storage/debug-strategy
+      ORKESTRA_TRACE_DIR: /app/storage/debug-scenarios
       ORKESTRA_AUTH_ENABLED: "false"
       ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
     extra_hosts:
@@ -108,6 +109,7 @@ services:
       - ./alembic.ini:/app/alembic.ini:ro
       - ./storage:/app/storage
       - ./debug-strategy:/app/storage/debug-strategy
+      - ./debug-scenarios:/app/storage/debug-scenarios
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s

@@ -35,6 +35,7 @@ from app.services.test_lab.execution_engine import (
     emit_event,
     update_run,
 )
+from app.services.test_lab.trace_recorder import TraceRecorder
 
 logger = logging.getLogger("orkestra.test_lab.orchestrator_agent")
 
@@ -183,10 +184,21 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         emit_event(ctx.run_id, "subagent_start", "preparation",
                    "ScenarioSubAgent starting",
                    details={"subagent": "ScenarioSubAgent", "prompt": task[:3000]})
+        recorder = TraceRecorder.get(ctx.run_id)
+        if recorder:
+            recorder.record_orchestrator_tool_call("run_scenario_subagent", {"task": task})
         t0 = time.time()
         res = _run_async(scenario_subagent(Msg("user", task, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
         duration_ms = int((time.time() - t0) * 1000)
+        if recorder:
+            model = _get_config_sync().get("workers", {}).get("preparation", {}).get("model") \
+                or _get_config_sync().get("orchestrator", {}).get("model", "mistral")
+            recorder.record_subagent_call(
+                subagent_name="ScenarioSubAgent", role="preparation",
+                model=model, prompt=task, response=text, duration_ms=duration_ms,
+            )
+            recorder.record_orchestrator_tool_result("run_scenario_subagent", text, duration_ms)
         emit_event(ctx.run_id, "subagent_done", "preparation",
                    f"ScenarioSubAgent done ({duration_ms}ms)",
                    details={"subagent": "ScenarioSubAgent", "response": text[:3000],
@@ -197,6 +209,9 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
     def run_target_agent(task: str) -> ToolResponse:
         """Execute the REAL agent under test. This is NOT a simulation."""
         emit_event(ctx.run_id, "phase_start", "runtime", f"Executing target agent {ctx.agent_id}")
+        recorder = TraceRecorder.get(ctx.run_id)
+        if recorder:
+            recorder.record_orchestrator_tool_call("run_target_agent", {"task": task})
 
         async def _execute():
             from app.services.test_lab.target_agent_runner import run_target_agent as _run
@@ -214,6 +229,14 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             await engine.dispose()
             return result
 
+        # Record start
+        if recorder:
+            recorder.record_target_agent_start(
+                agent_id=ctx.agent_id, input_prompt=task,
+                model=ctx.agent_version or "default",
+                tools=[], mcps=[], skills=[],
+            )
+
         result = _run_async(_execute())
         ctx.target_output = result.final_output
         ctx.target_status = result.status
@@ -221,6 +244,22 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         ctx.target_iteration_count = result.iteration_count
         from app.services.test_lab.target_agent_runner import _build_execution_events
         ctx.execution_events = _build_execution_events(result.message_history)
+
+        # Record end
+        if recorder:
+            recorder.record_target_agent_end(
+                agent_id=ctx.agent_id, status=result.status,
+                final_output=result.final_output, duration_ms=result.duration_ms,
+                iteration_count=result.iteration_count,
+                message_history=result.message_history or [],
+                tool_calls=result.tool_calls or [],
+                error=result.error,
+            )
+            recorder.record_orchestrator_tool_result(
+                "run_target_agent",
+                f"status={result.status}, duration={result.duration_ms}ms",
+                result.duration_ms,
+            )
 
         emit_event(ctx.run_id, "agent_done", "runtime",
                    f"Agent finished: {result.status} ({result.duration_ms}ms)",
@@ -244,6 +283,10 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         emit_event(ctx.run_id, "subagent_start", "judgment",
                    "JudgeSubAgent starting",
                    details={"subagent": "JudgeSubAgent", "prompt": analysis_request[:3000]})
+        recorder = TraceRecorder.get(ctx.run_id)
+        if recorder:
+            recorder.record_orchestrator_tool_call("run_judge_subagent", {"analysis_request": analysis_request})
+
         t0 = time.time()
         res = _run_async(judge_subagent(Msg("user", analysis_request, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
@@ -258,6 +301,17 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             ctx.verdict = {"PASS": "passed", "PARTIAL": "passed_with_warnings", "FAIL": "failed"}.get(v, "unknown")
         ctx.summary = text
 
+        if recorder:
+            model = _get_config_sync().get("workers", {}).get("verdict", {}).get("model") \
+                or _get_config_sync().get("orchestrator", {}).get("model", "mistral")
+            recorder.record_subagent_call(
+                subagent_name="JudgeSubAgent", role="verdict",
+                model=model, prompt=analysis_request, response=text,
+                duration_ms=duration_ms,
+                extracted={"verdict": ctx.verdict, "score": ctx.score},
+            )
+            recorder.record_orchestrator_tool_result("run_judge_subagent", text, duration_ms)
+
         emit_event(ctx.run_id, "subagent_done", "judgment",
                    f"JudgeSubAgent: {ctx.verdict} ({ctx.score}/100) in {duration_ms}ms",
                    details={"subagent": "JudgeSubAgent", "response": text[:3000],
@@ -271,10 +325,21 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         emit_event(ctx.run_id, "subagent_start", "diagnostic",
                    "RobustnessSubAgent starting",
                    details={"subagent": "RobustnessSubAgent", "prompt": request[:3000]})
+        recorder = TraceRecorder.get(ctx.run_id)
+        if recorder:
+            recorder.record_orchestrator_tool_call("run_robustness_subagent", {"request": request})
         t0 = time.time()
         res = _run_async(robustness_subagent(Msg("user", request, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
         duration_ms = int((time.time() - t0) * 1000)
+        if recorder:
+            model = _get_config_sync().get("workers", {}).get("diagnostic", {}).get("model") \
+                or _get_config_sync().get("orchestrator", {}).get("model", "mistral")
+            recorder.record_subagent_call(
+                subagent_name="RobustnessSubAgent", role="diagnostic",
+                model=model, prompt=request, response=text, duration_ms=duration_ms,
+            )
+            recorder.record_orchestrator_tool_result("run_robustness_subagent", text, duration_ms)
         emit_event(ctx.run_id, "subagent_done", "diagnostic",
                    f"RobustnessSubAgent done ({duration_ms}ms)",
                    details={"subagent": "RobustnessSubAgent", "response": text[:3000]},
@@ -286,10 +351,21 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         emit_event(ctx.run_id, "subagent_start", "assertion",
                    "PolicySubAgent starting",
                    details={"subagent": "PolicySubAgent", "prompt": request[:3000]})
+        recorder = TraceRecorder.get(ctx.run_id)
+        if recorder:
+            recorder.record_orchestrator_tool_call("run_policy_subagent", {"request": request})
         t0 = time.time()
         res = _run_async(policy_subagent(Msg("user", request, "user")))
         text = _extract_text(res.content if hasattr(res, "content") else str(res))
         duration_ms = int((time.time() - t0) * 1000)
+        if recorder:
+            model = _get_config_sync().get("workers", {}).get("assertion", {}).get("model") \
+                or _get_config_sync().get("orchestrator", {}).get("model", "mistral")
+            recorder.record_subagent_call(
+                subagent_name="PolicySubAgent", role="assertion",
+                model=model, prompt=request, response=text, duration_ms=duration_ms,
+            )
+            recorder.record_orchestrator_tool_result("run_policy_subagent", text, duration_ms)
         emit_event(ctx.run_id, "subagent_done", "assertion",
                    f"PolicySubAgent done ({duration_ms}ms)",
                    details={"subagent": "PolicySubAgent", "response": text[:3000]},
@@ -541,9 +617,14 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
     engine = create_async_engine(settings.DATABASE_URL)
     Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    # Start trace recorder FIRST so all events are captured
+    recorder = TraceRecorder.start(run_id)
+    ctx: RunContext | None = None
+
     try:
         update_run(run_id, status="running", started_at=datetime.now(timezone.utc))
         emit_event(run_id, "run_started", "orchestration", "OrchestratorAgent starting")
+        recorder.record_lifecycle("run_started")
 
         async with Session() as db:
             scenario = (await db.execute(
@@ -554,6 +635,36 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
             agent_def = await agent_registry_service.get_agent(db, scenario.agent_id)
             if not agent_def:
                 raise ValueError(f"Agent {scenario.agent_id} not found")
+
+        # Record context in trace
+        recorder.set_scenario(scenario)
+        recorder.set_agent_under_test(agent_def)
+        recorder.record_lifecycle("loaded_scenario_and_agent")
+
+        # Record orchestrator config from dynamic config
+        cfg = _get_config_sync()
+        orch_model = cfg.get("orchestrator", {}).get("model", "mistral")
+        settings_local = get_settings()
+        host = getattr(settings_local, "OLLAMA_HOST", "http://localhost:11434")
+        recorder.set_orchestrator_config(
+            model=orch_model, host=host,
+            system_prompt=ORCHESTRATOR_PROMPT, max_iters=12,
+        )
+
+        # Record subagent configs
+        workers = cfg.get("workers", {})
+        for role, sub_name in [
+            ("preparation", "ScenarioSubAgent"),
+            ("verdict", "JudgeSubAgent"),
+            ("diagnostic", "RobustnessSubAgent"),
+            ("assertion", "PolicySubAgent"),
+        ]:
+            worker_cfg = workers.get(role, {})
+            sub_model = worker_cfg.get("model") or orch_model
+            recorder.add_subagent_config(
+                name=sub_name, role=role, model=sub_model,
+                host=host, system_prompt=worker_cfg.get("prompt", ""), max_iters=1,
+            )
 
         ctx = RunContext(
             run_id=run_id, scenario_id=scenario_id,
@@ -569,13 +680,14 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
 
         orchestrator = build_orchestrator_agent(ctx)
         _active_orchestrators[run_id] = (orchestrator, ctx)
+        recorder.record_lifecycle("orchestrator_built")
 
-        user_msg = Msg(
-            "user",
+        user_msg_text = (
             f"Lance le test du scenario '{ctx.scenario_name}' pour l'agent '{ctx.agent_id}'. "
-            f"Input: {ctx.input_prompt}",
-            "user",
+            f"Input: {ctx.input_prompt}"
         )
+        user_msg = Msg("user", user_msg_text, "user")
+        recorder.record_orchestrator_start(user_msg_text)
 
         response = await asyncio.wait_for(
             orchestrator(user_msg),
@@ -591,10 +703,25 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
                        summary=final_text[:5000],
                        ended_at=datetime.now(timezone.utc))
 
+        # Finalize and save trace
+        recorder.finalize(
+            verdict=ctx.verdict or "unknown",
+            score=ctx.score,
+            summary=final_text or ctx.summary,
+            final_output=ctx.target_output or "",
+        )
+        trace_path = recorder.save()
+        emit_event(run_id, "trace_saved", "lifecycle", f"Trace saved to {trace_path}",
+                   details={"trace_path": trace_path})
+
     except Exception as exc:
         logger.exception(f"OrchestratorAgent failed for run {run_id}")
+        import traceback as _tb
+        recorder.record_error("lifecycle", "orchestrator_failed",
+                              str(exc), _tb.format_exc())
+
         # Save partial results if target agent ran before the crash
-        if ctx.target_output and not ctx.verdict:
+        if ctx and ctx.target_output and not ctx.verdict:
             update_run(run_id, status="completed", verdict="error",
                        score=0, duration_ms=ctx.target_duration_ms,
                        final_output=(ctx.target_output or "")[:10000],
@@ -607,5 +734,22 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
             update_run(run_id, status="failed", error_message=str(exc)[:1000],
                        ended_at=datetime.now(timezone.utc))
             emit_event(run_id, "run_failed", "error", f"Run failed: {exc}")
+
+        # Save trace even on failure
+        try:
+            recorder.finalize(
+                verdict=ctx.verdict if ctx else "error",
+                score=ctx.score if ctx else 0.0,
+                summary=str(exc),
+                final_output=ctx.target_output if ctx else "",
+                error=str(exc),
+            )
+            trace_path = recorder.save()
+            emit_event(run_id, "trace_saved", "lifecycle", f"Trace saved (failed run) to {trace_path}",
+                       details={"trace_path": trace_path})
+        except Exception as trace_exc:
+            logger.error(f"Failed to save trace after failure: {trace_exc}")
     finally:
+        # Cleanup recorder
+        TraceRecorder.remove(run_id)
         await engine.dispose()
