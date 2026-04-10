@@ -15,7 +15,9 @@ def get_local_tools() -> dict:
         return _LOCAL_TOOLS
 
     with _LOCAL_TOOLS_LOCK:
-        # Double-checked locking: re-check inside the lock
+        # Double-checked locking: prevents redundant initialization when multiple
+        # threads pass the outer None-check simultaneously. A partial-object race
+        # is not possible in CPython (STORE_GLOBAL is atomic under the GIL).
         if _LOCAL_TOOLS is not None:
             return _LOCAL_TOOLS
 
