@@ -30,13 +30,8 @@ settings = get_settings()
 logger = logging.getLogger("orkestra")
 
 # Initialize AgentScope tracing at module load (before uvicorn workers fork)
-if settings.OTEL_ENDPOINT:
-    try:
-        from agentscope.tracing import setup_tracing
-        setup_tracing(endpoint=settings.OTEL_ENDPOINT)
-        logger.info(f"AgentScope OTLP tracing → {settings.OTEL_ENDPOINT}")
-    except Exception as exc:
-        logger.warning(f"Failed to init tracing: {exc}")
+from app.core.tracing import setup_tracing
+setup_tracing(endpoint=settings.OTEL_ENDPOINT)
 
 
 @asynccontextmanager
