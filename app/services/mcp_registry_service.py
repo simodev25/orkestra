@@ -1,6 +1,6 @@
 """MCP registry service — CRUD and lifecycle."""
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.registry import MCPDefinition
@@ -57,7 +57,7 @@ async def update_mcp_status(db: AsyncSession, mcp_id: str, new_status: str, reas
 async def list_mcps(
     db: AsyncSession, effect_type: str | None = None, status: str | None = None,
     criticality: str | None = None, limit: int = 50, offset: int = 0,
-) -> list[MCPDefinition]:
+) -> tuple[list[MCPDefinition], int]:
     stmt = select(MCPDefinition)
     if effect_type:
         stmt = stmt.where(MCPDefinition.effect_type == effect_type)
@@ -65,9 +65,11 @@ async def list_mcps(
         stmt = stmt.where(MCPDefinition.status == status)
     if criticality:
         stmt = stmt.where(MCPDefinition.criticality == criticality)
-    stmt = stmt.order_by(MCPDefinition.name).limit(limit).offset(offset)
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
+    count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total = count_result.scalar() or 0
+    paged_stmt = stmt.order_by(MCPDefinition.name).offset(offset).limit(limit)
+    result = await db.execute(paged_stmt)
+    return list(result.scalars().all()), total
 
 
 async def get_mcp(db: AsyncSession, mcp_id: str) -> MCPDefinition | None:
@@ -79,6 +81,32 @@ async def update_mcp(db: AsyncSession, mcp_id: str, data) -> MCPDefinition:
     mcp = await db.get(MCPDefinition, mcp_id)
     if not mcp:
         raise ValueError(f"MCP {mcp_id} not found")
+
+    # Snapshot current state to history before applying changes
+    from app.models.mcp_history import MCPDefinitionHistory
+
+    history = MCPDefinitionHistory(
+        mcp_id=mcp.id,
+        snapshot={
+            "name": mcp.name,
+            "purpose": mcp.purpose,
+            "description": mcp.description,
+            "effect_type": mcp.effect_type,
+            "input_contract_ref": mcp.input_contract_ref,
+            "output_contract_ref": mcp.output_contract_ref,
+            "allowed_agents": mcp.allowed_agents,
+            "criticality": mcp.criticality,
+            "timeout_seconds": mcp.timeout_seconds,
+            "retry_policy": mcp.retry_policy,
+            "cost_profile": mcp.cost_profile,
+            "approval_required": mcp.approval_required,
+            "audit_required": mcp.audit_required,
+            "status": mcp.status,
+            "owner": mcp.owner,
+        },
+        version=mcp.version or "1.0.0",
+    )
+    db.add(history)
 
     update_data = data.model_dump(exclude_none=True) if hasattr(data, 'model_dump') else data
     if "effect_type" in update_data:

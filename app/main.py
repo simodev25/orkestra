@@ -5,8 +5,16 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from app.core.auth import ApiKeyMiddleware
+from app.core.rate_limit import limiter
 from app.core.config import get_settings
+from app.core.logging_config import configure_logging
+from app.core.exceptions import NotFoundError, ValidationError, StateViolationError
+from app.core.correlation import CorrelationIdMiddleware
 from app.api.routes import (
     health, requests, cases, agents, mcps, plans, runs,
     control, supervision, approvals, audit, workflows, mcp_catalog, metrics,
@@ -33,6 +41,7 @@ if settings.OTEL_ENDPOINT:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
     logger.info(f"Orkestra {settings.APP_VERSION} starting")
     try:
         factory = get_async_session_factory()
@@ -53,13 +62,43 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3300", "http://localhost:5173"],
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",")],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
+app.add_middleware(ApiKeyMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
+
+
+# Exception handlers
+@app.exception_handler(NotFoundError)
+async def not_found_handler(request, exc):
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(ValidationError)
+async def validation_handler(request, exc):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(StateViolationError)
+async def state_violation_handler(request, exc):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(Exception)
+async def generic_handler(request, exc):
+    from fastapi import HTTPException
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    logger.exception("Unhandled error")
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(requests.router, prefix="/api/requests", tags=["requests"])
@@ -80,3 +119,5 @@ app.include_router(settings_routes.router, prefix="/api/settings", tags=["settin
 app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 app.include_router(debug_strategy.router, prefix="/api", tags=["debug-strategy"])
 app.include_router(test_lab.router, prefix="/api/test-lab", tags=["test-lab"])
+from app.api.routes import test_lab_session
+app.include_router(test_lab_session.router, tags=["test-lab-sessions"])

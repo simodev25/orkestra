@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as json_mod
 from typing import Any
 
 import httpx
@@ -20,6 +21,18 @@ from app.schemas.mcp_catalog import (
     OrkestraBindingUpdate,
     OrkestraMcpBinding,
 )
+
+
+CACHE_TTL = 300  # 5 minutes
+CACHE_KEY = "orkestra:obot_catalog"
+
+
+def _get_redis_sync():
+    """Get a synchronous Redis client for caching."""
+    import redis  # noqa: PLC0415 – deferred to avoid hard dep at import time
+
+    settings = get_settings()
+    return redis.from_url(settings.REDIS_URL)
 
 
 _OBOT_LIST_ENDPOINTS = ("/api/all-mcps/servers", "/api/mcp-servers")
@@ -399,12 +412,30 @@ async def _fetch_obot_server_by_id_via_api(obot_server_id: str) -> ObotServerDet
     return None
 
 
-async def fetch_obot_servers() -> tuple[list[ObotServerDetails], str]:
+async def fetch_obot_servers(*, force_refresh: bool = False) -> tuple[list[ObotServerDetails], str]:
     settings = get_settings()
 
     if settings.OBOT_BASE_URL and not settings.OBOT_USE_MOCK:
+        # --- Redis cache check (skip when force_refresh=True) ---
+        if not force_refresh:
+            try:
+                r = _get_redis_sync()
+                cached = r.get(CACHE_KEY)
+                if cached is not None:
+                    raw_list = json_mod.loads(cached)
+                    return [ObotServerDetails(**item) for item in raw_list], "obot"
+            except Exception:
+                pass  # Cache unavailable – fall through to live fetch
+
         try:
-            return await _fetch_obot_servers_via_api(), "obot"
+            servers = await _fetch_obot_servers_via_api()
+            # --- Populate cache ---
+            try:
+                r = _get_redis_sync()
+                r.setex(CACHE_KEY, CACHE_TTL, json_mod.dumps([s.model_dump() for s in servers]))
+            except Exception:
+                pass  # Cache write failure is non-fatal
+            return servers, "obot"
         except Exception:
             if not settings.OBOT_FALLBACK_TO_MOCK:
                 raise
@@ -472,6 +503,12 @@ async def sync_obot_catalog(db: AsyncSession) -> CatalogSyncResult:
 
     await db.flush()
 
+    # Invalidate cache so next read picks up fresh Obot data
+    try:
+        _get_redis_sync().delete(CACHE_KEY)
+    except Exception:
+        pass
+
     return CatalogSyncResult(
         total_obot_servers=len(servers),
         existing_bindings_updated=updated,
@@ -517,6 +554,13 @@ async def import_from_obot(
             updated_count += 1
 
     await db.flush()
+
+    # Invalidate cache so next catalog read reflects the newly imported servers
+    try:
+        _get_redis_sync().delete(CACHE_KEY)
+    except Exception:
+        pass
+
     return CatalogImportResult(
         imported_count=imported_count,
         updated_count=updated_count,
@@ -613,7 +657,9 @@ async def list_catalog_items(
     allowed_workflow: str | None = None,
     allowed_agent_family: str | None = None,
     hidden_from_ai_generator: bool | None = None,
-) -> list[CatalogMcpViewModel]:
+    offset: int = 0,
+    limit: int = 50,
+) -> tuple[list[CatalogMcpViewModel], int]:
     servers, _ = await fetch_obot_servers()
     bindings = await _get_bindings_map(db)
 
@@ -647,7 +693,8 @@ async def list_catalog_items(
         out.append(view)
 
     out.sort(key=lambda item: item.obot_server.name.lower())
-    return out
+    total = len(out)
+    return out[offset : offset + limit], total
 
 
 async def get_catalog_item(db: AsyncSession, obot_server_id: str) -> CatalogMcpDetailsViewModel:
@@ -668,7 +715,7 @@ async def get_catalog_item(db: AsyncSession, obot_server_id: str) -> CatalogMcpD
 
 
 async def get_catalog_stats(db: AsyncSession) -> McpCatalogStats:
-    items = await list_catalog_items(db)
+    items, _ = await list_catalog_items(db, limit=100000)
     return McpCatalogStats(
         obot_total=len(items),
         obot_active=sum(1 for item in items if item.obot_state == "active"),

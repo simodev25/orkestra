@@ -7,6 +7,7 @@ from typing import Optional
 
 from pydantic import Field
 
+from app.models.enums import FamilyStatus
 from app.schemas.common import OrkBaseSchema
 
 
@@ -18,7 +19,7 @@ class FamilyCreate(OrkBaseSchema):
     default_forbidden_effects: list[str] = Field(default_factory=list)
     default_output_expectations: list[str] = Field(default_factory=list)
     version: str = "1.0.0"
-    status: str = "active"
+    status: FamilyStatus = FamilyStatus.active
     owner: Optional[str] = None
 
 
@@ -29,7 +30,7 @@ class FamilyUpdate(OrkBaseSchema):
     default_forbidden_effects: Optional[list[str]] = None
     default_output_expectations: Optional[list[str]] = None
     version: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[FamilyStatus] = None
     owner: Optional[str] = None
 
 
@@ -41,7 +42,7 @@ class FamilyOut(OrkBaseSchema):
     default_forbidden_effects: list[str] = Field(default_factory=list)
     default_output_expectations: list[str] = Field(default_factory=list)
     version: str
-    status: str
+    status: FamilyStatus
     owner: Optional[str]
     created_at: datetime
     updated_at: datetime

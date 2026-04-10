@@ -91,7 +91,7 @@ export function FamilyFormModal({ open, onClose, onSaved, initial }: FamilyFormM
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div role="dialog" aria-modal="true" aria-label={isEdit ? "Edit Family" : "Create Family"} className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="w-full max-w-lg glass-panel border border-ork-border my-auto">
         <div className="p-4 border-b border-ork-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">{isEdit ? "Edit Family" : "Create Family"}</h2>

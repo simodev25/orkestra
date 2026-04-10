@@ -73,7 +73,7 @@ async def test_generate_agent_draft_and_save(client):
     )
     assert generate_resp.status_code == 200
     data = generate_resp.json()
-    assert data["source"] == "mock_llm"
+    assert data["source"] == "heuristic_template"
     assert data["draft"]["status"] == "draft"
     assert len(data["available_mcps"]) >= 1
 

@@ -59,6 +59,7 @@ services:
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
+      # Required by Obot to spawn tool containers (dev only — see audit F12)
       - /var/run/docker.sock:/var/run/docker.sock
 
   # ---------------------------------------------------------------------------
@@ -90,6 +91,11 @@ services:
       ORKESTRA_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
       ORKESTRA_PROMETHEUS_ENABLED: "true"
       ORKESTRA_DEBUG_STRATEGY_DIR: /app/storage/debug-strategy
+      ORKESTRA_TRACE_DIR: /app/storage/debug-scenarios
+      ORKESTRA_AUTH_ENABLED: "false"
+      ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,12 +109,46 @@ services:
       - ./alembic.ini:/app/alembic.ini:ro
       - ./storage:/app/storage
       - ./debug-strategy:/app/storage/debug-strategy
+      - ./debug-scenarios:/app/storage/debug-scenarios
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Celery Worker (test lab agent execution)
+  # ---------------------------------------------------------------------------
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=2
+    environment:
+      PYTHONPATH: /app
+      ORKESTRA_DATABASE_URL: postgresql+asyncpg://orkestra:orkestra@postgres:5432/orkestra
+      ORKESTRA_DATABASE_URL_SYNC: postgresql://orkestra:orkestra@postgres:5432/orkestra
+      ORKESTRA_REDIS_URL: redis://redis:6379/0
+      ORKESTRA_SECRET_KEY: orkestra-dev-secret-change-in-prod
+      ORKESTRA_DEBUG: "true"
+      ORKESTRA_LOG_LEVEL: INFO
+      ORKESTRA_OBOT_BASE_URL: http://obot:8080
+      ORKESTRA_OBOT_USE_MOCK: "false"
+      ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
+      ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app:ro
+      - ./storage:/app/storage
 
   # ---------------------------------------------------------------------------
   # Frontend
@@ -122,7 +162,7 @@ services:
     ports:
       - "3300:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8200
     depends_on:
       api:
         condition: service_healthy

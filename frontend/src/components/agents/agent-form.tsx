@@ -8,6 +8,7 @@ import type {
   AgentUpdatePayload,
   McpCatalogSummary,
 } from "@/lib/agent-registry/types";
+import { request } from "@/lib/api-client";
 import type { FamilyDefinition, SkillDefinition } from "@/lib/families/types";
 import { listSkillsByFamily } from "@/lib/families/service";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -108,9 +109,8 @@ export function AgentForm({
 
   useEffect(() => {
     if (initial?.llm_provider) {
-      fetch(`/api/agents/llm-models/${initial.llm_provider}`)
-        .then(r => r.json())
-        .then(data => setAvailableModels(data.models || []))
+      request<{ models: any[] }>(`/api/agents/llm-models/${initial.llm_provider}`)
+        .then(data => setAvailableModels((data.models || []).map((m: any) => typeof m === "string" ? m : m.name)))
         .catch(() => setAvailableModels([]));
     }
   }, []);
@@ -257,8 +257,9 @@ export function AgentForm({
         <h2 className="section-title text-sm">1. Identity</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <p className="data-label">agent_id</p>
+            <label htmlFor="agent-id" className="data-label">agent_id</label>
             <input
+              id="agent-id"
               value={agentId}
               onChange={(e) => setAgentId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "_"))}
               placeholder="company_legal_lookup_agent"
@@ -267,8 +268,9 @@ export function AgentForm({
             />
           </div>
           <div>
-            <p className="data-label">name</p>
+            <label htmlFor="agent-name" className="data-label">name</label>
             <input
+              id="agent-name"
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -281,8 +283,9 @@ export function AgentForm({
             />
           </div>
           <div>
-            <p className="data-label">family</p>
+            <label htmlFor="agent-family" className="data-label">family</label>
             <select
+              id="agent-family"
               value={familyId}
               onChange={(e) => setFamilyId(e.target.value)}
               className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
@@ -332,15 +335,17 @@ export function AgentForm({
       <section className="glass-panel p-4 space-y-3">
         <h2 className="section-title text-sm">2. Mission</h2>
         <div className="space-y-2">
-          <p className="data-label">purpose</p>
+          <label htmlFor="agent-purpose" className="data-label">purpose</label>
           <input
+            id="agent-purpose"
             value={purpose}
             onChange={(e) => setPurpose(e.target.value)}
             placeholder="Find all legal and regulatory data about a company."
             className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm"
           />
-          <p className="data-label">description</p>
+          <label htmlFor="agent-description" className="data-label">description</label>
           <textarea
+            id="agent-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
@@ -583,9 +588,8 @@ export function AgentForm({
                 setLlmModel("");
                 setAvailableModels([]);
                 if (e.target.value) {
-                  fetch(`/api/agents/llm-models/${e.target.value}`)
-                    .then(r => r.json())
-                    .then(data => setAvailableModels(data.models || []))
+                  request<{ models: any[] }>(`/api/agents/llm-models/${e.target.value}`)
+                    .then(data => setAvailableModels((data.models || []).map((m: any) => typeof m === "string" ? m : m.name)))
                     .catch(() => setAvailableModels([]));
                 }
               }}

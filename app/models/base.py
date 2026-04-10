@@ -14,8 +14,12 @@ def utcnow():
 
 
 def new_id(prefix: str = ""):
-    """Generate a prefixed UUID (e.g., 'req_abc123')."""
-    uid = uuid.uuid4().hex[:12]
+    """Generate a prefixed UUID that fits in VARCHAR(36).
+
+    Uses 24 hex chars (96 bits entropy) to leave room for prefixes up to 12 chars.
+    Collision probability is negligible (birthday bound ~2^48 = 280 trillion records).
+    """
+    uid = uuid.uuid4().hex[:24]
     return f"{prefix}{uid}" if prefix else str(uuid.uuid4())
 
 

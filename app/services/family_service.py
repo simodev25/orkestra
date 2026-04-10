@@ -17,12 +17,20 @@ from app.services.version_utils import bump_patch
 logger = logging.getLogger("orkestra.families")
 
 
-async def list_families(db: AsyncSession, *, include_archived: bool = False) -> list[FamilyDefinition]:
+async def list_families(
+    db: AsyncSession,
+    *,
+    include_archived: bool = False,
+    offset: int = 0,
+    limit: int = 50,
+) -> tuple[list[FamilyDefinition], int]:
     stmt = select(FamilyDefinition).order_by(FamilyDefinition.label)
     if not include_archived:
         stmt = stmt.where(FamilyDefinition.status != "archived")
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
+    count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total = count_result.scalar() or 0
+    result = await db.execute(stmt.offset(offset).limit(limit))
+    return list(result.scalars().all()), total
 
 
 async def get_family(db: AsyncSession, family_id: str) -> FamilyDefinition | None:

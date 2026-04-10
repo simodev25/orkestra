@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.registry import AgentDefinition
+from app.services.llm_output_validator import validate_forbidden_effects, validate_output_structure
 
 logger = logging.getLogger("orkestra.agent_test")
 
@@ -221,22 +222,36 @@ async def execute_test_run(
                     "token_usage": None,
                 }
 
+        # ── Step 5: Post-LLM output validation (F13) ────────────
+        result: dict[str, Any] = {
+            "status": "completed",
+            "raw_output": content,
+            "user_prompt": user_message,
+            "latency_ms": 0,  # updated below
+            "provider": provider,
+            "model": model,
+            "token_usage": None,
+            "connected_mcps": getattr(react_agent, "_connected_mcps", []) if react_agent else [],
+            "message_history": message_history,
+        }
+
+        forbidden = agent.forbidden_effects or []
+        if forbidden:
+            fx_check = validate_forbidden_effects(content, forbidden)
+            if not fx_check.valid:
+                result["forbidden_effect_violations"] = fx_check.violations
+
+        struct_check = validate_output_structure(content)
+        if not struct_check.valid:
+            result["structure_violations"] = struct_check.violations
+
         # ── Finalize root span ──────────────────────────────────
         latency_ms = int((time.time() - t0) * 1000)
+        result["latency_ms"] = latency_ms
         root_span.set_attribute("orkestra.verdict", "pass")
         root_span.set_attribute("orkestra.latency_ms", latency_ms)
         root_span.set_attribute("orkestra.output_length", len(content))
 
     _flush_traces()
 
-    return {
-        "status": "completed",
-        "raw_output": content,
-        "user_prompt": user_message,
-        "latency_ms": latency_ms,
-        "provider": provider,
-        "model": model,
-        "token_usage": None,
-        "connected_mcps": getattr(react_agent, "_connected_mcps", []) if react_agent else [],
-        "message_history": message_history,
-    }
+    return result

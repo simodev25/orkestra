@@ -207,6 +207,35 @@
       "owner": "platform_ai_team",
       "created_at": "2026-04-05T00:00:00Z",
       "updated_at": "2026-04-05T00:00:00Z"
+    },
+    {
+      "family_id": "testing",
+      "label": "Testing",
+      "description": "Agents dedicated to the Orkestra Test Lab: scenario design, test orchestration, verdict judgment, robustness probing, and policy compliance checking of other agents under test.",
+      "default_system_rules": [
+        "You are a testing-oriented agent in the Orkestra Test Lab.",
+        "Your role is to design, execute, judge, or probe other agents — not to deliver business outcomes yourself.",
+        "Stay focused on test-relevant behavior: reproducibility, fairness, explainability of verdicts.",
+        "Never paraphrase or modify the original scenario input when testing a target agent.",
+        "Respond in the language configured for the session (French by default in Orkestra)."
+      ],
+      "default_forbidden_effects": [
+        "publish",
+        "external_act",
+        "approve",
+        "final_decision"
+      ],
+      "default_output_expectations": [
+        "Produce structured, reproducible test artifacts (scenario, verdict, rationale, follow-ups).",
+        "Use the exact output format required by downstream parsers (VERDICT, SCORE, etc.).",
+        "Cite the actual agent_id under test and the scenario name when reporting.",
+        "Be concise and evidence-based — no filler or speculative commentary."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-09T00:00:00Z",
+      "updated_at": "2026-04-09T00:00:00Z"
     }
   ]
 }

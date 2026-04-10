@@ -1,5 +1,7 @@
 """AuditEvent, EvidenceRecord, ReplayBundle entities."""
 
+from datetime import datetime
+
 from sqlalchemy import String, Text, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,7 +18,7 @@ class AuditEvent(BaseModel):
     actor_type: Mapped[str] = mapped_column(String(50))
     actor_ref: Mapped[str] = mapped_column(String(100))
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    timestamp: Mapped[str] = mapped_column(DateTime(timezone=True), default=utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class EvidenceRecord(BaseModel):

@@ -8,23 +8,13 @@ import type {
   SkillUpdatePayload,
   SkillWithAgents,
 } from "./types";
-
-async function request<R>(url: string, opts?: RequestInit): Promise<R> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...opts?.headers },
-    ...opts,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || res.statusText);
-  }
-  return res.json();
-}
+import { request } from "../api-client";
 
 // Families
 export async function listFamilies(includeArchived = false): Promise<FamilyDefinition[]> {
   const qs = includeArchived ? "?include_archived=true" : "";
-  return request<FamilyDefinition[]>(`/api/families${qs}`);
+  const res = await request<{ items: FamilyDefinition[] } | FamilyDefinition[]>(`/api/families${qs}`);
+  return Array.isArray(res) ? res : res.items;
 }
 
 export async function getFamily(familyId: string): Promise<FamilyDetail> {
@@ -54,7 +44,8 @@ export async function archiveFamily(familyId: string): Promise<FamilyDefinition>
 // Skills
 export async function listSkills(includeArchived = false): Promise<SkillDefinition[]> {
   const qs = includeArchived ? "?include_archived=true" : "";
-  return request<SkillDefinition[]>(`/api/skills${qs}`);
+  const res = await request<{ items: SkillDefinition[] } | SkillDefinition[]>(`/api/skills${qs}`);
+  return Array.isArray(res) ? res : res.items;
 }
 
 export async function listSkillsByFamily(familyId: string): Promise<SkillDefinition[]> {

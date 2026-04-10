@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FlaskConical, Play, CheckCircle, XCircle } from "lucide-react";
+import { request } from "@/lib/api-client";
 
 interface Assertion {
   type: string;
@@ -63,25 +64,22 @@ export default function ScenarioDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState(false);
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback(async () => {
     if (!id) return;
-    Promise.all([
-      fetch(`/api/test-lab/scenarios/${id}`).then((r) => {
-        if (!r.ok) throw new Error(r.statusText);
-        return r.json();
-      }),
-      fetch(`/api/test-lab/runs?scenario_id=${id}`).then((r) => {
-        if (!r.ok) return [];
-        return r.json();
-      }),
-    ])
-      .then(([scenarioData, runsData]) => {
-        setScenario(scenarioData);
-        setRuns(runsData);
-        setError(null);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    try {
+      const [scenarioData, runsRes] = await Promise.all([
+        request<Scenario>(`/api/test-lab/scenarios/${id}`),
+        request<{ items: ScenarioRun[] } | ScenarioRun[]>(`/api/test-lab/runs?scenario_id=${id}`).catch(() => []),
+      ]);
+      setScenario(scenarioData);
+      const runsList = Array.isArray(runsRes) ? runsRes : runsRes.items ?? [];
+      setRuns(runsList);
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || "Failed to load scenario");
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => {
@@ -92,15 +90,9 @@ export default function ScenarioDetailPage() {
     if (!id) return;
     setRunningAction(true);
     try {
-      const res = await fetch(`/api/test-lab/scenarios/${id}/run`, {
+      const run = await request<{ id: string }>(`/api/test-lab/scenarios/${id}/run`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail || res.statusText);
-      }
-      const run = await res.json();
       router.push(`/test-lab/runs/${run.id}`);
     } catch (e: any) {
       setError(e.message);
@@ -153,8 +145,9 @@ export default function ScenarioDetailPage() {
               </h1>
               <StatusBadge status={scenario?.enabled ? "active" : "disabled"} />
             </div>
-            <p className="text-[10px] text-ork-dim font-mono mt-0.5">
-              Agent: {scenario?.agent_id.slice(0, 12)} &middot; ID: {id?.slice(0, 12)}
+            <p className="text-[10px] font-mono mt-0.5">
+              Agent: <Link href={`/agents/${scenario?.agent_id}`} className="text-ork-cyan hover:underline">{scenario?.agent_id}</Link>
+              <span className="text-ork-dim"> &middot; Scenario ID: {id}</span>
             </p>
           </div>
         </div>

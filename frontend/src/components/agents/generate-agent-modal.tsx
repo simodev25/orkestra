@@ -148,13 +148,13 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
+    <div role="dialog" aria-modal="true" aria-label="Generate Agent with AI" className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
       <div className="max-w-6xl mx-auto glass-panel border border-ork-border">
         <div className="p-4 border-b border-ork-border flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Generate Agent with AI</h2>
+            <h2 className="text-lg font-semibold">Generate Agent — Template-Based Draft</h2>
             <p className="text-xs font-mono text-ork-dim">
-              LLM proposes a governed draft. You review, edit, then save in `draft`.
+              Heuristic template proposes a governed draft. You review, edit, then save in `draft`.
             </p>
           </div>
           <button onClick={onClose} className="text-xs font-mono text-ork-muted hover:text-ork-text">

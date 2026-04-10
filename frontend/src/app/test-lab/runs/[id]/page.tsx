@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { request } from "@/lib/api-client";
 import {
   FlaskConical,
   CheckCircle,
@@ -14,6 +15,9 @@ import {
   Target,
   FileText,
   Play,
+  Send,
+  Loader2,
+  MessageSquare,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -82,7 +86,9 @@ function EventDetails({ event }: { event: any }) {
   const hasMcp = event.event_type === "mcp_session_connected" && d.tools;
   const hasWorkerResponse = !!d.worker_response;
   const hasLongMessage = event.message && event.message.length > 120;
-  const hasContent = hasLlm || hasLlmReasoning || hasToolCalls || hasToolResult || hasOrchestratorToolCall || hasOrchestratorResult || hasMcp || hasWorkerResponse || hasLongMessage;
+  const hasSubagentPrompt = !!d.subagent && !!d.prompt;
+  const hasSubagentResponse = !!d.subagent && !!d.response;
+  const hasContent = hasLlm || hasLlmReasoning || hasToolCalls || hasToolResult || hasOrchestratorToolCall || hasOrchestratorResult || hasMcp || hasWorkerResponse || hasLongMessage || hasSubagentPrompt || hasSubagentResponse;
 
   if (!hasContent) return null;
 
@@ -94,6 +100,8 @@ function EventDetails({ event }: { event: any }) {
       >
         <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>&#9654;</span>
         {expanded ? "Hide details" : "Show details"}
+        {hasSubagentPrompt && <span className="text-ork-cyan/60 ml-1">Prompt</span>}
+        {hasSubagentResponse && <span className="text-ork-purple/60 ml-1">LLM</span>}
         {hasWorkerResponse && <span className="text-ork-amber/60 ml-1">Agent</span>}
         {hasLlm && <span className="text-ork-purple/60 ml-1">LLM</span>}
         {hasToolCalls && <span className="text-ork-cyan/60 ml-1">Tools</span>}
@@ -103,6 +111,36 @@ function EventDetails({ event }: { event: any }) {
 
       {expanded && (
         <div className="mt-1.5 space-y-2 animate-fade-in">
+          {/* SubAgent prompt (input) */}
+          {hasSubagentPrompt && (
+            <div className="border-l-2 border-ork-cyan/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-cyan mb-1 font-semibold">
+                {d.subagent} — Prompt
+              </p>
+              <pre className="text-[10px] font-mono text-ork-muted bg-ork-bg border border-ork-border rounded p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{d.prompt}
+              </pre>
+            </div>
+          )}
+
+          {/* SubAgent response (LLM output) */}
+          {hasSubagentResponse && (
+            <div className="border-l-2 border-ork-purple/30 pl-3">
+              <p className="text-[10px] font-mono text-ork-purple mb-1 font-semibold">
+                {d.subagent} — Response
+                {d.verdict && <span className="text-ork-green/70 ml-2">({d.verdict}, {d.score}/100)</span>}
+              </p>
+              <pre className="text-[10px] font-mono text-ork-text/80 bg-ork-bg border border-ork-border rounded p-2.5 max-h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{d.response}
+              </pre>
+              {d.response_length && (
+                <p className="text-[9px] font-mono text-ork-dim mt-1">
+                  {d.response_length} chars
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Full message if truncated */}
           {hasLongMessage && (
             <pre className="text-[10px] font-mono text-ork-muted bg-ork-bg border border-ork-border rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
@@ -213,10 +251,10 @@ function getAgentLabel(event: any): string | null {
   if (t === "orchestrator_tool_result") return "worker → master";
   if (t === "orchestrator_response") return "master (response)";
   if (p === "orchestrator") return "master";
-  if (p === "preparation") return "preparation_worker";
-  if (p === "assertions") return "assertion_worker";
-  if (p === "diagnostics") return "diagnostic_worker";
-  if (p === "report") return "verdict_worker";
+  if (p === "preparation") return "preparation_agent";
+  if (p === "assertions") return "assertion_agent";
+  if (p === "diagnostics") return "diagnostic_agent";
+  if (p === "report") return "verdict_agent";
   if (p === "runtime") {
     if (t === "agent_iteration_started" || t === "agent_iteration_completed") return "target_agent";
     if (t === "llm_request_started" || t === "llm_request_completed") return "target_agent (LLM)";
@@ -241,30 +279,38 @@ export default function TestRunDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [assertions, setAssertions] = useState<any[]>([]);
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
+
+  // Chat with OrchestratorAgent
+  const [chatMessages, setChatMessages] = useState<Array<{role: string; content: string}>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<string | null>(null);
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback(async () => {
     if (!id) return;
-    Promise.all([
-      fetch(`/api/test-lab/runs/${id}`).then((r) => r.ok ? r.json() : null),
-      fetch(`/api/test-lab/runs/${id}/events`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/test-lab/runs/${id}/assertions`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/test-lab/runs/${id}/diagnostics`).then((r) => r.ok ? r.json() : []),
-    ])
-      .then(([runData, eventsData, assertionsData, diagnosticsData]) => {
-        if (runData) {
-          setRun(runData);
-          statusRef.current = runData.status;
-        }
-        setEvents(eventsData || []);
-        setAssertions(assertionsData || []);
-        setDiagnostics(diagnosticsData || []);
-        setError(null);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    try {
+      const [runData, eventsData, assertionsData, diagnosticsData] = await Promise.all([
+        request<any>(`/api/test-lab/runs/${id}`).catch(() => null),
+        request<any>(`/api/test-lab/runs/${id}/events`).catch(() => []),
+        request<any>(`/api/test-lab/runs/${id}/assertions`).catch(() => []),
+        request<any>(`/api/test-lab/runs/${id}/diagnostics`).catch(() => []),
+      ]);
+      if (runData) {
+        setRun(runData);
+        statusRef.current = runData.status;
+      }
+      setEvents(Array.isArray(eventsData) ? eventsData : eventsData?.items ?? []);
+      setAssertions(Array.isArray(assertionsData) ? assertionsData : assertionsData?.items ?? []);
+      setDiagnostics(Array.isArray(diagnosticsData) ? diagnosticsData : diagnosticsData?.items ?? []);
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || "Failed to load run data");
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   // SSE streaming for live events
@@ -357,11 +403,8 @@ export default function TestRunDetailPage() {
             onClick={async () => {
               setRerunning(true);
               try {
-                const res = await fetch(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: "POST" });
-                if (res.ok) {
-                  const newRun = await res.json();
-                  router.push(`/test-lab/runs/${newRun.id}`);
-                }
+                const newRun = await request<{ id: string }>(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: "POST" });
+                router.push(`/test-lab/runs/${newRun.id}`);
               } catch { /* ignore */ }
               finally { setRerunning(false); }
             }}
@@ -578,7 +621,116 @@ export default function TestRunDetailPage() {
       {/* Summary */}
       {run?.summary && (
         <div className="glass-panel p-4">
-          <p className="text-xs font-mono text-ork-muted">{run.summary}</p>
+          <p className="text-xs font-mono text-ork-muted whitespace-pre-wrap">{run.summary}</p>
+        </div>
+      )}
+
+      {/* ── Chat with OrchestratorAgent ── */}
+      {run && (run.status === "completed" || run.status === "failed") && (
+        <div>
+          <h2 className="section-title mb-4 flex items-center gap-2">
+            <MessageSquare size={13} />
+            Chat with OrchestratorAgent
+          </h2>
+          <div className="glass-panel overflow-hidden">
+            {/* Messages */}
+            <div className="max-h-[400px] overflow-y-auto p-4 space-y-3">
+              {chatMessages.length === 0 && (
+                <p className="text-center text-xs font-mono text-ork-dim py-8">
+                  Ask the orchestrator about the results, request a deeper analysis, or ask for a follow-up test.
+                </p>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%] rounded-lg px-4 py-2.5 ${
+                    msg.role === "user"
+                      ? "bg-ork-cyan/10 border border-ork-cyan/30 rounded-tr-sm"
+                      : "bg-ork-surface border border-ork-dim/20 rounded-tl-sm"
+                  }`}>
+                    <p className={`text-[10px] font-mono mb-1 uppercase tracking-wider ${
+                      msg.role === "user" ? "text-ork-cyan/60" : "text-ork-purple/60"
+                    }`}>
+                      {msg.role === "user" ? "you" : "orchestrator"}
+                    </p>
+                    <p className="text-sm text-ork-muted leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-ork-surface border border-ork-dim/20 rounded-lg px-4 py-3 flex items-center gap-2">
+                    <Loader2 size={13} className="text-ork-cyan animate-spin" />
+                    <span className="text-xs font-mono text-ork-dim animate-pulse">Thinking...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            {/* Input */}
+            <div className="border-t border-ork-border/50 p-3 flex items-end gap-2">
+              <textarea
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!chatInput.trim() || chatLoading) return;
+                    const msg = chatInput.trim();
+                    setChatInput("");
+                    setChatMessages(prev => [...prev, { role: "user", content: msg }]);
+                    setChatLoading(true);
+                    request<{ response: string }>(`/api/test-lab/runs/${id}/chat`, {
+                      method: "POST",
+                      body: JSON.stringify({ message: msg }),
+                    })
+                      .then(data => {
+                        setChatMessages(prev => [...prev, { role: "orchestrator", content: data.response }]);
+                      })
+                      .catch(err => {
+                        setChatMessages(prev => [...prev, { role: "orchestrator", content: `Error: ${err.message}` }]);
+                      })
+                      .finally(() => {
+                        setChatLoading(false);
+                        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+                      });
+                  }
+                }}
+                placeholder="Ask the orchestrator... (e.g., 'explain the verdict', 'run a stricter test', 'check policy compliance')"
+                disabled={chatLoading}
+                rows={1}
+                className="flex-1 resize-none bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim/50 focus:outline-none focus:border-ork-cyan/40 disabled:opacity-50 min-h-[38px] max-h-[100px] overflow-y-auto"
+              />
+              <button
+                onClick={() => {
+                  if (!chatInput.trim() || chatLoading) return;
+                  const msg = chatInput.trim();
+                  setChatInput("");
+                  setChatMessages(prev => [...prev, { role: "user", content: msg }]);
+                  setChatLoading(true);
+                  request<{ response: string }>(`/api/test-lab/runs/${id}/chat`, {
+                    method: "POST",
+                    body: JSON.stringify({ message: msg }),
+                  })
+                    .then(data => {
+                      setChatMessages(prev => [...prev, { role: "orchestrator", content: data.response }]);
+                    })
+                    .catch(err => {
+                      setChatMessages(prev => [...prev, { role: "orchestrator", content: `Error: ${err.message}` }]);
+                    })
+                    .finally(() => {
+                      setChatLoading(false);
+                      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+                    });
+                }}
+                disabled={chatLoading || !chatInput.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider bg-ork-cyan/15 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/25 transition-colors disabled:opacity-40 flex-shrink-0"
+              >
+                {chatLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                Send
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

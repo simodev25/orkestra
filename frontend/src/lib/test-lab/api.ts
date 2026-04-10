@@ -1,23 +1,14 @@
 import type * as T from "./types";
+import { request } from "../api-client";
 
 const BASE = "/api/test-lab";
 
-async function request<R>(url: string, opts?: RequestInit): Promise<R> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...opts?.headers },
-    ...opts,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || res.statusText);
-  }
-  return res.json();
-}
-
 export const testLabApi = {
   // Scenarios
-  listScenarios: (agentId?: string) =>
-    request<T.TestScenario[]>(`${BASE}/scenarios${agentId ? `?agent_id=${agentId}` : ""}`),
+  listScenarios: async (agentId?: string) => {
+    const res = await request<{ items: T.TestScenario[] } | T.TestScenario[]>(`${BASE}/scenarios${agentId ? `?agent_id=${agentId}` : ""}`);
+    return Array.isArray(res) ? res : res.items;
+  },
   getScenario: (id: string) =>
     request<T.TestScenario>(`${BASE}/scenarios/${id}`),
   createScenario: (data: Omit<T.TestScenario, "id" | "created_at" | "updated_at">) =>
@@ -35,7 +26,8 @@ export const testLabApi = {
     if (params?.scenario_id) q.set("scenario_id", params.scenario_id);
     if (params?.agent_id) q.set("agent_id", params.agent_id);
     const qs = q.toString();
-    return request<T.TestRun[]>(`${BASE}/runs${qs ? `?${qs}` : ""}`);
+    const res = await request<{ items: T.TestRun[] } | T.TestRun[]>(`${BASE}/runs${qs ? `?${qs}` : ""}`);
+    return Array.isArray(res) ? res : res.items;
   },
   getRun: (id: string) =>
     request<T.TestRun>(`${BASE}/runs/${id}`),

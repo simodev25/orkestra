@@ -52,7 +52,11 @@ const DEFAULT = "bg-ork-dim/20 text-ork-muted border-ork-dim/30";
 export function StatusBadge({ status }: { status: string }) {
   const colors = STATUS_COLORS[status] || DEFAULT;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border rounded ${colors}`}>
+    <span
+      role="status"
+      aria-label={`Status: ${status.replace(/_/g, " ")}`}
+      className={`inline-flex items-center px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border rounded ${colors}`}
+    >
       {status.replace(/_/g, " ")}
     </span>
   );

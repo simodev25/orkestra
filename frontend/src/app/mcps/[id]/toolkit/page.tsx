@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { StatCard } from "@/components/ui/stat-card";
 import {
   getMcp,
   getMcpHealth,
@@ -48,6 +49,17 @@ function latencyColor(ms: number): string {
   if (ms < 100) return "text-ork-green";
   if (ms < 500) return "text-ork-amber";
   return "text-ork-red";
+}
+
+function colorToAccent(color: string | undefined): "green" | "amber" | "red" | "cyan" | "purple" | undefined {
+  const map: Record<string, "green" | "amber" | "red" | "cyan" | "purple"> = {
+    "text-ork-green": "green",
+    "text-ork-amber": "amber",
+    "text-ork-red": "red",
+    "text-ork-cyan": "cyan",
+    "text-ork-purple": "purple",
+  };
+  return color ? map[color] : undefined;
 }
 
 function fmtTimestamp(ts: string | null): string {
@@ -490,17 +502,16 @@ function HealthTab({
         <StatCard
           label="Failure Rate"
           value={`${failurePercent.toFixed(1)}%`}
-          valueColor={failurePercent < 5 ? "text-ork-green" : failurePercent < 20 ? "text-ork-amber" : "text-ork-red"}
+          accent={colorToAccent(failurePercent < 5 ? "text-ork-green" : failurePercent < 20 ? "text-ork-amber" : "text-ork-red")}
         />
         <StatCard
           label="Avg Latency"
           value={health.avg_latency_ms != null ? `${health.avg_latency_ms.toFixed(0)}ms` : "---"}
-          valueColor={health.avg_latency_ms != null ? latencyColor(health.avg_latency_ms) : undefined}
+          accent={colorToAccent(health.avg_latency_ms != null ? latencyColor(health.avg_latency_ms) : undefined)}
         />
         <StatCard
           label="Last Check"
           value={fmtTimestamp(health.last_check_at)}
-          small
         />
       </div>
 
@@ -604,7 +615,7 @@ function UsageTab({
         <StatCard
           label="Avg Latency"
           value={`${usage.avg_latency_ms.toFixed(0)}ms`}
-          valueColor={latencyColor(usage.avg_latency_ms)}
+          accent={colorToAccent(latencyColor(usage.avg_latency_ms))}
         />
         <StatCard label="Avg Cost / Invocation" value={`$${usage.avg_cost.toFixed(4)}`} />
       </div>
@@ -834,34 +845,6 @@ function CompatibilityTab({
           Recommended pipeline ordering for this effect type
         </p>
       </div>
-    </div>
-  );
-}
-
-// ================================================================
-// Shared components
-// ================================================================
-function StatCard({
-  label,
-  value,
-  valueColor,
-  small,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-  small?: boolean;
-}) {
-  return (
-    <div className="glass-panel p-4">
-      <span className="data-label block mb-1">{label}</span>
-      <span
-        className={`${small ? "text-sm" : "stat-value"} font-mono ${
-          valueColor || "text-ork-text"
-        }`}
-      >
-        {value}
-      </span>
     </div>
   );
 }

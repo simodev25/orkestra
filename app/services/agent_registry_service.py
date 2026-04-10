@@ -5,8 +5,9 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.family import AgentSkill, FamilyDefinition
 from app.models.registry import AgentDefinition
@@ -116,16 +117,13 @@ async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payloa
     agent.version = payload.version
     agent.status = payload.status
     agent.owner = payload.owner
-    agent.last_test_status = payload.last_test_status
-    agent.last_validated_at = payload.last_validated_at
-    agent.usage_count = payload.usage_count
+    agent.last_test_status = "not_tested"
+    agent.last_validated_at = None
+    agent.usage_count = 0
 
 
 async def _sync_agent_skills(db: AsyncSession, agent_id: str, skill_ids: list[str]) -> None:
     """Replace agent's AgentSkill rows with the given skill_ids list."""
-    await db.execute(
-        select(AgentSkill).where(AgentSkill.agent_id == agent_id)
-    )
     # Delete existing entries via ORM
     existing_result = await db.execute(
         select(AgentSkill).where(AgentSkill.agent_id == agent_id)
@@ -386,18 +384,6 @@ def _workflow_matches(agent: AgentDefinition, workflow_id: str) -> bool:
     return False
 
 
-def _matches_text(agent: AgentDefinition, q: str) -> bool:
-    haystacks = [
-        agent.id,
-        agent.name,
-        agent.family_id,
-        agent.purpose,
-        agent.description or "",
-        " ".join(agent.allowed_mcps or []),
-    ]
-    low_q = q.lower()
-    return any(low_q in h.lower() for h in haystacks)
-
 
 async def list_agents(
     db: AsyncSession,
@@ -412,8 +398,11 @@ async def list_agents(
     used_in_workflow_only: bool = False,
     limit: int = 50,
     offset: int = 0,
-) -> list[AgentDefinition]:
-    stmt = select(AgentDefinition)
+) -> tuple[list[AgentDefinition], int]:
+    stmt = select(AgentDefinition).options(
+        selectinload(AgentDefinition.family_rel),
+        selectinload(AgentDefinition.agent_skills),
+    )
     if family and family != "all":
         stmt = stmt.where(AgentDefinition.family_id == family)
     if status and status != "all":
@@ -422,25 +411,41 @@ async def list_agents(
         stmt = stmt.where(AgentDefinition.criticality == criticality)
     if cost_profile and cost_profile != "all":
         stmt = stmt.where(AgentDefinition.cost_profile == cost_profile)
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                AgentDefinition.id.ilike(pattern),
+                AgentDefinition.name.ilike(pattern),
+                AgentDefinition.purpose.ilike(pattern),
+                AgentDefinition.description.ilike(pattern),
+            )
+        )
+    if mcp_id:
+        stmt = stmt.where(AgentDefinition.allowed_mcps.contains([mcp_id]))
 
     result = await db.execute(stmt.order_by(AgentDefinition.name))
     items = list(result.scalars().all())
 
-    if q:
-        items = [a for a in items if _matches_text(a, q)]
-    if mcp_id:
-        items = [a for a in items if mcp_id in (a.allowed_mcps or [])]
     if used_in_workflow_only and workflow_id:
         items = [a for a in items if _workflow_matches(a, workflow_id)]
-    elif workflow_id:
-        # Keep workflow_id as soft context without forcing filter when toggle is off.
-        pass
+    # workflow_id without the toggle is soft context only — no filtering applied.
 
-    return items[offset : offset + limit]
+    total = len(items)
+    return items[offset : offset + limit], total
 
 
 async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
-    return await db.get(AgentDefinition, agent_id)
+    stmt = (
+        select(AgentDefinition)
+        .where(AgentDefinition.id == agent_id)
+        .options(
+            selectinload(AgentDefinition.family_rel),
+            selectinload(AgentDefinition.agent_skills),
+        )
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
 async def delete_agent(db: AsyncSession, agent_id: str) -> None:
@@ -484,7 +489,8 @@ async def get_registry_stats(db: AsyncSession, workflow_id: str | None = None) -
 
 
 async def available_mcp_summaries(db: AsyncSession) -> list[dict[str, str | bool]]:
-    items = await obot_catalog_service.list_catalog_items(db)
+    """Return only MCPs enabled in Orkestra (for agent design, test, runtime)."""
+    items, _ = await obot_catalog_service.list_catalog_items(db, limit=100000)
     return [
         {
             "id": item.obot_server.id,
@@ -497,6 +503,8 @@ async def available_mcp_summaries(db: AsyncSession) -> list[dict[str, str | bool
             "orkestra_state": item.orkestra_state,
         }
         for item in items
+        if (item.orkestra_binding and item.orkestra_binding.enabled_in_orkestra)
+        or item.orkestra_state in ("enabled", "active")
     ]
 
 

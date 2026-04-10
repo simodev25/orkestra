@@ -136,32 +136,44 @@ async def create_agentscope_agent(
 
         toolkit = Toolkit()
 
-        # Register local tool functions
+        # Build the allowlist set once for deterministic enforcement
+        allowed = set(agent_def.allowed_mcps or [])
+
+        # Register local tool functions, enforcing the MCP allowlist
         if tools_to_register:
+            from app.services.mcp_tool_registry import get_mcp_id_for_tool
             for tool_func in tools_to_register:
+                mcp_id = get_mcp_id_for_tool(tool_func)
+                if allowed and mcp_id and mcp_id not in allowed:
+                    logger.warning(f"Skipping local tool '{getattr(tool_func, '__name__', tool_func)}' from MCP {mcp_id}: not in agent's allowed_mcps")
+                    continue
                 toolkit.register_tool_function(tool_func)
 
         # Register Orkestra skills via AgentScope register_agent_skill
         await _register_orkestra_skills(db, agent_def, toolkit)
 
-        # Connect to remote MCP servers and register their tools
+        # Connect to remote MCP servers and register their tools, enforcing the MCP allowlist
         mcp_servers = await resolve_mcp_servers(db, agent_def)
         connected_mcps = []
         for srv in mcp_servers:
+            mcp_id = srv["id"]
+            if allowed and mcp_id not in allowed:
+                logger.warning(f"Skipping MCP {mcp_id}: not in agent's allowed_mcps")
+                continue
             if not srv.get("url"):
-                logger.warning(f"MCP {srv['id']} has no URL, skipping")
+                logger.warning(f"MCP {mcp_id} has no URL, skipping")
                 continue
             try:
                 from agentscope.mcp import HttpStatelessClient
                 mcp_client = HttpStatelessClient(
-                    name=srv["id"],
+                    name=mcp_id,
                     transport="streamable_http",
                     url=srv["url"],
                     timeout=30,
                 )
                 # List available tools and register them
                 mcp_tools = await mcp_client.list_tools()
-                logger.info(f"MCP {srv['id']} ({srv['url']}): {len(mcp_tools)} tools found")
+                logger.info(f"MCP {mcp_id} ({srv['url']}): {len(mcp_tools)} tools found")
                 if mcp_tools:
                     await toolkit.register_mcp_client(
                         mcp_client=mcp_client,
@@ -169,12 +181,12 @@ async def create_agentscope_agent(
                         namesake_strategy="rename",
                     )
                     connected_mcps.append({
-                        "id": srv["id"],
+                        "id": mcp_id,
                         "url": srv["url"],
                         "tools": [t.name for t in mcp_tools],
                     })
             except Exception as e:
-                logger.warning(f"Failed to connect MCP {srv['id']} ({srv.get('url')}): {e}")
+                logger.warning(f"Failed to connect MCP {mcp_id} ({srv.get('url')}): {e}")
 
         if connected_mcps:
             logger.info(f"Agent {agent_def.id}: connected {len(connected_mcps)} MCP servers")
@@ -212,39 +224,16 @@ def get_tools_for_agent(agent_def: AgentDefinition) -> list:
     Returns an empty list if tool modules are unavailable.
     MCP remote tools are handled separately via resolve_mcp_servers().
     """
+    from app.services.mcp_tool_registry import get_tools_for_mcp
+
     allowed = agent_def.allowed_mcps or []
     if not allowed:
         return []
 
-    MCP_TOOL_MAP: dict[str, list] = {}
-
-    try:
-        from app.mcp_servers.document_parser import parse_document, classify_document
-        MCP_TOOL_MAP["document_parser"] = [parse_document, classify_document]
-    except ImportError:
-        pass
-
-    try:
-        from app.mcp_servers.consistency_checker import check_consistency, validate_fields
-        MCP_TOOL_MAP["consistency_checker"] = [check_consistency, validate_fields]
-    except ImportError:
-        pass
-
-    try:
-        from app.mcp_servers.search_engine import search_knowledge
-        MCP_TOOL_MAP["search_engine"] = [search_knowledge]
-    except ImportError:
-        pass
-
-    try:
-        from app.mcp_servers.weather import get_weather
-        MCP_TOOL_MAP["weather"] = [get_weather]
-    except ImportError:
-        pass
-
-    tools = []
+    all_tools = []
     for mcp_id in allowed:
-        if mcp_id in MCP_TOOL_MAP:
-            tools.extend(MCP_TOOL_MAP[mcp_id])
+        tools = get_tools_for_mcp(mcp_id)
+        if tools:
+            all_tools.extend(tools)
 
-    return tools
+    return all_tools

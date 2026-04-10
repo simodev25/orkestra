@@ -19,14 +19,15 @@ async def create_mcp(data: MCPCreate, db: AsyncSession = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("", response_model=list[MCPOut])
+@router.get("")
 async def list_mcps(
     effect_type: str | None = None, status: str | None = None,
-    criticality: str | None = None, limit: int = 50, offset: int = 0,
+    criticality: str | None = None, offset: int = 0, limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
-    return await mcp_registry_service.list_mcps(db, effect_type=effect_type, status=status,
-                                                 criticality=criticality, limit=limit, offset=offset)
+    items, total = await mcp_registry_service.list_mcps(db, effect_type=effect_type, status=status,
+                                                        criticality=criticality, limit=limit, offset=offset)
+    return {"items": items, "total": total, "offset": offset, "limit": limit, "has_more": offset + limit < total}
 
 # --- catalog-level routes (must come BEFORE /{mcp_id}) ---
 
