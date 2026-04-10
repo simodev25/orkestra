@@ -632,8 +632,6 @@ async def execute_test_from_request(request: "TestExecutionRequest") -> dict:
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
 
-    from app.schemas.test_lab_session import TestExecutionRequest  # noqa: F401
-
     settings = get_settings()
     engine = create_async_engine(settings.DATABASE_URL)
     Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
