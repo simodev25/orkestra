@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
 
 from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,24 +18,11 @@ from app.schemas.agent import (
 )
 from app.services import obot_catalog_service, skill_service
 from app.services.event_service import emit_event
+from app.utils.strings import dedupe_str_list as _dedupe_str_list
 from app.state_machines.agent_lifecycle_sm import AgentLifecycleStateMachine
 
 
 _AGENT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,99}$")
-
-
-def _dedupe_str_list(values: Iterable[str] | None) -> list[str]:
-    if not values:
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in values:
-        cleaned = raw.strip()
-        if not cleaned or cleaned in seen:
-            continue
-        seen.add(cleaned)
-        out.append(cleaned)
-    return out
 
 
 async def validate_agent_definition(db: AsyncSession, data: AgentCreate) -> list[str]:

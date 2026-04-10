@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.mcp_catalog import OrkestraMCPBinding
+from app.utils.strings import dedupe_str_list as _dedupe
 from app.schemas.mcp_catalog import (
     CatalogImportResult,
     CatalogMcpDetailsViewModel,
@@ -40,20 +41,6 @@ _OBOT_DETAIL_ENDPOINTS = (
     "/api/all-mcps/servers/{id}",
     "/api/mcp-servers/{id}",
 )
-
-
-def _dedupe(values: list[str] | None) -> list[str]:
-    if not values:
-        return []
-    seen = set()
-    out: list[str] = []
-    for value in values:
-        cleaned = value.strip()
-        if not cleaned or cleaned in seen:
-            continue
-        seen.add(cleaned)
-        out.append(cleaned)
-    return out
 
 
 def _metadata_value(metadata: dict[str, Any], *keys: str) -> Any:
