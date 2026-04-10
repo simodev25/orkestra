@@ -15,7 +15,7 @@ async def paginated_list(
     db: AsyncSession,
     model: Type[M],
     filters: list[Any] | None = None,
-    order_by=None,
+    order_by: Any = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[M], int]:

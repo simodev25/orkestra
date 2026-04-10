@@ -1,6 +1,5 @@
 """Tests for app.services.base_service."""
 import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.case import Case
