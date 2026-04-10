@@ -100,7 +100,7 @@ export default function AgentDetailPage() {
         <div className="flex items-center gap-2">
           <StatusBadge status={agent.status} />
           <Link
-            href={`/agents/${agent.id}/test-lab`}
+            href="/test-lab"
             className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
           >
             Test Lab

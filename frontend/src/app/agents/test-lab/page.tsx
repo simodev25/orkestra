@@ -45,7 +45,7 @@ export default function TestLabIndexPage() {
           {testableAgents.map((agent) => (
             <Link
               key={agent.id}
-              href={`/agents/${agent.id}/test-lab`}
+              href="/test-lab"
               className="glass-panel-hover flex items-center justify-between p-4 group"
             >
               <div>
