@@ -170,8 +170,36 @@ export default function TestLabConfigPage() {
             <ModelSelect
               value={config?.orchestrator?.model || ""}
               options={modelOptions}
-              onChange={(v) => setConfig({ ...config, orchestrator: { ...config.orchestrator, model: v } })}
+              onChange={(v) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), model: v } })}
               placeholder="Select a model..."
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {/* Host / Base URL field */}
+          <div>
+            <label className="data-label block mb-1.5">
+              {config?.orchestrator?.provider === "openai" ? "Base URL" : "Host"}
+            </label>
+            <input
+              type="text"
+              value={config?.orchestrator?.host || ""}
+              onChange={(e) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), host: e.target.value } })}
+              placeholder={config?.orchestrator?.provider === "openai" ? "https://api.mistral.ai/v1" : "http://localhost:11434"}
+              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+            />
+          </div>
+          {/* API Key field */}
+          <div>
+            <label className="data-label block mb-1.5">
+              {config?.orchestrator?.provider === "openai" ? "OpenAI API Key" : "Ollama API Key"}
+            </label>
+            <input
+              type="password"
+              value={config?.orchestrator?.api_key || ""}
+              onChange={(e) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), api_key: e.target.value } })}
+              placeholder={config?.orchestrator?.provider === "openai" ? "sk-..." : "Optional — leave empty for local Ollama"}
+              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
             />
           </div>
         </div>

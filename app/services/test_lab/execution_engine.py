@@ -141,7 +141,7 @@ def _get_config_sync() -> dict:
     from sqlalchemy import text
 
     config: dict = {
-        "orchestrator": {"provider": "ollama", "model": "gpt-oss:20b-cloud"},
+        "orchestrator": {"provider": "ollama", "host": "", "api_key": "", "model": "gpt-oss:20b-cloud"},
         "workers": {
             "preparation": {
                 "prompt": "You are a test preparation worker. Produce a structured TEST PLAN.",
@@ -171,26 +171,41 @@ def _get_config_sync() -> dict:
 
 
 def _make_model(worker_name: str | None = None):
-    """Create the OllamaChatModel for subagents, reading config from DB."""
-    from agentscope.model import OllamaChatModel
-
+    """Create the appropriate chat model for subagents, reading config from DB."""
     config = _get_config_sync()
+    orch = config.get("orchestrator", {})
 
     model_name = None
     if worker_name and worker_name in config.get("workers", {}):
         model_name = config["workers"][worker_name].get("model")
-
     if not model_name:
-        model_name = config.get("orchestrator", {}).get("model", "mistral")
+        model_name = orch.get("model", "mistral")
 
+    provider = orch.get("provider", "ollama")
+    api_key = orch.get("api_key", "") or ""
     settings = get_settings()
-    host = getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-    return OllamaChatModel(model_name=model_name, host=host, stream=False)
+
+    if provider == "openai":
+        from agentscope.model import OpenAIChatModel
+        base_url = orch.get("host", "") or getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+        key = api_key or getattr(settings, "OPENAI_API_KEY", "")
+        return OpenAIChatModel(model_name=model_name, api_key=key, base_url=base_url)
+    else:
+        from agentscope.model import OllamaChatModel
+        host = orch.get("host", "") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
+        kwargs = {"model_name": model_name, "host": host, "stream": False}
+        if api_key:
+            kwargs["api_key"] = api_key
+        return OllamaChatModel(**kwargs)
 
 
 def _make_formatter():
+    config = _get_config_sync()
+    provider = config.get("orchestrator", {}).get("provider", "ollama")
+    if provider == "openai":
+        from agentscope.formatter import OpenAIChatFormatter
+        return OpenAIChatFormatter()
     from agentscope.formatter import OllamaChatFormatter
-
     return OllamaChatFormatter()
 
 
