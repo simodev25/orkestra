@@ -151,7 +151,7 @@ export default function TestLabConfigPage() {
             <select
               value={config?.orchestrator?.provider || "ollama"}
               onChange={(e) => {
-                setConfig({ ...config, orchestrator: { ...config.orchestrator, provider: e.target.value } });
+                setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), provider: e.target.value } });
                 loadModels(e.target.value);
               }}
               className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40">
