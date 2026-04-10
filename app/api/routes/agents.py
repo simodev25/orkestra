@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
@@ -228,10 +227,10 @@ async def save_generated_draft(
 
 class TestRunRequest(BaseModel):
     task: str
-    structured_input: Optional[dict] = None
-    evidence: Optional[str] = None
-    context_variables: Optional[dict] = None
-    behavioral_checks: Optional[list] = None
+    structured_input: dict | None = None
+    evidence: str | None = None
+    context_variables: dict | None = None
+    behavioral_checks: list | None = None
 
 
 @router.post("/{agent_id}/test-run")
