@@ -1,6 +1,5 @@
 """Case service — handles case lifecycle and request conversion."""
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.request import Request
@@ -9,6 +8,7 @@ from app.models.enums import CaseStatus
 from app.state_machines.request_sm import RequestStateMachine
 from app.state_machines.case_sm import CaseStateMachine
 from app.services.event_service import emit_event
+from app.services.base_service import paginated_list
 
 
 async def convert_request_to_case(db: AsyncSession, request_id: str) -> Case:
@@ -53,14 +53,13 @@ async def list_cases(
     limit: int = 50,
     offset: int = 0,
 ) -> list[Case]:
-    stmt = select(Case)
+    filters = []
     if status:
-        stmt = stmt.where(Case.status == status)
+        filters.append(Case.status == status)
     if criticality:
-        stmt = stmt.where(Case.criticality == criticality)
-    stmt = stmt.order_by(Case.created_at.desc()).limit(limit).offset(offset)
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
+        filters.append(Case.criticality == criticality)
+    items, _ = await paginated_list(db, Case, filters=filters, limit=limit, offset=offset)
+    return items
 
 
 async def get_case(db: AsyncSession, case_id: str) -> Case | None:
