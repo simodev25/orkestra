@@ -1,5 +1,4 @@
 """Tests for app.core.tracing module."""
-import pytest
 from unittest.mock import patch, MagicMock
 from app.core import tracing as tracing_module
 
@@ -27,5 +26,18 @@ def test_setup_tracing_no_endpoint(caplog):
     with caplog.at_level(logging.WARNING, logger="orkestra.tracing"):
         tracing_module.setup_tracing(endpoint=None)
         tracing_module.setup_tracing(endpoint="")
-    # No warning logged for missing endpoint
-    assert "tracing" not in caplog.text.lower() or "no endpoint" in caplog.text.lower()
+    # No warning or info logged for missing endpoint
+    assert "tracing init failed" not in caplog.text.lower()
+    assert "otlp tracing" not in caplog.text.lower()
+
+
+def test_setup_tracing_with_valid_endpoint():
+    """setup_tracing delegates to agentscope.tracing when endpoint is set."""
+    original = tracing_module._initialized
+    tracing_module._initialized = False
+    try:
+        with patch("agentscope.tracing.setup_tracing") as mock_setup:
+            tracing_module.setup_tracing(endpoint="http://localhost:4317")
+            mock_setup.assert_called_once_with(endpoint="http://localhost:4317")
+    finally:
+        tracing_module._initialized = original

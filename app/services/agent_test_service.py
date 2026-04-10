@@ -11,11 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.registry import AgentDefinition
 from app.services.llm_output_validator import validate_forbidden_effects, validate_output_structure
-
-logger = logging.getLogger("orkestra.agent_test")
-
 from app.core.tracing import setup_tracing as _setup_tracing, flush_traces as _flush_traces
 from app.core.config import get_settings as _get_settings
+
+logger = logging.getLogger("orkestra.agent_test")
 
 
 def _ensure_tracing():
