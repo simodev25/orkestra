@@ -163,6 +163,7 @@ services:
       - "3300:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8200
+      API_INTERNAL_URL: http://api:8000
     depends_on:
       api:
         condition: service_healthy

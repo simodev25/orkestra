@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { FlaskConical, Play, CheckCircle, XCircle } from "lucide-react";
+import { FlaskConical, Play, CheckCircle, XCircle, Pencil, Trash2 } from "lucide-react";
 import { request } from "@/lib/api-client";
 
 interface Assertion {
@@ -63,6 +63,8 @@ export default function ScenarioDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -85,6 +87,18 @@ export default function ScenarioDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await request(`/api/test-lab/scenarios/${id}`, { method: "DELETE" });
+      router.push("/test-lab");
+    } catch (e: any) {
+      setError(e.message || "Failed to delete scenario");
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
 
   async function handleRun() {
     if (!id) return;
@@ -152,14 +166,41 @@ export default function ScenarioDetailPage() {
           </div>
         </div>
 
-        <button
-          onClick={handleRun}
-          disabled={runningAction}
-          className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-green/15 text-ork-green border border-ork-green/30 rounded hover:bg-ork-green/25 transition-colors disabled:opacity-50"
-        >
-          <Play size={13} />
-          {runningAction ? "Starting..." : "Run Scenario"}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/test-lab/scenarios/${id}/edit`}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-surface text-ork-muted border border-ork-border rounded hover:text-ork-text hover:border-ork-dim transition-colors"
+          >
+            <Pencil size={12} /> Edit
+          </Link>
+          {confirmDelete ? (
+            <span className="flex items-center gap-1.5">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-red/15 text-ork-red border border-ork-red/30 rounded hover:bg-ork-red/25 transition-colors disabled:opacity-50"
+              >
+                <Trash2 size={12} /> {deleting ? "Deleting..." : "Confirm Delete"}
+              </button>
+              <button onClick={() => setConfirmDelete(false)} className="text-xs font-mono text-ork-dim hover:text-ork-text transition-colors">Cancel</button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-surface text-ork-dim border border-ork-border rounded hover:text-ork-red hover:border-ork-red/30 transition-colors"
+            >
+              <Trash2 size={12} /> Delete
+            </button>
+          )}
+          <button
+            onClick={handleRun}
+            disabled={runningAction}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-green/15 text-ork-green border border-ork-green/30 rounded hover:bg-ork-green/25 transition-colors disabled:opacity-50"
+          >
+            <Play size={13} />
+            {runningAction ? "Starting..." : "Run Scenario"}
+          </button>
+        </div>
       </div>
 
       {error && (

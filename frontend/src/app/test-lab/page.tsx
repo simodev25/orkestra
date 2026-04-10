@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   FlaskConical, Play, Eye, Plus, Settings, Send, ChevronDown, Loader2,
-  MessageSquare, List,
+  MessageSquare, List, Pencil, Trash2,
 } from "lucide-react";
 import { request } from "@/lib/api-client";
 import { listAgents } from "@/lib/agent-registry/service";
@@ -122,6 +122,8 @@ export default function TestLabPage() {
   const [scenariosLoading, setScenariosLoading] = useState(true);
   const [scenariosError, setScenariosError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // ─── Chat state ─────────────────────────────────────────────────────────
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -281,6 +283,19 @@ export default function TestLabPage() {
       setScenariosError(e.message || "Failed to start run");
     } finally {
       setRunningId(null);
+    }
+  }
+
+  async function handleDelete(scenarioId: string) {
+    setDeletingId(scenarioId);
+    try {
+      await request(`/api/test-lab/scenarios/${scenarioId}`, { method: "DELETE" });
+      setScenarios((prev) => prev.filter((s) => s.id !== scenarioId));
+    } catch (e: any) {
+      setScenariosError(e.message || "Failed to delete scenario");
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
     }
   }
 
@@ -586,8 +601,11 @@ export default function TestLabPage() {
                           </td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-2">
-                              <Link href={`/test-lab/scenarios/${s.id}`} className="flex items-center gap-1 text-ork-cyan hover:text-ork-cyan/80 transition-colors font-mono">
+                              <Link href={`/test-lab/scenarios/${s.id}`} className="flex items-center gap-1 text-ork-cyan hover:text-ork-cyan/80 transition-colors font-mono text-[10px]">
                                 <Eye size={12} /> View
+                              </Link>
+                              <Link href={`/test-lab/scenarios/${s.id}/edit`} className="flex items-center gap-1 text-ork-dim hover:text-ork-text transition-colors font-mono text-[10px]">
+                                <Pencil size={11} /> Edit
                               </Link>
                               <button
                                 onClick={() => handleRun(s.id)}
@@ -597,6 +615,25 @@ export default function TestLabPage() {
                                 <Play size={10} />
                                 {runningId === s.id ? "Starting..." : "Run"}
                               </button>
+                              {confirmDeleteId === s.id ? (
+                                <span className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleDelete(s.id)}
+                                    disabled={deletingId === s.id}
+                                    className="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-ork-red/15 text-ork-red border border-ork-red/30 rounded hover:bg-ork-red/25 transition-colors disabled:opacity-50"
+                                  >
+                                    {deletingId === s.id ? "..." : "Confirm"}
+                                  </button>
+                                  <button onClick={() => setConfirmDeleteId(null)} className="text-[10px] font-mono text-ork-dim hover:text-ork-text">Cancel</button>
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDeleteId(s.id)}
+                                  className="flex items-center gap-1 text-ork-dim hover:text-ork-red transition-colors font-mono text-[10px]"
+                                >
+                                  <Trash2 size={11} /> Delete
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

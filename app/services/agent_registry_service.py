@@ -435,12 +435,16 @@ async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
 
 
 async def delete_agent(db: AsyncSession, agent_id: str) -> None:
+    from sqlalchemy import delete as sql_delete
+    from app.models.history import AgentDefinitionHistory
+
     agent = await db.get(AgentDefinition, agent_id)
     if not agent:
         raise ValueError(f"Agent {agent_id} not found")
     if agent.status == "active":
         raise ValueError("Cannot delete an active agent. Disable or deprecate it first.")
 
+    await db.execute(sql_delete(AgentDefinitionHistory).where(AgentDefinitionHistory.agent_id == agent_id))
     await db.delete(agent)
     await db.flush()
     await emit_event(

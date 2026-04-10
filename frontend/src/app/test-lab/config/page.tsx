@@ -66,8 +66,8 @@ export default function TestLabConfigPage() {
 
   function loadModels(provider: string) {
     setLoadingModels(true);
-    request<{ models: string[] }>(`/api/test-lab/config/models/${provider}`)
-      .then((data) => setModels(data.models || []))
+    request<{ models: any[] }>(`/api/agents/llm-models/${provider}`)
+      .then((data) => setModels((data.models || []).map((m: any) => typeof m === "string" ? m : m.name)))
       .catch(() => {})
       .finally(() => setLoadingModels(false));
   }
@@ -117,7 +117,7 @@ export default function TestLabConfigPage() {
     );
   }
 
-  const modelOptions = models.map((m: any) => m.name);
+  const modelOptions = models as string[];
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
@@ -172,34 +172,6 @@ export default function TestLabConfigPage() {
               options={modelOptions}
               onChange={(v) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), model: v } })}
               placeholder="Select a model..."
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          {/* Host / Base URL field */}
-          <div>
-            <label className="data-label block mb-1.5">
-              {config?.orchestrator?.provider === "openai" ? "Base URL" : "Host"}
-            </label>
-            <input
-              type="text"
-              value={config?.orchestrator?.host || ""}
-              onChange={(e) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), host: e.target.value } })}
-              placeholder={config?.orchestrator?.provider === "openai" ? "https://api.mistral.ai/v1" : "http://localhost:11434"}
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
-            />
-          </div>
-          {/* API Key field */}
-          <div>
-            <label className="data-label block mb-1.5">
-              {config?.orchestrator?.provider === "openai" ? "OpenAI API Key" : "Ollama API Key"}
-            </label>
-            <input
-              type="password"
-              value={config?.orchestrator?.api_key || ""}
-              onChange={(e) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), api_key: e.target.value } })}
-              placeholder={config?.orchestrator?.provider === "openai" ? "sk-..." : "Optional — leave empty for local Ollama"}
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
             />
           </div>
         </div>

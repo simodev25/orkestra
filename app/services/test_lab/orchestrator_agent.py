@@ -129,6 +129,7 @@ class RunContext:
     target_status: str = ""
     target_duration_ms: int = 0
     target_iteration_count: int = 0
+    target_tool_calls: list[dict] = field(default_factory=list)
     execution_events: list[dict] = field(default_factory=list)
     score: float = 0.0
     verdict: str = ""
@@ -438,6 +439,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         ctx.target_status = result.status
         ctx.target_duration_ms = result.duration_ms
         ctx.target_iteration_count = result.iteration_count
+        ctx.target_tool_calls = result.tool_calls or []
         from app.services.test_lab.target_agent_runner import _build_execution_events
         ctx.execution_events = _build_execution_events(result.message_history)
 
@@ -456,6 +458,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                     details={
                         "tool_name": tool_name,
                         "tool_input": (tc.get("tool_input", "") if isinstance(tc, dict) else "")[:500],
+                        "output_preview": (tc.get("tool_output", "") if isinstance(tc, dict) else "")[:500],
                     },
                 )
 
@@ -514,6 +517,17 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                 "non les tools de ses MCP autorises (ce n'est PAS une interdiction)"
             )
 
+        # Build tool calls summary for the judge
+        _tc_list = ctx.target_tool_calls or []
+        if _tc_list:
+            _tc_lines = "\n".join(
+                f"  - {(tc.get('tool_name') if isinstance(tc, dict) else str(tc))}"
+                for tc in _tc_list
+            )
+            tool_calls_section = f"Tools effectivement appeles ({len(_tc_list)}):\n{_tc_lines}"
+        else:
+            tool_calls_section = "Tools effectivement appeles: AUCUN"
+
         enriched_prompt = (
             f"Tu dois evaluer le resultat d'un test d'agent.\n\n"
             f"=== SCENARIO ===\n"
@@ -526,7 +540,8 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             f"=== RESULTAT D'EXECUTION ===\n"
             f"Status: {ctx.target_status}\n"
             f"Duree: {ctx.target_duration_ms}ms\n"
-            f"Iterations: {ctx.target_iteration_count}\n\n"
+            f"Iterations: {ctx.target_iteration_count}\n"
+            f"{tool_calls_section}\n\n"
             f"=== OUTPUT COMPLET DE L'AGENT ===\n"
             f"{(ctx.target_output or 'EMPTY')[:5000]}\n\n"
             f"=== DEMANDE D'ANALYSE ===\n"

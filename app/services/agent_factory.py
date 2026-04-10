@@ -72,31 +72,42 @@ async def _register_orkestra_skills(
 
 
 async def resolve_mcp_servers(db: AsyncSession, agent_def: AgentDefinition) -> list[dict]:
-    """Resolve MCP server URLs from the agent's allowed_mcps IDs.
+    """Resolve MCP server endpoint URLs from the agent's allowed_mcps IDs.
 
-    Returns list of dicts: [{"id": "ms19ww6r", "name": "...", "url": "https://..."}]
+    For each ID in allowed_mcps:
+    - Checks that the MCP is enabled in Orkestra (OrkestraMCPBinding.enabled_in_orkestra)
+    - Fetches the remoteConfig.url from the Obot catalog
+    Returns list of dicts: [{"id": "ms1rwk5g", "name": "...", "url": "https://..."}]
     """
     allowed = agent_def.allowed_mcps or []
     if not allowed:
         return []
 
-    from app.services import agent_registry_service
-    try:
-        catalog = await agent_registry_service.available_mcp_summaries(db)
-        catalog_map = {m["id"]: m for m in catalog}
-    except Exception:
-        catalog_map = {}
+    from app.services.obot_catalog_service import fetch_obot_server_by_id
+    from app.models.mcp_catalog import OrkestraMCPBinding
 
     servers = []
     for mcp_id in allowed:
-        cat = catalog_map.get(mcp_id)
-        if cat:
-            name = cat.get("name", mcp_id)
-            # The name field contains the MCP server URL
-            url = name if name.startswith("http") else None
-            servers.append({"id": mcp_id, "name": name, "url": url})
-        else:
-            servers.append({"id": mcp_id, "name": mcp_id, "url": None})
+        # 1. Check if enabled in Orkestra
+        binding = await db.get(OrkestraMCPBinding, mcp_id)
+        if binding and not binding.enabled_in_orkestra:
+            logger.info(f"MCP {mcp_id} is disabled in Orkestra — skipping")
+            continue
+
+        # 2. Get endpoint URL from Obot catalog
+        try:
+            server, _ = await fetch_obot_server_by_id(mcp_id)
+            if server:
+                url = server.mcp_endpoint_url
+                if url:
+                    servers.append({"id": mcp_id, "name": server.name, "url": url})
+                    logger.info(f"MCP {mcp_id} ({server.name}) → {url}")
+                else:
+                    logger.warning(f"MCP {mcp_id} ({server.name}) has no remoteConfig.url — cannot connect")
+            else:
+                logger.warning(f"MCP {mcp_id} not found in Obot catalog")
+        except Exception as exc:
+            logger.warning(f"Failed to resolve MCP {mcp_id} from Obot: {exc}")
 
     return servers
 
@@ -106,11 +117,17 @@ async def create_agentscope_agent(
     db: AsyncSession,
     tools_to_register: list | None = None,
     max_iters: int = 5,
+    fallback_model=None,
+    fallback_formatter=None,
 ):
     """Create an AgentScope ReActAgent from an Orkestra AgentDefinition.
 
     Connects to MCP servers declared in allowed_mcps and registers their tools.
     Returns None if AgentScope or LLM is not available.
+
+    fallback_model / fallback_formatter: used when the agent definition does not
+    specify llm_provider/llm_model. Callers in the test lab pass the test lab
+    config model so the target agent uses the same model as the orchestrator.
     """
     if not is_agentscope_available():
         logger.info(f"AgentScope not available, cannot create agent {agent_def.id}")
@@ -118,13 +135,15 @@ async def create_agentscope_agent(
 
     if agent_def.llm_provider and agent_def.llm_model:
         model = _get_agent_specific_model(agent_def.llm_provider, agent_def.llm_model)
+    elif fallback_model is not None:
+        model = fallback_model
     else:
         model = get_chat_model()
     if model is None:
         logger.info(f"LLM not available, cannot create agent {agent_def.id}")
         return None
 
-    formatter = get_formatter()
+    formatter = fallback_formatter if fallback_formatter is not None else get_formatter()
     if formatter is None:
         return None
 

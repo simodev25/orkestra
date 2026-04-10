@@ -80,7 +80,7 @@ function EventDetails({ event }: { event: any }) {
   const hasLlm = !!d.llm_output;
   const hasLlmReasoning = !!d.llm_reasoning;
   const hasToolCalls = d.tool_calls_planned && d.tool_calls_planned.length > 0;
-  const hasToolResult = event.event_type === "tool_call_completed" && d.output_preview;
+  const hasToolResult = event.event_type === "tool_call_completed" && (d.output_preview || d.tool_input);
   const hasOrchestratorToolCall = event.event_type === "orchestrator_tool_call" && d.tool_name;
   const hasOrchestratorResult = event.event_type === "orchestrator_tool_result" && d.result_preview;
   const hasMcp = event.event_type === "mcp_session_connected" && d.tools;
@@ -218,11 +218,24 @@ function EventDetails({ event }: { event: any }) {
           {hasToolResult && (
             <div className="border-l-2 border-ork-green/30 pl-3">
               <p className="text-[10px] font-mono text-ork-green mb-1 font-semibold">
-                Tool Result {d.tool_name && d.tool_name !== "unknown" ? `— ${d.tool_name}` : ""}
+                MCP {d.tool_name && d.tool_name !== "unknown" ? `— ${d.tool_name}` : ""}
               </p>
-              <pre className="text-[10px] font-mono text-ork-text/60 bg-ork-bg border border-ork-border rounded p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+              {d.tool_input && (
+                <div className="mb-1.5">
+                  <p className="text-[9px] font-mono text-ork-cyan/60 mb-0.5">Input</p>
+                  <pre className="text-[10px] font-mono text-ork-dim bg-ork-bg border border-ork-border rounded p-2 max-h-24 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+{d.tool_input}
+                  </pre>
+                </div>
+              )}
+              {d.output_preview && (
+                <div>
+                  <p className="text-[9px] font-mono text-ork-green/60 mb-0.5">Output</p>
+                  <pre className="text-[10px] font-mono text-ork-text/60 bg-ork-bg border border-ork-border rounded p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
 {d.output_preview}
-              </pre>
+                  </pre>
+                </div>
+              )}
             </div>
           )}
 

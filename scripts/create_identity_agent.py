@@ -50,7 +50,7 @@ AGENT = {
         "use_case_hint": "identity resolution",
         "requires_grounded_evidence": True,
     },
-    "allowed_mcps": ["search_engine", "document_parser"],
+    "allowed_mcps": ["ms1rwk5g"],
     "forbidden_effects": ["publish", "approve", "external_act"],
     "criticality": "high",
     "cost_profile": "medium",
@@ -63,28 +63,63 @@ AGENT = {
 
 ## Your workflow
 1. Normalize the input query (clean names, remove stopwords, standardize acronyms)
-2. Search by SIREN/SIRET if provided, otherwise search by name using available tools
-3. If multiple results (homonyms), evaluate each candidate and rank by relevance
-4. Select the main legal unit (siege social) as the reference unit
-5. Compute an identity_confidence score between 0 and 1
-6. Return a structured result with the resolved company data or explain why resolution failed
+2. If a SIREN/SIRET is provided, go directly to step 3. Otherwise search by name using search_datasets.
+3. **PRIORITY: use search_dataservices first** — search for a dataservice that accepts SIREN/SIRET queries
+   (e.g. search_dataservices("sirene siren") or search_dataservices("entreprise siret")).
+   A dataservice exposes a live queryable API, which is faster and more reliable than bulk files.
+4. If no usable dataservice is found, fall back to search_datasets to find a dataset with tabular resources:
+   a. Call list_dataset_resources to enumerate available resources.
+   b. For each promising resource, call get_resource_info to check that tabular_api_available is true
+      BEFORE calling query_resource_data. Skip resources where tabular_api_available is false.
+   c. When calling query_resource_data, NEVER pass null for sort_column or sort_direction — omit
+      those fields entirely or pass an empty string "".
+5. If multiple results (homonyms), evaluate each candidate and rank by relevance.
+6. Select the main legal unit (siege social) as the reference unit.
+7. Compute an identity_confidence score between 0 and 1.
+8. Return the mandatory JSON result (see Output format below).
+
+## Tool usage rules
+- Always call search_dataservices BEFORE falling back to bulk dataset files.
+- Always call get_resource_info on a resource before query_resource_data to confirm tabular_api_available=true.
+- Never pass sort_column=null or sort_direction=null — omit or use "".
+- Bulk zip/parquet files from INSEE are NOT queryable via Tabular API — skip them immediately.
 
 ## Output format
+YOUR FINAL RESPONSE MUST BE RAW JSON ONLY — no markdown, no prose, no explanation outside the JSON.
+Always return this exact structure, whether resolution succeeded or failed:
+
 {
-  "resolved": true|false,
-  "company_name": "...",
-  "siren": "...",
-  "main_siret": "...",
-  "identity_confidence": 0.93,
-  "alternatives_rejected": []
+  "resolved": true,
+  "company_name": "DANONE SA",
+  "siren": "552032534",
+  "main_siret": "55203253400012",
+  "identity_confidence": 0.95,
+  "alternatives_rejected": [],
+  "sources": ["insee_sirene", "data.gouv.fr"],
+  "explanation": null
+}
+
+When resolution fails, set resolved=false, fill siren with the input value, set identity_confidence=0.0,
+leave company_name/main_siret as null, and put the reason in the explanation field:
+
+{
+  "resolved": false,
+  "company_name": null,
+  "siren": "552032534",
+  "main_siret": null,
+  "identity_confidence": 0.0,
+  "alternatives_rejected": [],
+  "sources": [],
+  "explanation": "Authoritative data not available: search results returned only placeholder documents."
 }
 
 ## Rules
+- ALWAYS output raw JSON as your final answer — never prose, never markdown, never a table
 - Always prefer authoritative sources (INSEE) over secondary ones
 - Never guess a SIREN; always verify against official data
-- If confidence < 0.7, return resolved: false and explain why
+- If confidence < 0.7, set resolved=false and fill the explanation field
 - Handle homonyms by cross-referencing additional attributes
-- Cite your data sources in the reasoning trace""",
+- Cite your data sources in the sources array""",
     "skills_content": (
         "requirements_extraction: Extract company identification attributes from the raw query\n"
         "source_comparison: Evaluate multiple candidates when homonyms exist, "
@@ -126,15 +161,25 @@ def _headers():
     return h
 
 
-def create_agent():
-    print(f"Creating agent '{AGENT['id']}' on {API_URL}...")
+def create_or_update_agent():
+    print(f"Creating/updating agent '{AGENT['id']}' on {API_URL}...")
     r = requests.post(f"{API_URL}/api/agents", json=AGENT, headers=_headers())
     if r.status_code == 201:
         print(f"  Created: {r.json()['name']} (status={r.json()['status']})")
         return True
     elif r.status_code == 409 or "already exists" in r.text.lower():
-        print(f"  Already exists, skipping creation.")
-        return True
+        print(f"  Already exists — updating prompt via PATCH...")
+        r2 = requests.patch(
+            f"{API_URL}/api/agents/{AGENT['id']}",
+            json=AGENT,
+            headers=_headers(),
+        )
+        if r2.ok:
+            print(f"  Updated: {r2.json().get('name')} (status={r2.json().get('status')})")
+            return True
+        else:
+            print(f"  UPDATE FAILED ({r2.status_code}): {r2.text}")
+            return False
     else:
         print(f"  FAILED ({r.status_code}): {r.text}")
         return False
@@ -172,7 +217,7 @@ def create_scenario():
 def main():
     promote = "--promote" in sys.argv
 
-    ok = create_agent()
+    ok = create_or_update_agent()
     if not ok:
         sys.exit(1)
 
