@@ -175,6 +175,14 @@ export default function TestLabConfigPage() {
             />
           </div>
         </div>
+        <div className="flex items-center gap-3 pt-1">
+          <label className="data-label !mb-0">Thinking mode</label>
+          <ThinkingSelect
+            value={config?.orchestrator?.thinking ?? null}
+            onChange={(v) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), thinking: v } })}
+          />
+          <span className="text-[10px] text-ork-dim">Controls extended reasoning (think param). Default = model decides.</span>
+        </div>
       </section>
 
       {/* Agent Cards */}
@@ -228,18 +236,27 @@ export default function TestLabConfigPage() {
                     />
                   </div>
 
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <label className="data-label">Model override</label>
-                      <span className="text-[10px] text-ork-dim">(leave empty to use default LLM)</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <label className="data-label">Model override</label>
+                        <span className="text-[10px] text-ork-dim">(leave empty to use default)</span>
+                      </div>
+                      <ModelSelect
+                        value={workerConfig.model || ""}
+                        options={modelOptions}
+                        onChange={(v) => updateWorker(agent.key, "model", v || null)}
+                        placeholder="Use default model"
+                        allowEmpty
+                      />
                     </div>
-                    <ModelSelect
-                      value={workerConfig.model || ""}
-                      options={modelOptions}
-                      onChange={(v) => updateWorker(agent.key, "model", v || null)}
-                      placeholder="Use default model"
-                      allowEmpty
-                    />
+                    <div>
+                      <label className="data-label block mb-1.5">Thinking mode override</label>
+                      <ThinkingSelect
+                        value={workerConfig.thinking ?? null}
+                        onChange={(v) => updateWorker(agent.key, "thinking", v)}
+                      />
+                    </div>
                   </div>
 
                   {/* Skills */}
@@ -314,6 +331,32 @@ export default function TestLabConfigPage() {
   );
 }
 
+
+function ThinkingSelect({ value, onChange }: { value: boolean | null; onChange: (v: boolean | null) => void }) {
+  const options: { label: string; value: boolean | null; color: string }[] = [
+    { label: "Default", value: null, color: "text-ork-dim" },
+    { label: "Enabled", value: true, color: "text-ork-green" },
+    { label: "Disabled", value: false, color: "text-ork-red" },
+  ];
+  return (
+    <div className="flex gap-1">
+      {options.map((opt) => (
+        <button
+          key={String(opt.value)}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`px-3 py-1.5 text-[10px] font-mono rounded border transition-colors ${
+            value === opt.value
+              ? `${opt.color} bg-ork-bg border-current`
+              : "text-ork-dim border-ork-border hover:border-ork-dim"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function ModelSelect({ value, options, onChange, placeholder, allowEmpty }: {
   value: string; options: string[]; onChange: (v: string) => void; placeholder: string; allowEmpty?: boolean;

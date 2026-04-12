@@ -141,7 +141,7 @@ def _get_config_sync() -> dict:
     from sqlalchemy import text
 
     config: dict = {
-        "orchestrator": {"provider": "ollama", "host": "", "api_key": "", "model": "gpt-oss:20b-cloud"},
+        "orchestrator": {"provider": "ollama", "host": "", "api_key": "", "model": "gpt-oss:20b-cloud", "thinking": False},
         "workers": {
             "preparation": {
                 "prompt": "You are a test preparation worker. Produce a structured TEST PLAN.",
@@ -176,14 +176,23 @@ def _make_model(worker_name: str | None = None):
     orch = config.get("orchestrator", {})
 
     model_name = None
+    worker_cfg: dict = {}
     if worker_name and worker_name in config.get("workers", {}):
-        model_name = config["workers"][worker_name].get("model")
+        worker_cfg = config["workers"][worker_name] or {}
+        model_name = worker_cfg.get("model")
     if not model_name:
         model_name = orch.get("model", "mistral")
 
     provider = orch.get("provider", "ollama")
     api_key = orch.get("api_key", "") or ""
     settings = get_settings()
+
+    # thinking: worker-level overrides orchestrator-level; None = model default (not passed)
+    thinking: bool | None = None
+    if "thinking" in worker_cfg and worker_cfg["thinking"] is not None:
+        thinking = bool(worker_cfg["thinking"])
+    elif "thinking" in orch and orch["thinking"] is not None:
+        thinking = bool(orch["thinking"])
 
     if provider == "openai":
         from agentscope.model import OpenAIChatModel
@@ -193,9 +202,11 @@ def _make_model(worker_name: str | None = None):
     else:
         from agentscope.model import OllamaChatModel
         host = orch.get("host", "") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-        kwargs = {"model_name": model_name, "host": host, "stream": False}
+        kwargs: dict = {"model_name": model_name, "host": host, "stream": False}
         if api_key:
             kwargs["api_key"] = api_key
+        if thinking is not None:
+            kwargs["enable_thinking"] = thinking
         return OllamaChatModel(**kwargs)
 
 

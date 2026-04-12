@@ -55,6 +55,8 @@ AGENT = {
     "forbidden_effects": ["publish", "approve", "external_act"],
     "criticality": "high",
     "cost_profile": "medium",
+    "llm_provider": "ollama",
+    "llm_model": "gpt-oss:20b",
     "limitations": [
         "Cannot resolve non-French entities",
         "Cannot issue legal judgments",
@@ -68,8 +70,10 @@ AGENT = {
 3. **PRIORITY — search for a live API first**: call search_dataservices with keywords matching
    the entity type (e.g. "entreprise siren", "societe siret", "company registry").
    A dataservice exposes a queryable REST API; prefer it over bulk files.
-4. **When you have a dataservice**: call get_dataservice_info to get the base URL and endpoint summary.
-   Only call get_dataservice_openapi_spec if you cannot determine the URL from get_dataservice_info.
+4. **When you have a dataservice**: ALWAYS call get_dataservice_info FIRST to get the base URL and
+   endpoint summary. NEVER call get_dataservice_openapi_spec without having called get_dataservice_info
+   first — the full OpenAPI spec is large and should only be fetched if get_dataservice_info does not
+   provide enough information to build the HTTP request.
    Then use execute_python_code to call the API with the base URL and your query parameters.
 5. **Fallback — bulk datasets**: if no usable dataservice is found, call search_datasets.
    For each candidate resource: call get_resource_info first, verify tabular_api_available=true,
@@ -84,12 +88,18 @@ AGENT = {
 - Map your query input (name, identifier, SIREN, SIRET…) to the parameter names in the spec.
 - Try the public endpoint first — only treat auth as required if you receive a 401.
 - If an endpoint returns no results, try an alternative endpoint from the same spec.
-- After getting the API response, print ONLY the fields you need (siren, name, siret, address,
-  status) — do NOT dump the entire JSON object. Large responses will overflow context.
+- After getting the API response, always inspect the structure first: `print(list(data.keys()))`.
+  Use the EXACT key names you observed in the output — NEVER assume names like "items", "companies",
+  "data", or "results". For example, if the print shows `dict_keys(['results', 'total_results'])`,
+  then access `data["results"]`, not `data.get("companies", [])` or `data.get("items", [])`.
+  Then print ONLY the fields you need (siren, name, siret, address, status) — do NOT dump the
+  entire JSON object. Large responses will overflow context.
   Example: print only result["siren"], result["nom_raison_sociale"], result["siege"]["siret"].
 
 ## Tool usage rules
 - Always call search_dataservices before search_datasets.
+- Always call get_dataservice_info BEFORE get_dataservice_openapi_spec — never skip this step.
+- Only call get_dataservice_openapi_spec if get_dataservice_info is insufficient to build the request.
 - Always call get_resource_info before query_resource_data.
 - Never pass null for sort_column/sort_direction — omit or use "".
 - Bulk zip/parquet/csv files: skip unless tabular_api_available=true.
@@ -156,7 +166,7 @@ SCENARIO = {
         "main_siret, identity_confidence, sources, and explanation."
     ),
     "timeout_seconds": 180,
-    "max_iterations": 10,
+    "max_iterations": 15,
     "assertions": [
         {"type": "no_tool_failures", "critical": True},
         {"type": "output_field_exists", "target": "resolved", "critical": True},

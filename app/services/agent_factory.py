@@ -33,6 +33,7 @@ def _get_agent_specific_model(provider: str, model_name: str):
                 model_name=effective_name,
                 host=host,
                 stream=False,
+                enable_thinking=False,
             )
         elif provider == "openai":
             from agentscope.model import OpenAIChatModel

@@ -287,7 +287,9 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    details={"subagent": "ScenarioSubAgent", "response": text[:3000],
                             "response_length": len(text)},
                    duration_ms=duration_ms)
-        return ToolResponse(content=text)
+        # Strip thinking blocks before returning to orchestrator to avoid context overflow
+        clean = re.sub(r"\{['\"]type['\"]\s*:\s*['\"]thinking['\"][^}]*\}", "", text, flags=re.DOTALL).strip()
+        return ToolResponse(content=clean[:800])
 
     def run_target_agent(task: str = "") -> ToolResponse:
         """Execute the REAL agent under test with the scenario's input_prompt.
@@ -690,7 +692,8 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    f"RobustnessSubAgent done ({duration_ms}ms)",
                    details={"subagent": "RobustnessSubAgent", "response": text[:3000]},
                    duration_ms=duration_ms)
-        return ToolResponse(content=text)
+        clean = re.sub(r"\{['\"]type['\"]\s*:\s*['\"]thinking['\"][^}]*\}", "", text, flags=re.DOTALL).strip()
+        return ToolResponse(content=clean[:600])
 
     def run_policy_subagent(request: str) -> ToolResponse:
         """Ask the PolicySubAgent to check governance compliance."""
@@ -716,7 +719,8 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    f"PolicySubAgent done ({duration_ms}ms)",
                    details={"subagent": "PolicySubAgent", "response": text[:3000]},
                    duration_ms=duration_ms)
-        return ToolResponse(content=text)
+        clean = re.sub(r"\{['\"]type['\"]\s*:\s*['\"]thinking['\"][^}]*\}", "", text, flags=re.DOTALL).strip()
+        return ToolResponse(content=clean[:600])
 
     def get_run_state() -> ToolResponse:
         """Get the current state of the test run."""

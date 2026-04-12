@@ -42,6 +42,8 @@ def evaluate_assertions(
             result = _check_final_status(final_status, expected or "")
         elif atype == "no_tool_failures":
             result = _check_no_tool_failures(events)
+        elif atype == "output_contains":
+            result = _check_output_contains(final_output, expected)
         else:
             result = {"passed": False, "message": f"Unknown assertion type: {atype}", "actual": None, "details": None}
 
@@ -128,6 +130,16 @@ def _check_final_status(actual_status: str, expected: str) -> dict:
     if actual_status == expected:
         return {"passed": True, "message": f"Final status is '{expected}'", "actual": actual_status}
     return {"passed": False, "message": f"Expected status '{expected}', got '{actual_status}'", "actual": actual_status}
+
+
+def _check_output_contains(output: str | None, expected: str | None) -> dict:
+    if not output:
+        return {"passed": False, "message": "No output to check", "actual": None}
+    if not expected:
+        return {"passed": False, "message": "No expected string specified", "actual": None}
+    if expected in output:
+        return {"passed": True, "message": f"Output contains '{expected}'", "actual": expected}
+    return {"passed": False, "message": f"Output does not contain '{expected}'", "actual": None}
 
 
 def _check_no_tool_failures(events: list[dict]) -> dict:
