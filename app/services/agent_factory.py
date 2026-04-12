@@ -112,6 +112,19 @@ async def resolve_mcp_servers(db: AsyncSession, agent_def: AgentDefinition) -> l
     return servers
 
 
+async def _is_code_execution_platform_enabled(db: AsyncSession) -> bool:
+    """Return True if the platform-wide code_execution_enabled capability is set."""
+    try:
+        from app.models.platform_capability import PlatformCapability
+        cap = await db.get(PlatformCapability, "code_execution_enabled")
+        if cap is None:
+            return False  # not seeded yet → default OFF
+        return cap.value.lower() == "true"
+    except Exception as exc:
+        logger.warning(f"Could not read platform capability code_execution_enabled: {exc}")
+        return False
+
+
 async def create_agentscope_agent(
     agent_def: AgentDefinition,
     db: AsyncSession,
@@ -157,6 +170,23 @@ async def create_agentscope_agent(
 
         # Build the allowlist set once for deterministic enforcement
         allowed = set(agent_def.allowed_mcps or [])
+
+        # Register execute_python_code if the agent has opted in AND the
+        # platform-level code_execution_enabled flag is true.
+        if getattr(agent_def, "allow_code_execution", False):
+            platform_enabled = await _is_code_execution_platform_enabled(db)
+            if platform_enabled:
+                from app.services.sandbox_tool import get_code_execution_tool
+                code_tool = get_code_execution_tool()
+                if code_tool is not None:
+                    toolkit.register_tool_function(code_tool)
+                    logger.info(f"Agent {agent_def.id}: code execution enabled")
+                else:
+                    logger.warning(f"Agent {agent_def.id}: code execution opted in but no tool available")
+            else:
+                logger.info(
+                    f"Agent {agent_def.id}: allow_code_execution=True but platform toggle is OFF — skipping"
+                )
 
         # Register local tool functions, enforcing the MCP allowlist
         if tools_to_register:

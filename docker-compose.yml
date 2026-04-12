@@ -94,6 +94,7 @@ services:
       ORKESTRA_TRACE_DIR: /app/storage/debug-scenarios
       ORKESTRA_AUTH_ENABLED: "false"
       ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
+      ORKESTRA_SANDBOX_IMAGE: python:3.12-slim
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -108,8 +109,8 @@ services:
       - ./migrations:/app/migrations:ro
       - ./alembic.ini:/app/alembic.ini:ro
       - ./storage:/app/storage
-      - ./debug-strategy:/app/storage/debug-strategy
-      - ./debug-scenarios:/app/storage/debug-scenarios
+      # Docker socket for BaseSandbox container isolation
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s

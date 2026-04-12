@@ -23,6 +23,10 @@ export default function AdminPage() {
   const [budgetIsDefault, setBudgetIsDefault] = useState(false);
   const [creatingBudget, setCreatingBudget] = useState(false);
 
+  // Platform capabilities
+  const [capabilities, setCapabilities] = useState<Record<string, boolean>>({});
+  const [savingCap, setSavingCap] = useState<string | null>(null);
+
   // Secrets
   const [secrets, setSecrets] = useState<PlatformSecret[]>([]);
   const [openaiKey, setOpenaiKey] = useState("");
@@ -33,14 +37,16 @@ export default function AdminPage() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [p, b, s] = await Promise.all([
+      const [p, b, s, caps] = await Promise.all([
         api.listPolicies(),
         api.listBudgets(),
         api.listSecrets(),
+        api.listCapabilities(),
       ]);
       setPolicies(p);
       setBudgets(b);
       setSecrets(s);
+      setCapabilities(caps);
     } catch (err: any) {
       setError(err.message || "Failed to load settings");
     } finally {
@@ -147,6 +153,18 @@ export default function AdminPage() {
       setTestResult((prev) => ({ ...prev, [provider]: { ok: false, message: err.message || "Connection failed" } }));
     } finally {
       setTestingKey(null);
+    }
+  }
+
+  async function handleToggleCapability(key: string, newValue: boolean) {
+    setSavingCap(key);
+    try {
+      const updated = await api.setCapability(key, newValue);
+      setCapabilities((prev) => ({ ...prev, [key]: updated.value }));
+    } catch (err: any) {
+      setError(err.message || "Failed to update capability");
+    } finally {
+      setSavingCap(null);
     }
   }
 
@@ -265,6 +283,61 @@ export default function AdminPage() {
                 {testResult.ollama.ok ? "\u2713" : "\u2717"} {testResult.ollama.message}
               </p>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* Platform Capabilities */}
+      <div className="glass-panel p-5 mb-6">
+        <h2 className="section-title mb-1 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-ork-amber" />
+          PLATFORM CAPABILITIES
+        </h2>
+        <p className="text-xs text-ork-dim font-mono mb-4">
+          Global feature toggles. When disabled, the feature is unavailable even if enabled per-agent.
+        </p>
+        <div className="space-y-3">
+          {/* Code Execution */}
+          <div className="bg-ork-bg rounded-lg p-4 border border-ork-border/50 flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="data-label">CODE EXECUTION</p>
+                <span
+                  className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                    capabilities.code_execution_enabled
+                      ? "bg-ork-amber/10 text-ork-amber border-ork-amber/20"
+                      : "bg-ork-dim/10 text-ork-dim border-ork-dim/20"
+                  }`}
+                >
+                  {capabilities.code_execution_enabled ? "ENABLED" : "DISABLED"}
+                </span>
+              </div>
+              <p className="text-[11px] text-ork-muted font-mono leading-relaxed">
+                Allows agents with <span className="text-ork-cyan">allow_code_execution</span> to run
+                Python code via <span className="text-ork-cyan">execute_python_code</span>.
+                Uses BaseSandbox (Docker isolation) when available, bare subprocess otherwise.
+              </p>
+              {capabilities.code_execution_enabled && (
+                <p className="text-[10px] text-ork-amber font-mono mt-1">
+                  Warning: ensure Docker socket is mounted in the API container for sandbox isolation.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => handleToggleCapability("code_execution_enabled", !capabilities.code_execution_enabled)}
+              disabled={savingCap === "code_execution_enabled"}
+              className={`shrink-0 px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                capabilities.code_execution_enabled
+                  ? "border-ork-red/30 text-ork-red bg-ork-red/10 hover:bg-ork-red/20"
+                  : "border-ork-green/30 text-ork-green bg-ork-green/10 hover:bg-ork-green/20"
+              }`}
+            >
+              {savingCap === "code_execution_enabled"
+                ? "Saving..."
+                : capabilities.code_execution_enabled
+                ? "Disable"
+                : "Enable"}
+            </button>
           </div>
         </div>
       </div>

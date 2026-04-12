@@ -12,6 +12,19 @@ from app.models.registry import AgentDefinition
 
 logger = logging.getLogger("orkestra.prompt_builder")
 
+_CODE_EXECUTION_GUIDE = """\
+You have `execute_python_code`. Use it when you need a computed, deterministic answer.
+
+Typical uses: calculations, formatting, data extraction, HTTP API calls.
+
+Rules:
+- `print()` every value you need — only stdout comes back to you.
+- Import libraries at the top; use try/except and print errors.
+- For HTTP: `import httpx; r = httpx.get(url, params={...}, timeout=15); r.raise_for_status(); print(r.json())`
+- Print ONLY the fields you need from API responses — never dump the full JSON object.
+- One focused task per snippet. Each call is independent.\
+"""
+
 
 async def build_agent_prompt(
     db: AsyncSession,
@@ -73,6 +86,10 @@ async def build_agent_prompt(
     if agent.prompt_content:
         mission_parts.append(agent.prompt_content)
     sections.append(_format_section("AGENT MISSION", "\n\n".join(mission_parts)))
+
+    # Layer 4.5 — Code execution guide (injected only when opted in)
+    if getattr(agent, "allow_code_execution", False):
+        sections.append(_format_section("CODE EXECUTION", _CODE_EXECUTION_GUIDE))
 
     # Layer 5 — Output expectations
     if family and family.default_output_expectations:

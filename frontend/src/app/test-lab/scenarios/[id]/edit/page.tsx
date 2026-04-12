@@ -11,6 +11,7 @@ import type { AgentDefinition } from "@/lib/agent-registry/types";
 type AssertionType =
   | "tool_called"
   | "tool_not_called"
+  | "output_contains"
   | "output_field_exists"
   | "output_schema_matches"
   | "max_duration_ms"
@@ -31,6 +32,7 @@ const ASSERTION_DEFS: Record<
 > = {
   tool_called: { label: "Tool called", hint: "Verify that a specific tool was invoked by the agent.", showTarget: true, showExpected: false, targetLabel: "Tool name" },
   tool_not_called: { label: "Tool NOT called", hint: "Verify that a specific tool was NEVER invoked by the agent.", showTarget: true, showExpected: false, targetLabel: "Tool name" },
+  output_contains: { label: "Output contains", hint: "Verify the agent output contains the expected string.", showTarget: false, showExpected: true, expectedLabel: "Expected string", expectedPlaceholder: "e.g. 552032534" },
   output_field_exists: { label: "Output field exists", hint: "Parse the agent output as JSON and verify a field is present.", showTarget: true, showExpected: false, targetLabel: "Field name" },
   output_schema_matches: { label: "Output schema matches", hint: "Verify the output JSON has all required fields listed in the schema.", showTarget: false, showExpected: true, expectedLabel: "JSON schema", expectedPlaceholder: '{"required": ["siren", "company_name"]}' },
   max_duration_ms: { label: "Max duration (ms)", hint: "Verify the total run duration is below the given threshold.", showTarget: false, showExpected: true, expectedLabel: "Max duration in ms", expectedPlaceholder: "30000" },
@@ -245,7 +247,12 @@ export default function EditScenarioPage() {
               ) : (
                 <div className="space-y-3">
                   {assertions.map((a, idx) => {
-                    const def = ASSERTION_DEFS[a.type];
+                    const def = ASSERTION_DEFS[a.type as AssertionType];
+                    if (!def) return (
+                      <div key={idx} className="border border-ork-border/50 rounded p-3 space-y-2 bg-ork-bg/40 opacity-60">
+                        <span className="text-[10px] font-mono text-ork-amber">Unknown assertion type: {a.type}</span>
+                      </div>
+                    );
                     return (
                       <div key={idx} className="border border-ork-border/50 rounded p-3 space-y-2 bg-ork-bg/40">
                         <div className="flex items-start gap-2">

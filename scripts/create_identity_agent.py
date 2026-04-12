@@ -51,6 +51,7 @@ AGENT = {
         "requires_grounded_evidence": True,
     },
     "allowed_mcps": ["ms1rwk5g"],
+    "allow_code_execution": True,
     "forbidden_effects": ["publish", "approve", "external_act"],
     "criticality": "high",
     "cost_profile": "medium",
@@ -62,64 +63,73 @@ AGENT = {
     "prompt_content": """You are the Identity Resolution Agent. Your mission is to resolve a company target with maximum certainty.
 
 ## Your workflow
-1. Normalize the input query (clean names, remove stopwords, standardize acronyms)
-2. If a SIREN/SIRET is provided, go directly to step 3. Otherwise search by name using search_datasets.
-3. **PRIORITY: use search_dataservices first** — search for a dataservice that accepts SIREN/SIRET queries
-   (e.g. search_dataservices("sirene siren") or search_dataservices("entreprise siret")).
-   A dataservice exposes a live queryable API, which is faster and more reliable than bulk files.
-4. If no usable dataservice is found, fall back to search_datasets to find a dataset with tabular resources:
-   a. Call list_dataset_resources to enumerate available resources.
-   b. For each promising resource, call get_resource_info to check that tabular_api_available is true
-      BEFORE calling query_resource_data. Skip resources where tabular_api_available is false.
-   c. When calling query_resource_data, NEVER pass null for sort_column or sort_direction — omit
-      those fields entirely or pass an empty string "".
-5. If multiple results (homonyms), evaluate each candidate and rank by relevance.
-6. Select the main legal unit (siege social) as the reference unit.
-7. Compute an identity_confidence score between 0 and 1.
-8. Return the mandatory JSON result (see Output format below).
+1. Normalize the input query (clean names, remove stopwords, standardize acronyms).
+2. If a SIREN/SIRET is provided, go directly to step 3. Otherwise search by name.
+3. **PRIORITY — search for a live API first**: call search_dataservices with keywords matching
+   the entity type (e.g. "entreprise siren", "societe siret", "company registry").
+   A dataservice exposes a queryable REST API; prefer it over bulk files.
+4. **When you have a dataservice**: call get_dataservice_info to get the base URL and endpoint summary.
+   Only call get_dataservice_openapi_spec if you cannot determine the URL from get_dataservice_info.
+   Then use execute_python_code to call the API with the base URL and your query parameters.
+5. **Fallback — bulk datasets**: if no usable dataservice is found, call search_datasets.
+   For each candidate resource: call get_resource_info first, verify tabular_api_available=true,
+   then call query_resource_data. Never pass sort_column=null or sort_direction=null — omit them.
+   Skip zip/parquet files immediately (not queryable via Tabular API).
+6. Evaluate all results, rank candidates, handle homonyms by cross-referencing attributes.
+7. Select the main legal unit (siege social) as the reference unit.
+8. Compute identity_confidence (0–1) and return the mandatory JSON result.
+
+## API call rules (when using execute_python_code for dataservices)
+- Extract the base URL and endpoint from the OpenAPI spec — never hardcode a URL.
+- Map your query input (name, identifier, SIREN, SIRET…) to the parameter names in the spec.
+- Try the public endpoint first — only treat auth as required if you receive a 401.
+- If an endpoint returns no results, try an alternative endpoint from the same spec.
+- After getting the API response, print ONLY the fields you need (siren, name, siret, address,
+  status) — do NOT dump the entire JSON object. Large responses will overflow context.
+  Example: print only result["siren"], result["nom_raison_sociale"], result["siege"]["siret"].
 
 ## Tool usage rules
-- Always call search_dataservices BEFORE falling back to bulk dataset files.
-- Always call get_resource_info on a resource before query_resource_data to confirm tabular_api_available=true.
-- Never pass sort_column=null or sort_direction=null — omit or use "".
-- Bulk zip/parquet files from INSEE are NOT queryable via Tabular API — skip them immediately.
+- Always call search_dataservices before search_datasets.
+- Always call get_resource_info before query_resource_data.
+- Never pass null for sort_column/sort_direction — omit or use "".
+- Bulk zip/parquet/csv files: skip unless tabular_api_available=true.
 
 ## Output format
-YOUR FINAL RESPONSE MUST BE RAW JSON ONLY — no markdown, no prose, no explanation outside the JSON.
-Always return this exact structure, whether resolution succeeded or failed:
+YOUR FINAL RESPONSE MUST BE RAW JSON ONLY — no markdown, no prose, no code fences.
+Always return this exact structure whether resolution succeeded or failed:
 
 {
   "resolved": true,
-  "company_name": "DANONE SA",
-  "siren": "552032534",
-  "main_siret": "55203253400012",
+  "company_name": "ACME SAS",
+  "siren": "123456789",
+  "main_siret": "12345678900019",
   "identity_confidence": 0.95,
   "alternatives_rejected": [],
-  "sources": ["insee_sirene", "data.gouv.fr"],
-  "explanation": null
+  "sources": ["recherche-entreprises.api.gouv.fr"],
+  "explanation": "Resolved via SIREN lookup on recherche-entreprises.api.gouv.fr. Single match found, siege confirmed."
 }
 
-When resolution fails, set resolved=false, fill siren with the input value, set identity_confidence=0.0,
-leave company_name/main_siret as null, and put the reason in the explanation field:
+When resolution fails:
 
 {
   "resolved": false,
   "company_name": null,
-  "siren": "552032534",
+  "siren": "<input_value_or_null>",
   "main_siret": null,
   "identity_confidence": 0.0,
   "alternatives_rejected": [],
   "sources": [],
-  "explanation": "Authoritative data not available: search results returned only placeholder documents."
+  "explanation": "Reason for failure."
 }
 
+The explanation field is ALWAYS required — never null. For successful resolutions, describe the source used and why the match is confident.
+
 ## Rules
-- ALWAYS output raw JSON as your final answer — never prose, never markdown, never a table
-- Always prefer authoritative sources (INSEE) over secondary ones
-- Never guess a SIREN; always verify against official data
-- If confidence < 0.7, set resolved=false and fill the explanation field
-- Handle homonyms by cross-referencing additional attributes
-- Cite your data sources in the sources array""",
+- ALWAYS output raw JSON as your final answer.
+- Never guess a SIREN/SIRET — verify against live data.
+- If confidence < 0.7, set resolved=false and explain why.
+- Handle homonyms: cross-reference name, location, NAF code, legal form.
+- Cite actual data sources (API base URLs) in the sources array.""",
     "skills_content": (
         "requirements_extraction: Extract company identification attributes from the raw query\n"
         "source_comparison: Evaluate multiple candidates when homonyms exist, "
@@ -134,22 +144,27 @@ SCENARIO = {
     "name": "Resolve SIREN 552032534 (Danone)",
     "description": (
         "Test de resolution identite entreprise a partir du SIREN officiel Danone. "
-        "L'agent doit utiliser les outils MCP pour interroger les sources publiques."
+        "L'agent doit utiliser les outils MCP + execute_python_code pour interroger "
+        "les sources publiques et retourner un JSON structure."
     ),
     "agent_id": "identity_resolution_agent",
     "input_prompt": (
-        "Resolve the company with SIREN 552032534. Use the available tools to query "
-        "public data sources. Do NOT answer from memory. Return a structured identity "
-        "resolution result with confidence score."
+        "Resolve the company identity for SIREN 552032534. "
+        "Use the available tools to query public data sources. "
+        "Do NOT answer from memory — retrieve live data. "
+        "Return a structured JSON result with resolved, company_name, siren, "
+        "main_siret, identity_confidence, sources, and explanation."
     ),
-    "timeout_seconds": 120,
-    "max_iterations": 5,
+    "timeout_seconds": 180,
+    "max_iterations": 10,
     "assertions": [
         {"type": "no_tool_failures", "critical": True},
         {"type": "output_field_exists", "target": "resolved", "critical": True},
-        {"type": "max_duration_ms", "expected": "60000", "critical": False},
+        {"type": "output_field_exists", "target": "identity_confidence", "critical": True},
+        {"type": "output_contains", "expected": "552032534", "critical": True},
+        {"type": "max_duration_ms", "expected": "120000", "critical": False},
     ],
-    "expected_tools": ["search_knowledge"],
+    "expected_tools": ["search_dataservices", "execute_python_code"],
     "tags": ["siren", "identity", "danone", "smoke_test"],
 }
 

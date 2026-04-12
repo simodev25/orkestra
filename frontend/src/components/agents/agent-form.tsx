@@ -105,6 +105,7 @@ export function AgentForm({
   const [usageCount, setUsageCount] = useState(initial?.usage_count ?? 0);
   const [llmProvider, setLlmProvider] = useState(initial?.llm_provider ?? "");
   const [llmModel, setLlmModel] = useState(initial?.llm_model ?? "");
+  const [allowCodeExecution, setAllowCodeExecution] = useState(initial?.allow_code_execution ?? false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
 
   useEffect(() => {
@@ -229,6 +230,7 @@ export function AgentForm({
       soul_content: soulContent.trim() || null,
       llm_provider: llmProvider.trim() || null,
       llm_model: llmModel.trim() || null,
+      allow_code_execution: allowCodeExecution,
       version: version.trim() || "1.0.0",
       status,
       owner: owner.trim() || null,
@@ -627,6 +629,27 @@ export function AgentForm({
         <p className="text-[10px] font-mono text-ork-dim">
           Leave empty to use the platform default LLM configuration.
         </p>
+        <div className="flex items-center justify-between pt-1 border-t border-ork-border/30">
+          <div>
+            <p className="text-xs font-mono text-ork-text">Code execution</p>
+            <p className="text-[10px] font-mono text-ork-dim mt-0.5">
+              Enable <span className="text-ork-cyan">execute_python_code</span> — agent can run Python to call any external API.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAllowCodeExecution((v) => !v)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+              allowCodeExecution ? "bg-ork-amber" : "bg-ork-border"
+            }`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                allowCodeExecution ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
       </section>
 
       <section className="glass-panel p-4 space-y-3">

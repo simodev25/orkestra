@@ -35,6 +35,7 @@ class AgentCreate(OrkBaseSchema):
     soul_content: Optional[str] = None
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
+    allow_code_execution: bool = False
     version: str = "1.0.0"
     status: AgentStatus = AgentStatus.DRAFT
     owner: Optional[str] = None
@@ -61,6 +62,7 @@ class AgentUpdate(OrkBaseSchema):
     soul_content: Optional[str] = None
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
+    allow_code_execution: Optional[bool] = None
     version: Optional[str] = None
     status: Optional[AgentStatus] = None
     owner: Optional[str] = None
@@ -93,6 +95,7 @@ class AgentOut(OrkBaseSchema):
     soul_content: Optional[str]
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
+    allow_code_execution: bool = False
     version: str
     status: AgentStatus
     owner: Optional[str]
