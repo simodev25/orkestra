@@ -6,12 +6,16 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.schemas.test_lab_session import TestSessionState
+from app.services.test_lab.session_agent import SessionAgent
 from app.services.test_lab.session_orchestrator import SessionOrchestrator
 
 router = APIRouter(prefix="/api/test-lab/sessions")
 
 # Replace with Redis for production
 _sessions: dict[str, TestSessionState] = {}
+
+# One SessionAgent per session — preserves LLM model state across turns
+_session_agents: dict[str, SessionAgent] = {}
 
 _orchestrator = SessionOrchestrator()
 
@@ -49,6 +53,7 @@ async def create_session(body: CreateSessionRequest = None):
         )
 
     _sessions[state.session_id] = state
+    _session_agents[state.session_id] = SessionAgent()
     return SessionResponse(session=state, last_response=None)
 
 
@@ -74,6 +79,14 @@ async def send_message(session_id: str, body: SendMessageRequest):
     if not state:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
 
-    updated_state, response = await _orchestrator.handle_message(state, body.message)
+    # Retrieve (or lazily create) the per-session SessionAgent
+    agent = _session_agents.get(session_id)
+    if agent is None:
+        agent = SessionAgent()
+        _session_agents[session_id] = agent
+
+    updated_state, response = await _orchestrator.handle_message(
+        state, body.message, session_agent=agent
+    )
     _sessions[session_id] = updated_state
     return SessionResponse(session=updated_state, last_response=response)

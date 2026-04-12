@@ -20,6 +20,7 @@ from app.schemas.agent import (
     SaveGeneratedDraftRequest,
 )
 from app.services import agent_generation_service, agent_registry_service, agent_test_run_service
+from app.services.test_lab.target_agent_runner import run_target_agent
 from sqlalchemy import select
 
 router = APIRouter()
@@ -264,3 +265,93 @@ async def list_agent_test_runs(
 ):
     """List persisted test runs for an agent, most recent first."""
     return await agent_test_run_service.list_runs(db, agent_id, limit=limit)
+
+
+# ── Chat ───────────────────────────────────────────────────────────────
+
+
+class ChatRequest(BaseModel):
+    message: str
+    timeout_seconds: int = 60
+    max_iterations: int = 5
+
+
+def _synthesize(raw_output: str, user_message: str, tool_calls: list) -> str:
+    """Use the LLM to produce a readable French synthesis from the agent's raw output."""
+    import json
+
+    # Build context from tool outputs (prefer the richest one)
+    tool_context = ""
+    for tc in tool_calls:
+        out = tc.get("tool_output", "")
+        if out and len(out) > 10:
+            try:
+                parsed = json.loads(out)
+                tool_context += f"\n\nTool `{tc.get('tool_name', 'tool')}` returned:\n{json.dumps(parsed, indent=2, ensure_ascii=False)[:4000]}"
+            except Exception:
+                tool_context += f"\n\nTool `{tc.get('tool_name', 'tool')}` returned:\n{out[:1500]}"
+
+    prompt = (
+        f"The user asked: {user_message}\n\n"
+        f"The agent's raw result: {raw_output[:1000]}\n"
+        f"{tool_context}\n\n"
+        "Based on the above, write a clear synthesis IN FRENCH using bullet points. "
+        "Include: company name, SIREN/SIRET, siege address, leadership (max 3 directors), "
+        "revenue if available, confidence score, resolution status. "
+        "Be factual and concise. No code, no JSON, just readable text."
+    )
+
+    try:
+        from agentscope.message import Msg
+        from app.services.test_lab.execution_engine import _make_model, _make_formatter, _run_async
+
+        model = _make_model()
+        formatter = _make_formatter()
+        msgs = [Msg("user", prompt, "user")]
+        formatted = formatter(msgs)
+        # Use sync call wrapped in executor to avoid event loop conflicts
+        import asyncio, concurrent.futures
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            response = pool.submit(model, formatted).result(timeout=30)
+        text = response.text if hasattr(response, "text") else str(response)
+        return text.strip()
+    except Exception:
+        return raw_output  # fallback to raw output if synthesis fails
+
+
+@router.post("/{agent_id}/chat")
+async def chat_with_agent(
+    agent_id: str,
+    body: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a chat message to an agent and get a response."""
+    result = await run_target_agent(
+        db=db,
+        agent_id=agent_id,
+        agent_version=None,
+        input_prompt=body.message,
+        timeout_seconds=body.timeout_seconds,
+        max_iterations=body.max_iterations,
+    )
+    if result.status == "failed" and result.error:
+        raise HTTPException(status_code=400, detail=result.error)
+
+    # Always synthesize into readable French if there were tool calls
+    response_text = result.final_output
+    if result.tool_calls:
+        import asyncio, concurrent.futures
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            response_text = pool.submit(
+                _synthesize, result.final_output, body.message, result.tool_calls
+            ).result(timeout=35)
+
+    return {
+        "response": response_text,
+        "raw_output": result.final_output,
+        "tool_calls": result.tool_calls,
+        "duration_ms": result.duration_ms,
+        "status": result.status,
+    }

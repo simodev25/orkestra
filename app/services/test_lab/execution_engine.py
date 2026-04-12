@@ -17,6 +17,7 @@ Architecture:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -28,6 +29,26 @@ from app.core.config import get_settings
 from app.models.base import new_id
 
 logger = logging.getLogger("orkestra.test_lab.execution_engine")
+
+
+# ── Async runner (shared by orchestrator_agent.py and session_mcp.py) ────────
+
+
+def _run_async(coro):
+    """Run an async coroutine from a synchronous context.
+
+    Handles the case where an event loop is already running (e.g. inside
+    Uvicorn/FastAPI) by dispatching to a ThreadPoolExecutor.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, coro).result()
+        return loop.run_until_complete(coro)
+    except RuntimeError:
+        return asyncio.run(coro)
 
 # ── Phase constants ───────────────────────────────────────────────────────────
 
