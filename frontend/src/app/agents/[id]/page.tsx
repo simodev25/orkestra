@@ -1,14 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { Loader2, MessageSquare, Send, FileText } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
 import { AgentLifecyclePanel } from "@/components/agents/lifecycle/AgentLifecyclePanel";
 import { deleteAgent, getAgent, listMcpCatalogForAgentDesign } from "@/lib/agent-registry/service";
+import { request } from "@/lib/api-client";
 import type { AgentDefinition, McpCatalogSummary } from "@/lib/agent-registry/types";
+
+// ─── Chat types ───────────────────────────────────────────────────────────────
+
+interface ToolCall {
+  tool_name?: string;
+  name?: string;
+  tool_input?: string;
+  tool_output?: string;
+}
+
+interface ChatMessage {
+  role: "user" | "agent" | "error";
+  content: string;
+  raw_output?: string;
+  tool_calls?: ToolCall[];
+  duration_ms?: number;
+}
+
+interface ChatResponse {
+  response: string;
+  raw_output?: string;
+  tool_calls: ToolCall[];
+  duration_ms: number;
+  status: string;
+}
 
 export default function AgentDetailPage() {
   const params = useParams<{ id: string }>();
@@ -22,6 +49,61 @@ export default function AgentDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+
+  // ─── Tab & Chat state ─────────────────────────────────────────────────────
+  const [tab, setTab] = useState<"details" | "chat">("details");
+  const storageKey = `chat_${id}`;
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? (JSON.parse(saved) as ChatMessage[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify(chatMessages)); } catch { /* quota */ }
+  }, [chatMessages, storageKey]);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, chatLoading]);
+
+  const sendChat = useCallback(async (text: string) => {
+    if (!text.trim() || chatLoading || !agent) return;
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", content: text.trim() }]);
+    setChatLoading(true);
+    try {
+      const resp = await request<ChatResponse>(`/api/agents/${agent.id}/chat`, {
+        method: "POST",
+        body: JSON.stringify({ message: text.trim() }),
+      });
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "agent",
+          content: resp.response || "(no response)",
+          raw_output: resp.raw_output,
+          tool_calls: resp.tool_calls ?? [],
+          duration_ms: resp.duration_ms,
+        },
+      ]);
+    } catch (e: unknown) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "error", content: e instanceof Error ? e.message : "Request failed" },
+      ]);
+    } finally {
+      setChatLoading(false);
+      setTimeout(() => chatInputRef.current?.focus(), 50);
+    }
+  }, [agent, chatLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +169,7 @@ export default function AgentDetailPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4 animate-fade-in">
+      {/* ── Header ── */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <Link href="/agents" className="text-xs font-mono text-ork-dim hover:text-ork-cyan">
@@ -120,6 +203,7 @@ export default function AgentDetailPage() {
           </button>
         </div>
       </div>
+
       {actionError && (
         <div className="glass-panel p-3 border border-ork-red/30">
           <p className="text-xs font-mono text-ork-red">{actionError}</p>
@@ -130,6 +214,163 @@ export default function AgentDetailPage() {
         agent={agent}
         onStatusChange={(updated) => setAgent(updated)}
       />
+
+      {/* ── Tabs ── */}
+      <div className="flex gap-0 border-b border-ork-border">
+        <button
+          onClick={() => setTab("details")}
+          className={`flex items-center gap-2 px-5 py-2.5 text-xs font-mono uppercase tracking-wider border-b-2 transition-colors ${
+            tab === "details"
+              ? "border-ork-purple text-ork-purple"
+              : "border-transparent text-ork-dim hover:text-ork-muted"
+          }`}
+        >
+          <FileText size={13} />
+          Details
+        </button>
+        <button
+          onClick={() => setTab("chat")}
+          className={`flex items-center gap-2 px-5 py-2.5 text-xs font-mono uppercase tracking-wider border-b-2 transition-colors ${
+            tab === "chat"
+              ? "border-ork-cyan text-ork-cyan"
+              : "border-transparent text-ork-dim hover:text-ork-muted"
+          }`}
+        >
+          <MessageSquare size={13} />
+          Chat direct
+        </button>
+      </div>
+
+      {/* ── Tab: Chat direct ── */}
+      {tab === "chat" && (
+        <div className="glass-panel flex flex-col" style={{ height: "60vh" }}>
+          {/* Chat header */}
+          {chatMessages.length > 0 && (
+            <div className="flex justify-end px-4 pt-2 flex-shrink-0">
+              <button
+                onClick={() => setChatMessages([])}
+                className="text-[10px] font-mono text-ork-dim/50 hover:text-ork-red transition-colors"
+              >
+                Effacer l'historique
+              </button>
+            </div>
+          )}
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {chatMessages.length === 0 && (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-xs font-mono text-ork-dim text-center">
+                  Parle directement à <span className="text-ork-cyan">{agent.name}</span>.<br />
+                  <span className="text-ork-dim/50">Pas de scénario, pas de scoring — conversation brute.</span>
+                </p>
+              </div>
+            )}
+            {chatMessages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                {msg.role === "user" && (
+                  <div className="max-w-[75%] bg-ork-cyan/10 border border-ork-cyan/30 rounded-lg rounded-tr-sm px-4 py-2.5">
+                    <p className="text-[10px] font-mono text-ork-cyan/60 mb-1 uppercase tracking-wider">you</p>
+                    <p className="text-sm text-ork-text">{msg.content}</p>
+                  </div>
+                )}
+                {msg.role === "agent" && (
+                  <div className="max-w-[80%] bg-ork-surface border border-ork-dim/20 rounded-lg rounded-tl-sm px-4 py-2.5">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <p className="text-[10px] font-mono text-ork-purple/70 uppercase tracking-wider">{agent.name}</p>
+                      {msg.duration_ms && (
+                        <span className="text-[10px] font-mono text-ork-dim/50">{msg.duration_ms}ms</span>
+                      )}
+                    </div>
+                    <AgentMessageContent content={msg.content} />
+                    {msg.raw_output && msg.raw_output !== msg.content && (
+                      <details className="mt-2">
+                        <summary className="text-[10px] font-mono text-ork-dim/50 cursor-pointer hover:text-ork-dim select-none">
+                          Résultat brut JSON ▸
+                        </summary>
+                        <ToolOutputContent output={msg.raw_output} />
+                      </details>
+                    )}
+                    {msg.tool_calls && msg.tool_calls.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-ork-border/30 space-y-1">
+                        {msg.tool_calls.map((tc, j) => {
+                          const toolName = tc.tool_name ?? tc.name ?? "tool";
+                          const hasOutput = !!tc.tool_output;
+                          return hasOutput ? (
+                            <details key={j} className="group">
+                              <summary className="flex items-center gap-1.5 cursor-pointer list-none">
+                                <span className="text-[10px] font-mono text-ork-amber bg-ork-amber/10 border border-ork-amber/20 px-2 py-0.5 rounded">
+                                  {toolName} ▸
+                                </span>
+                              </summary>
+                              <ToolOutputContent output={tc.tool_output!} />
+                            </details>
+                          ) : (
+                            <span key={j} className="inline-block text-[10px] font-mono text-ork-amber bg-ork-amber/10 border border-ork-amber/20 px-2 py-0.5 rounded">
+                              {toolName}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {msg.role === "error" && (
+                  <div className="max-w-[80%] bg-ork-red/5 border border-ork-red/30 rounded-lg px-4 py-2.5">
+                    <p className="text-xs font-mono text-ork-red">{msg.content}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="flex justify-start">
+                <div className="bg-ork-surface border border-ork-dim/20 rounded-lg rounded-tl-sm px-4 py-3 flex items-center gap-2">
+                  <Loader2 size={13} className="text-ork-cyan animate-spin" />
+                  <span className="text-xs font-mono text-ork-dim animate-pulse">
+                    {agent.name} is thinking…
+                  </span>
+                </div>
+              </div>
+            )}
+            <div ref={chatBottomRef} />
+          </div>
+
+          {/* Input */}
+          <div className="border-t border-ork-border/60 px-4 py-3 flex items-end gap-3 flex-shrink-0">
+            <textarea
+              ref={chatInputRef}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendChat(chatInput);
+                }
+              }}
+              placeholder={`Message ${agent.name}… (Enter to send)`}
+              disabled={chatLoading}
+              rows={1}
+              className="flex-1 resize-none bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim/50 focus:outline-none focus:border-ork-cyan/40 transition-colors disabled:opacity-50 min-h-[38px] max-h-[100px] overflow-y-auto"
+              style={{ height: "auto" }}
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 100)}px`;
+              }}
+            />
+            <button
+              onClick={() => void sendChat(chatInput)}
+              disabled={chatLoading || !chatInput.trim()}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider bg-ork-cyan/15 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+            >
+              {chatLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+              Send
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab: Details ── */}
+      {tab === "details" && (<>
 
       <Section title="Identity">
         <KV label="name" value={agent.name} />
@@ -247,8 +488,71 @@ export default function AgentDetailPage() {
         }}
         onConfirm={() => void confirmDelete(agent.id)}
       />
+      </> )}
+
     </div>
   );
+}
+
+function ToolOutputContent({ output }: { output: string }) {
+  const trimmed = output.trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    return (
+      <pre className="mt-1 text-[10px] font-mono text-ork-muted/70 whitespace-pre-wrap bg-ork-bg rounded p-2 border border-ork-amber/20 overflow-x-auto max-h-48 overflow-y-auto">
+        {JSON.stringify(parsed, null, 2)}
+      </pre>
+    );
+  } catch {
+    return (
+      <pre className="mt-1 text-[10px] font-mono text-ork-muted/70 whitespace-pre-wrap bg-ork-bg rounded p-2 border border-ork-amber/20 max-h-48 overflow-y-auto">
+        {output}
+      </pre>
+    );
+  }
+}
+
+function AgentMessageContent({ content }: { content: string }) {
+  // Try to parse as JSON for pretty display
+  const trimmed = content.trim();
+  if ((trimmed.startsWith("{") || trimmed.startsWith("[")) ) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return (
+        <div className="space-y-2">
+          {/* Key fields summary for objects */}
+          {typeof parsed === "object" && !Array.isArray(parsed) && (
+            <div className="space-y-1">
+              {Object.entries(parsed as Record<string, unknown>).map(([k, v]) => {
+                if (typeof v === "object" && v !== null) return null;
+                const val = String(v);
+                const isGood = k === "resolved" && v === true;
+                const isBad = k === "resolved" && v === false;
+                return (
+                  <div key={k} className="grid grid-cols-[140px_1fr] gap-2 text-xs font-mono">
+                    <span className="text-ork-dim">{k}</span>
+                    <span className={isGood ? "text-ork-cyan" : isBad ? "text-ork-red" : "text-ork-text"}>{val}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* Full JSON collapsible */}
+          <details className="mt-1">
+            <summary className="text-[10px] font-mono text-ork-dim/60 cursor-pointer hover:text-ork-dim select-none">
+              JSON complet
+            </summary>
+            <pre className="mt-1 text-[10px] font-mono text-ork-muted/70 whitespace-pre-wrap bg-ork-bg rounded p-2 border border-ork-border/30 overflow-x-auto max-h-48 overflow-y-auto">
+              {JSON.stringify(parsed, null, 2)}
+            </pre>
+          </details>
+        </div>
+      );
+    } catch {
+      /* not valid JSON — fall through */
+    }
+  }
+  return <p className="text-sm text-ork-muted whitespace-pre-wrap leading-relaxed">{content}</p>;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
