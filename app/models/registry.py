@@ -33,6 +33,8 @@ class AgentDefinition(BaseModel):
     soul_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     llm_provider: Mapped[str | None] = mapped_column(String(30), nullable=True)  # "ollama" or "openai"
     llm_model: Mapped[str | None] = mapped_column(String(100), nullable=True)     # model name
+    allow_code_execution: Mapped[bool] = mapped_column(Boolean, default=False)    # enable execute_python_code tool
+    allowed_builtin_tools: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # agentscope built-in tools
     last_test_status: Mapped[str] = mapped_column(String(30), default="not_tested")
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)

@@ -246,6 +246,8 @@ async def get_agent_summary(agent_id: str, db: AsyncSession = Depends(get_db)):
 DEFAULT_CONFIG = {
     "orchestrator": {
         "provider": "ollama",
+        "host": "http://host.docker.internal:11434",
+        "api_key": "",
         "model": "gpt-oss:20b-cloud",
         "max_iters": 10,
     },

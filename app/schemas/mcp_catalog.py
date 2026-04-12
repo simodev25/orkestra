@@ -27,6 +27,7 @@ class ObotServerDetails(ObotServerSummary):
     usage_last_24h: Optional[int] = None
     incidents_last_7d: Optional[int] = None
     health_note: Optional[str] = None
+    mcp_endpoint_url: Optional[str] = None  # remoteConfig.url — used by AgentScope to connect
 
 
 class OrkestraMcpBinding(OrkBaseSchema):

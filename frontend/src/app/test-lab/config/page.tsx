@@ -66,8 +66,8 @@ export default function TestLabConfigPage() {
 
   function loadModels(provider: string) {
     setLoadingModels(true);
-    request<{ models: string[] }>(`/api/test-lab/config/models/${provider}`)
-      .then((data) => setModels(data.models || []))
+    request<{ models: any[] }>(`/api/agents/llm-models/${provider}`)
+      .then((data) => setModels((data.models || []).map((m: any) => typeof m === "string" ? m : m.name)))
       .catch(() => {})
       .finally(() => setLoadingModels(false));
   }
@@ -117,7 +117,7 @@ export default function TestLabConfigPage() {
     );
   }
 
-  const modelOptions = models.map((m: any) => m.name);
+  const modelOptions = models as string[];
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
@@ -151,7 +151,7 @@ export default function TestLabConfigPage() {
             <select
               value={config?.orchestrator?.provider || "ollama"}
               onChange={(e) => {
-                setConfig({ ...config, orchestrator: { ...config.orchestrator, provider: e.target.value } });
+                setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), provider: e.target.value } });
                 loadModels(e.target.value);
               }}
               className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40">
@@ -170,10 +170,18 @@ export default function TestLabConfigPage() {
             <ModelSelect
               value={config?.orchestrator?.model || ""}
               options={modelOptions}
-              onChange={(v) => setConfig({ ...config, orchestrator: { ...config.orchestrator, model: v } })}
+              onChange={(v) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), model: v } })}
               placeholder="Select a model..."
             />
           </div>
+        </div>
+        <div className="flex items-center gap-3 pt-1">
+          <label className="data-label !mb-0">Thinking mode</label>
+          <ThinkingSelect
+            value={config?.orchestrator?.thinking ?? null}
+            onChange={(v) => setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), thinking: v } })}
+          />
+          <span className="text-[10px] text-ork-dim">Controls extended reasoning (think param). Default = model decides.</span>
         </div>
       </section>
 
@@ -228,18 +236,27 @@ export default function TestLabConfigPage() {
                     />
                   </div>
 
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <label className="data-label">Model override</label>
-                      <span className="text-[10px] text-ork-dim">(leave empty to use default LLM)</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <label className="data-label">Model override</label>
+                        <span className="text-[10px] text-ork-dim">(leave empty to use default)</span>
+                      </div>
+                      <ModelSelect
+                        value={workerConfig.model || ""}
+                        options={modelOptions}
+                        onChange={(v) => updateWorker(agent.key, "model", v || null)}
+                        placeholder="Use default model"
+                        allowEmpty
+                      />
                     </div>
-                    <ModelSelect
-                      value={workerConfig.model || ""}
-                      options={modelOptions}
-                      onChange={(v) => updateWorker(agent.key, "model", v || null)}
-                      placeholder="Use default model"
-                      allowEmpty
-                    />
+                    <div>
+                      <label className="data-label block mb-1.5">Thinking mode override</label>
+                      <ThinkingSelect
+                        value={workerConfig.thinking ?? null}
+                        onChange={(v) => updateWorker(agent.key, "thinking", v)}
+                      />
+                    </div>
                   </div>
 
                   {/* Skills */}
@@ -314,6 +331,32 @@ export default function TestLabConfigPage() {
   );
 }
 
+
+function ThinkingSelect({ value, onChange }: { value: boolean | null; onChange: (v: boolean | null) => void }) {
+  const options: { label: string; value: boolean | null; color: string }[] = [
+    { label: "Default", value: null, color: "text-ork-dim" },
+    { label: "Enabled", value: true, color: "text-ork-green" },
+    { label: "Disabled", value: false, color: "text-ork-red" },
+  ];
+  return (
+    <div className="flex gap-1">
+      {options.map((opt) => (
+        <button
+          key={String(opt.value)}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`px-3 py-1.5 text-[10px] font-mono rounded border transition-colors ${
+            value === opt.value
+              ? `${opt.color} bg-ork-bg border-current`
+              : "text-ork-dim border-ork-border hover:border-ork-dim"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function ModelSelect({ value, options, onChange, placeholder, allowEmpty }: {
   value: string; options: string[]; onChange: (v: string) => void; placeholder: string; allowEmpty?: boolean;

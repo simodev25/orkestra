@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
 
 from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,24 +18,11 @@ from app.schemas.agent import (
 )
 from app.services import obot_catalog_service, skill_service
 from app.services.event_service import emit_event
+from app.utils.strings import dedupe_str_list as _dedupe_str_list
 from app.state_machines.agent_lifecycle_sm import AgentLifecycleStateMachine
 
 
 _AGENT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,99}$")
-
-
-def _dedupe_str_list(values: Iterable[str] | None) -> list[str]:
-    if not values:
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in values:
-        cleaned = raw.strip()
-        if not cleaned or cleaned in seen:
-            continue
-        seen.add(cleaned)
-        out.append(cleaned)
-    return out
 
 
 async def validate_agent_definition(db: AsyncSession, data: AgentCreate) -> list[str]:
@@ -107,6 +93,8 @@ async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payloa
     agent.soul_content = payload.soul_content
     agent.llm_provider = payload.llm_provider
     agent.llm_model = payload.llm_model
+    agent.allow_code_execution = payload.allow_code_execution
+    agent.allowed_builtin_tools = payload.allowed_builtin_tools or []
     agent.skills_ref = payload.skills_ref
     # Auto-generate skills_content from resolved skill_ids if not explicitly provided
     skill_ids = _dedupe_str_list(payload.skill_ids)
@@ -449,12 +437,16 @@ async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
 
 
 async def delete_agent(db: AsyncSession, agent_id: str) -> None:
+    from sqlalchemy import delete as sql_delete
+    from app.models.history import AgentDefinitionHistory
+
     agent = await db.get(AgentDefinition, agent_id)
     if not agent:
         raise ValueError(f"Agent {agent_id} not found")
     if agent.status == "active":
         raise ValueError("Cannot delete an active agent. Disable or deprecate it first.")
 
+    await db.execute(sql_delete(AgentDefinitionHistory).where(AgentDefinitionHistory.agent_id == agent_id))
     await db.delete(agent)
     await db.flush()
     await emit_event(
@@ -554,6 +546,8 @@ async def enrich_agent(db: AsyncSession, agent: AgentDefinition) -> dict:
         "soul_content": agent.soul_content,
         "llm_provider": agent.llm_provider,
         "llm_model": agent.llm_model,
+        "allow_code_execution": agent.allow_code_execution,
+        "allowed_builtin_tools": agent.allowed_builtin_tools or [],
         "version": agent.version,
         "status": agent.status,
         "owner": agent.owner,

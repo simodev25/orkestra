@@ -13,7 +13,7 @@ from app.schemas.common import OrkBaseSchema
 # ── Assertion definition (inside scenario) ─────────────────────────────
 
 class AssertionDef(OrkBaseSchema):
-    type: str = Field(..., description="One of: tool_called, tool_not_called, output_field_exists, output_schema_matches, max_duration_ms, max_iterations, final_status_is, no_tool_failures")
+    type: str = Field(..., description="One of: tool_called, tool_not_called, output_field_exists, output_schema_matches, max_duration_ms, max_iterations, final_status_is, no_tool_failures, output_contains")
     target: Optional[str] = None
     expected: Optional[str] = None
     critical: bool = False

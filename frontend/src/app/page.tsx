@@ -33,8 +33,8 @@ export default function DashboardPage() {
           api.listMCPs(),
         ]);
         setMetrics(m);
-        setAgents(a);
-        setMcps(mc);
+        setAgents(a.items || []);
+        setMcps(mc.items || []);
       } catch (err: any) {
         setError(err.message || "Failed to load metrics");
         setMetrics(MOCK_METRICS);

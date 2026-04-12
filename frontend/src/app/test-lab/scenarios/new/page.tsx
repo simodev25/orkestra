@@ -12,6 +12,7 @@ import type { AgentDefinition } from "@/lib/agent-registry/types";
 type AssertionType =
   | "tool_called"
   | "tool_not_called"
+  | "output_contains"
   | "output_field_exists"
   | "output_schema_matches"
   | "max_duration_ms"
@@ -43,6 +44,14 @@ const ASSERTION_DEFS: Record<
     showTarget: true,
     showExpected: false,
     targetLabel: "Tool name",
+  },
+  output_contains: {
+    label: "Output contains",
+    hint: "Verify the agent output contains the expected string.",
+    showTarget: false,
+    showExpected: true,
+    expectedLabel: "Expected string",
+    expectedPlaceholder: "e.g. 552032534",
   },
   output_field_exists: {
     label: "Output field exists",
@@ -344,7 +353,12 @@ export default function CreateScenarioPage() {
               ) : (
                 <div className="space-y-3">
                   {assertions.map((a, idx) => {
-                    const def = ASSERTION_DEFS[a.type];
+                    const def = ASSERTION_DEFS[a.type as AssertionType];
+                    if (!def) return (
+                      <div key={idx} className="border border-ork-border/50 rounded p-3 space-y-2 bg-ork-bg/40 opacity-60">
+                        <span className="text-[10px] font-mono text-ork-amber">Unknown assertion type: {a.type}</span>
+                      </div>
+                    );
                     return (
                       <div
                         key={idx}

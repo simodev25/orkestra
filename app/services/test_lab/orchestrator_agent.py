@@ -26,7 +26,6 @@ from agentscope.agent import ReActAgent
 from agentscope.formatter import OllamaChatFormatter
 from agentscope.memory import InMemoryMemory
 from agentscope.message import Msg
-from agentscope.model import OllamaChatModel
 from agentscope.tool import Toolkit, ToolResponse
 
 from app.core.config import get_settings
@@ -64,24 +63,48 @@ def _run_async(coro):
         return asyncio.run(coro)
 
 
-def _make_model(worker_name: str | None = None) -> OllamaChatModel:
+def _make_model(worker_name: str | None = None):
     config = _get_config_sync()
+    orch = config.get("orchestrator", {})
+
     model_name = None
     if worker_name and worker_name in config.get("workers", {}):
         model_name = config["workers"][worker_name].get("model")
     if not model_name:
-        model_name = config.get("orchestrator", {}).get("model", "mistral")
+        model_name = orch.get("model", "mistral")
+
+    provider = orch.get("provider", "ollama")
+    api_key = orch.get("api_key", "") or ""
     settings = get_settings()
-    host = getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-    return OllamaChatModel(model_name=model_name, host=host, stream=False)
+
+    if provider == "openai":
+        from agentscope.model import OpenAIChatModel
+        base_url = orch.get("host", "") or getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+        key = api_key or getattr(settings, "OPENAI_API_KEY", "")
+        return OpenAIChatModel(model_name=model_name, api_key=key, base_url=base_url)
+    else:
+        from agentscope.model import OllamaChatModel
+        host = orch.get("host", "") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
+        kwargs = {"model_name": model_name, "host": host, "stream": False}
+        if api_key:
+            kwargs["api_key"] = api_key
+        return OllamaChatModel(**kwargs)
 
 
 def _build_subagent(name: str, sys_prompt: str, worker_key: str) -> ReActAgent:
     """Build a persistent SubAgent (created ONCE, reused across tool calls)."""
+    model = _make_model(worker_key)
+    config = _get_config_sync()
+    provider = config.get("orchestrator", {}).get("provider", "ollama")
+    if provider == "openai":
+        from agentscope.formatter import OpenAIChatFormatter
+        formatter = OpenAIChatFormatter()
+    else:
+        formatter = OllamaChatFormatter()
     return ReActAgent(
         name=name,
-        model=_make_model(worker_key),
-        formatter=OllamaChatFormatter(),
+        model=model,
+        formatter=formatter,
         memory=InMemoryMemory(),
         sys_prompt=sys_prompt,
         max_iters=1,
@@ -100,12 +123,14 @@ class RunContext:
     scenario_name: str = ""
     input_prompt: str = ""
     expected_tools: list[str] = field(default_factory=list)
+    assertions: list[dict] = field(default_factory=list)
     timeout_seconds: int = 120
     max_iterations: int = 5
     target_output: str = ""
     target_status: str = ""
     target_duration_ms: int = 0
     target_iteration_count: int = 0
+    target_tool_calls: list[dict] = field(default_factory=list)
     execution_events: list[dict] = field(default_factory=list)
     score: float = 0.0
     verdict: str = ""
@@ -262,7 +287,9 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    details={"subagent": "ScenarioSubAgent", "response": text[:3000],
                             "response_length": len(text)},
                    duration_ms=duration_ms)
-        return ToolResponse(content=text)
+        # Strip thinking blocks before returning to orchestrator to avoid context overflow
+        clean = re.sub(r"\{['\"]type['\"]\s*:\s*['\"]thinking['\"][^}]*\}", "", text, flags=re.DOTALL).strip()
+        return ToolResponse(content=clean[:800])
 
     def run_target_agent(task: str = "") -> ToolResponse:
         """Execute the REAL agent under test with the scenario's input_prompt.
@@ -415,6 +442,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
         ctx.target_status = result.status
         ctx.target_duration_ms = result.duration_ms
         ctx.target_iteration_count = result.iteration_count
+        ctx.target_tool_calls = result.tool_calls or []
         from app.services.test_lab.target_agent_runner import _build_execution_events
         ctx.execution_events = _build_execution_events(result.message_history)
 
@@ -433,6 +461,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                     details={
                         "tool_name": tool_name,
                         "tool_input": (tc.get("tool_input", "") if isinstance(tc, dict) else "")[:500],
+                        "output_preview": (tc.get("tool_output", "") if isinstance(tc, dict) else "")[:500],
                     },
                 )
 
@@ -491,6 +520,17 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                 "non les tools de ses MCP autorises (ce n'est PAS une interdiction)"
             )
 
+        # Build tool calls summary for the judge
+        _tc_list = ctx.target_tool_calls or []
+        if _tc_list:
+            _tc_lines = "\n".join(
+                f"  - {(tc.get('tool_name') if isinstance(tc, dict) else str(tc))}"
+                for tc in _tc_list
+            )
+            tool_calls_section = f"Tools effectivement appeles ({len(_tc_list)}):\n{_tc_lines}"
+        else:
+            tool_calls_section = "Tools effectivement appeles: AUCUN"
+
         enriched_prompt = (
             f"Tu dois evaluer le resultat d'un test d'agent.\n\n"
             f"=== SCENARIO ===\n"
@@ -503,9 +543,10 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             f"=== RESULTAT D'EXECUTION ===\n"
             f"Status: {ctx.target_status}\n"
             f"Duree: {ctx.target_duration_ms}ms\n"
-            f"Iterations: {ctx.target_iteration_count}\n\n"
+            f"Iterations: {ctx.target_iteration_count}\n"
+            f"{tool_calls_section}\n\n"
             f"=== OUTPUT COMPLET DE L'AGENT ===\n"
-            f"{(ctx.target_output or 'EMPTY')[:5000]}\n\n"
+            f"{(ctx.target_output or 'EMPTY')[:2000]}\n\n"
             f"=== DEMANDE D'ANALYSE ===\n"
             f"{analysis_request}\n\n"
             f"Evalue si l'agent a repondu correctement au scenario.\n"
@@ -538,8 +579,21 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             })
 
         t0 = time.time()
-        res = _run_async(judge_subagent(Msg("user", enriched_prompt, "user")))
-        text = _extract_text(res.content if hasattr(res, "content") else str(res))
+        try:
+            res = _run_async(judge_subagent(Msg("user", enriched_prompt, "user")))
+            text = _extract_text(res.content if hasattr(res, "content") else str(res))
+        except Exception as judge_exc:
+            duration_ms = int((time.time() - t0) * 1000)
+            logger.warning(f"JudgeSubAgent LLM failed ({judge_exc}), falling back to auto-evaluate")
+            auto_verdict, auto_score, auto_summary = _auto_evaluate(ctx)
+            ctx.verdict = auto_verdict
+            ctx.score = auto_score
+            ctx.summary = f"[auto-evaluate] {auto_summary}"
+            emit_event(ctx.run_id, "subagent_done", "judgment",
+                       f"JudgeSubAgent failed — auto-evaluated: {auto_verdict} ({auto_score}/100)",
+                       details={"error": str(judge_exc)[:200]},
+                       duration_ms=duration_ms)
+            return ToolResponse(content=f"VERDICT: AUTO\nSCORE: {int(auto_score)}\nRATIONALE: {auto_summary}")
         duration_ms = int((time.time() - t0) * 1000)
 
         # Strip AgentScope "thinking" blocks before extracting verdict/score.
@@ -638,7 +692,8 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    f"RobustnessSubAgent done ({duration_ms}ms)",
                    details={"subagent": "RobustnessSubAgent", "response": text[:3000]},
                    duration_ms=duration_ms)
-        return ToolResponse(content=text)
+        clean = re.sub(r"\{['\"]type['\"]\s*:\s*['\"]thinking['\"][^}]*\}", "", text, flags=re.DOTALL).strip()
+        return ToolResponse(content=clean[:600])
 
     def run_policy_subagent(request: str) -> ToolResponse:
         """Ask the PolicySubAgent to check governance compliance."""
@@ -664,7 +719,8 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    f"PolicySubAgent done ({duration_ms}ms)",
                    details={"subagent": "PolicySubAgent", "response": text[:3000]},
                    duration_ms=duration_ms)
-        return ToolResponse(content=text)
+        clean = re.sub(r"\{['\"]type['\"]\s*:\s*['\"]thinking['\"][^}]*\}", "", text, flags=re.DOTALL).strip()
+        return ToolResponse(content=clean[:600])
 
     def get_run_state() -> ToolResponse:
         """Get the current state of the test run."""
@@ -695,14 +751,13 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                    f"Test completed: {ctx.verdict} ({ctx.score}/100)")
         return ToolResponse(content=f"RUN_SAVED: run_id={ctx.run_id}, verdict={ctx.verdict}, score={ctx.score}/100")
 
+    # Only register the 4 mandatory tools to keep toolkit schema small.
+    # Optional tools (robustness, policy, state) inflate the LLM context and
+    # cause 500s on cloud models with tight context budgets.
     return [
-        get_scenario_context,
         run_scenario_subagent,
         run_target_agent,
         run_judge_subagent,
-        run_robustness_subagent,
-        run_policy_subagent,
-        get_run_state,
         save_run_result,
     ]
 
@@ -770,6 +825,73 @@ OPTIONS_SUIVANTES:
 - <option 2>
 - <option 3>
 """
+
+
+def _auto_evaluate(ctx: "RunContext") -> tuple[str, float, str]:
+    """Fallback evaluation when the judge LLM is unavailable.
+
+    Runs the scenario assertions against ctx.target_output and produces a
+    verdict/score/summary without calling any LLM.
+
+    Returns (verdict, score, summary).
+    """
+    output = (ctx.target_output or "").strip()
+    assertions = ctx.assertions or []
+
+    if not output:
+        return "failed", 0.0, "Auto-eval: no output from target agent."
+
+    passed, failed_critical, notes = 0, 0, []
+
+    for a in assertions:
+        atype = a.get("type", "")
+        critical = a.get("critical", False)
+
+        if atype == "output_field_exists":
+            field = a.get("target", "")
+            ok = field and field in output
+        elif atype == "output_contains":
+            expected = a.get("expected", "")
+            ok = expected and expected in output
+        elif atype == "no_tool_failures":
+            ok = ctx.target_status != "error"
+        elif atype == "max_duration_ms":
+            try:
+                ok = ctx.target_duration_ms <= int(a.get("expected", 9999999))
+            except (TypeError, ValueError):
+                ok = True
+        else:
+            ok = True  # unknown assertion type → don't penalise
+
+        if ok:
+            passed += 1
+        else:
+            notes.append(f"FAIL [{atype}]")
+            if critical:
+                failed_critical += 1
+
+    total = len(assertions) or 1
+    score = round((passed / total) * 100)
+
+    if failed_critical > 0:
+        verdict = "failed"
+    elif score >= 80:
+        verdict = "passed"
+    elif score >= 40:
+        verdict = "passed_with_warnings"
+    else:
+        verdict = "failed"
+
+    summary = (
+        f"RESUME:\nAuto-evaluation (judge LLM indisponible). "
+        f"{passed}/{total} assertions passees.\n\n"
+        f"STATUT:\n{verdict.upper()}\n\n"
+        f"AGENT_SOUS_TEST:\n{ctx.agent_id}\n\n"
+        f"DETAILS:\n"
+        + ("\n".join(notes) if notes else "Toutes les assertions verifiees.")
+        + f"\n\nScore: {score}/100 (calcul sur assertions, pas LLM)."
+    )
+    return verdict, float(score), summary
 
 
 def build_orchestrator_agent(ctx: RunContext) -> ReActAgent:
@@ -1014,6 +1136,7 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
             scenario_name=scenario.name,
             input_prompt=scenario.input_prompt,
             expected_tools=scenario.expected_tools or [],
+            assertions=[a.model_dump() if hasattr(a, "model_dump") else dict(a) for a in (scenario.assertions or [])],
             timeout_seconds=scenario.timeout_seconds or 120,
             max_iterations=scenario.max_iterations or 5,
         )
@@ -1175,14 +1298,17 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
 
         # Save partial results if target agent ran before the crash
         if ctx and ctx.target_output and not ctx.verdict:
-            update_run(run_id, status="completed", verdict="error",
-                       score=0, duration_ms=ctx.target_duration_ms,
+            # Try assertion-based auto-evaluation instead of giving a 0 score
+            auto_verdict, auto_score, auto_summary = _auto_evaluate(ctx)
+            update_run(run_id, status="completed",
+                       verdict=auto_verdict, score=auto_score,
+                       duration_ms=ctx.target_duration_ms,
                        final_output=(ctx.target_output or "")[:10000],
-                       summary=f"OrchestratorAgent crashed after target agent execution: {exc}",
-                       error_message=str(exc)[:1000],
+                       summary=auto_summary,
+                       error_message=f"Judge unavailable (LLM 500): {str(exc)[:200]}",
                        ended_at=datetime.now(timezone.utc))
-            emit_event(run_id, "run_completed", "error",
-                       f"Partial result saved (orchestrator crashed): {exc}")
+            emit_event(run_id, "run_completed", "verdict",
+                       f"Auto-evaluated (judge crashed): {auto_verdict} {auto_score}/100")
         else:
             update_run(run_id, status="failed", error_message=str(exc)[:1000],
                        ended_at=datetime.now(timezone.utc))

@@ -47,13 +47,16 @@ export const api = {
 
   // Agents
   listAgents: (family?: string) =>
-    request<T.Agent[]>(`/agents${family ? `?family=${family}` : ""}`),
+    request<{ items: T.Agent[]; total: number; offset: number; limit: number; has_more: boolean }>(
+      `/agents${family ? `?family=${family}` : ""}`
+    ),
   createAgent: (data: any) => request<T.Agent>("/agents", { method: "POST", body: JSON.stringify(data) }),
   updateAgentStatus: (id: string, status: string) =>
     request<T.Agent>(`/agents/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
 
   // MCPs
-  listMCPs: () => request<T.MCP[]>("/mcps"),
+  listMCPs: () =>
+    request<{ items: T.MCP[]; total: number; offset: number; limit: number; has_more: boolean }>("/mcps"),
   createMCP: (data: any) => request<T.MCP>("/mcps", { method: "POST", body: JSON.stringify(data) }),
   updateMCPStatus: (id: string, status: string) =>
     request<T.MCP>(`/mcps/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
@@ -98,6 +101,14 @@ export const api = {
     }),
   deleteSecret: (id: string) =>
     request<{ id: string; status: string }>(`/settings/secrets/${id}`, { method: "DELETE" }),
+
+  // Platform capabilities
+  listCapabilities: () => request<Record<string, boolean>>("/settings/capabilities"),
+  setCapability: (key: string, value: boolean) =>
+    request<{ key: string; value: boolean }>(`/settings/capabilities/${key}`, {
+      method: "PUT",
+      body: JSON.stringify({ value: value ? "true" : "false" }),
+    }),
 
   // Metrics
   getPlatformMetrics: () => request<T.PlatformMetrics>("/metrics/platform"),

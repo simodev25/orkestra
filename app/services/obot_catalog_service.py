@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.mcp_catalog import OrkestraMCPBinding
+from app.utils.strings import dedupe_str_list as _dedupe
 from app.schemas.mcp_catalog import (
     CatalogImportResult,
     CatalogMcpDetailsViewModel,
@@ -40,20 +41,6 @@ _OBOT_DETAIL_ENDPOINTS = (
     "/api/all-mcps/servers/{id}",
     "/api/mcp-servers/{id}",
 )
-
-
-def _dedupe(values: list[str] | None) -> list[str]:
-    if not values:
-        return []
-    seen = set()
-    out: list[str] = []
-    for value in values:
-        cleaned = value.strip()
-        if not cleaned or cleaned in seen:
-            continue
-        seen.add(cleaned)
-        out.append(cleaned)
-    return out
 
 
 def _metadata_value(metadata: dict[str, Any], *keys: str) -> Any:
@@ -153,13 +140,16 @@ def _normalize_obot_payload(raw: dict[str, Any]) -> ObotServerDetails:
         or "No purpose documented"
     )
 
+    remote_config = manifest.get("remoteConfig") if isinstance(manifest.get("remoteConfig"), dict) else {}
+    mcp_endpoint_url = remote_config.get("url") or None
+
     return ObotServerDetails(
         id=str(raw.get("id") or raw.get("server_id") or raw.get("name") or ""),
         name=str(
             raw.get("name")
             or raw.get("server_name")
-            or raw.get("alias")
             or manifest.get("name")
+            or raw.get("alias")
             or raw.get("id")
             or "Unnamed MCP"
         ),
@@ -185,6 +175,7 @@ def _normalize_obot_payload(raw: dict[str, Any]) -> ObotServerDetails:
         usage_last_24h=raw.get("usage_last_24h"),
         incidents_last_7d=raw.get("incidents_last_7d"),
         health_note=raw.get("health_note"),
+        mcp_endpoint_url=mcp_endpoint_url,
     )
 
 
@@ -377,7 +368,24 @@ async def _fetch_obot_servers_via_api() -> list[ObotServerDetails]:
                 last_error = exc
 
         if at_least_one_endpoint_ok:
-            return best_servers
+            # Deduplicate: Obot may expose multiple instances of the same MCP
+            # (e.g. one template + one configured copy, or two user-created instances).
+            # Primary key: server ID. Secondary key: canonical name (manifest name).
+            # The first occurrence wins — it is typically the configured/active instance.
+            seen_ids: set[str] = set()
+            seen_names: set[str] = set()
+            deduped: list[ObotServerDetails] = []
+            for srv in best_servers:
+                if srv.id and srv.id in seen_ids:
+                    continue
+                if srv.name and srv.name in seen_names:
+                    continue
+                if srv.id:
+                    seen_ids.add(srv.id)
+                if srv.name:
+                    seen_names.add(srv.name)
+                deduped.append(srv)
+            return deduped
         if last_error is not None:
             raise last_error
 

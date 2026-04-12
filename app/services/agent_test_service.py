@@ -11,39 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.registry import AgentDefinition
 from app.services.llm_output_validator import validate_forbidden_effects, validate_output_structure
+from app.core.tracing import setup_tracing as _setup_tracing, flush_traces as _flush_traces
+from app.core.config import get_settings as _get_settings
 
 logger = logging.getLogger("orkestra.agent_test")
 
-_tracing_initialized = False
-
 
 def _ensure_tracing():
-    """Lazy-init OpenTelemetry tracing on first test run."""
-    global _tracing_initialized
-    if _tracing_initialized:
-        return
-    _tracing_initialized = True
-    try:
-        from app.core.config import get_settings
-        endpoint = get_settings().OTEL_ENDPOINT
-        if not endpoint:
-            return
-        from agentscope.tracing import setup_tracing
-        setup_tracing(endpoint=endpoint)
-        logger.warning(f"AgentScope OTLP tracing initialized → {endpoint}")
-    except Exception as e:
-        logger.warning(f"Tracing init failed: {e}")
-
-
-def _flush_traces():
-    """Force flush pending OTLP spans."""
-    try:
-        from opentelemetry import trace
-        provider = trace.get_tracer_provider()
-        if hasattr(provider, "force_flush"):
-            provider.force_flush(timeout_millis=5000)
-    except Exception:
-        pass
+    """Lazy-init tracing on first test run (delegates to core module)."""
+    _setup_tracing(endpoint=_get_settings().OTEL_ENDPOINT)
 
 
 def _truncate(s: str, max_len: int = 32000) -> str:

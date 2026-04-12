@@ -42,6 +42,8 @@ def evaluate_assertions(
             result = _check_final_status(final_status, expected or "")
         elif atype == "no_tool_failures":
             result = _check_no_tool_failures(events)
+        elif atype == "output_contains":
+            result = _check_output_contains(final_output, expected)
         else:
             result = {"passed": False, "message": f"Unknown assertion type: {atype}", "actual": None, "details": None}
 
@@ -72,23 +74,35 @@ def _check_tool_not_called(events: list[dict], tool_name: str | None) -> dict:
     return {"passed": False, "message": f"Tool '{tool_name}' was called but should not have been", "actual": tool_name}
 
 
+def _extract_json(output: str) -> str:
+    """Strip markdown code fences and return the raw JSON string."""
+    stripped = output.strip()
+    # ```json ... ``` or ``` ... ```
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        # drop first line (```json or ```) and last line (```)
+        inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+        return "\n".join(inner).strip()
+    return stripped
+
+
 def _check_output_field_exists(output: str | None, field: str | None) -> dict:
     if not output or not field:
-        return {"passed": False, "message": f"Output or field not provided", "actual": None}
+        return {"passed": False, "message": "Output or field not provided", "actual": None}
     try:
-        parsed = json.loads(output)
+        parsed = json.loads(_extract_json(output))
         if field in parsed:
             return {"passed": True, "message": f"Field '{field}' exists in output", "actual": str(parsed[field])[:200]}
         return {"passed": False, "message": f"Field '{field}' missing from output", "actual": None}
     except (json.JSONDecodeError, TypeError):
-        return {"passed": False, "message": f"Output is not valid JSON", "actual": None}
+        return {"passed": False, "message": "Output is not valid JSON", "actual": None}
 
 
 def _check_output_schema(output: str | None, schema_json: str | None) -> dict:
     if not output:
         return {"passed": False, "message": "No output to validate", "actual": None}
     try:
-        parsed = json.loads(output)
+        parsed = json.loads(_extract_json(output))
         if not schema_json:
             return {"passed": True, "message": "No schema specified, output is valid JSON", "actual": "valid_json"}
         schema = json.loads(schema_json)
@@ -116,6 +130,16 @@ def _check_final_status(actual_status: str, expected: str) -> dict:
     if actual_status == expected:
         return {"passed": True, "message": f"Final status is '{expected}'", "actual": actual_status}
     return {"passed": False, "message": f"Expected status '{expected}', got '{actual_status}'", "actual": actual_status}
+
+
+def _check_output_contains(output: str | None, expected: str | None) -> dict:
+    if not output:
+        return {"passed": False, "message": "No output to check", "actual": None}
+    if not expected:
+        return {"passed": False, "message": "No expected string specified", "actual": None}
+    if expected in output:
+        return {"passed": True, "message": f"Output contains '{expected}'", "actual": expected}
+    return {"passed": False, "message": f"Output does not contain '{expected}'", "actual": None}
 
 
 def _check_no_tool_failures(events: list[dict]) -> dict:

@@ -7,25 +7,15 @@ import logging
 from datetime import datetime
 from typing import Any
 
-logger = logging.getLogger("orkestra.debug_strategy")
+from app.core.tracing import setup_tracing as _setup_tracing, flush_traces as _flush_traces
+from app.core.config import get_settings as _get_settings
 
-_tracing_initialized = False
+logger = logging.getLogger("orkestra.debug_strategy")
 
 
 def _ensure_tracing():
-    global _tracing_initialized
-    if _tracing_initialized:
-        return
-    _tracing_initialized = True
-    try:
-        from app.core.config import get_settings
-        endpoint = get_settings().OTEL_ENDPOINT
-        if not endpoint:
-            return
-        from agentscope.tracing import setup_tracing
-        setup_tracing(endpoint=endpoint)
-    except Exception:
-        pass
+    """Lazy-init tracing on first trace emit (delegates to core module)."""
+    _setup_tracing(endpoint=_get_settings().OTEL_ENDPOINT)
 
 
 def _truncate(s: str, max_len: int = 32000) -> str:
@@ -224,13 +214,6 @@ def emit_debug_strategy_trace(data: dict) -> str:
         if tags:
             root_span.set_attribute("strategy.tags", json.dumps(tags))
 
-    # Flush
-    try:
-        from opentelemetry import trace
-        provider = trace.get_tracer_provider()
-        if hasattr(provider, "force_flush"):
-            provider.force_flush(timeout_millis=5000)
-    except Exception:
-        pass
+    _flush_traces()
 
     return strategy_id

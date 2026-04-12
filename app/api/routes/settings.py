@@ -120,3 +120,35 @@ async def delete_secret(secret_id: str, db: AsyncSession = Depends(get_db)):
     await db.delete(existing)
     await db.flush()
     return {"id": secret_id, "status": "deleted"}
+
+
+# ---- Platform Capabilities (global feature toggles) ----
+
+class CapabilityUpsert(PydanticBaseModel):
+    value: str  # "true" | "false"
+
+
+@router.get("/capabilities")
+async def list_capabilities(db: AsyncSession = Depends(get_db)):
+    """Return all platform capability flags as {key: bool} map."""
+    from app.models.platform_capability import PlatformCapability
+    result = await db.execute(select(PlatformCapability).order_by(PlatformCapability.key))
+    rows = list(result.scalars().all())
+    return {r.key: r.value.lower() == "true" for r in rows}
+
+
+@router.put("/capabilities/{cap_key}")
+async def set_capability(cap_key: str, data: CapabilityUpsert, db: AsyncSession = Depends(get_db)):
+    """Create or update a capability flag."""
+    from app.models.platform_capability import PlatformCapability
+    from datetime import datetime, timezone
+
+    normalized = "true" if str(data.value).lower() in ("true", "1", "yes") else "false"
+    existing = await db.get(PlatformCapability, cap_key)
+    if existing:
+        existing.value = normalized
+        existing.updated_at = datetime.now(timezone.utc)
+    else:
+        db.add(PlatformCapability(key=cap_key, value=normalized))
+    await db.flush()
+    return {"key": cap_key, "value": normalized == "true"}

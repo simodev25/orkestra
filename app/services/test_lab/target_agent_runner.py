@@ -110,9 +110,26 @@ async def run_target_agent(
         tools = []
 
     # ── 3. Create the AgentScope agent ────────────────────────────────────
+    # Use the test lab config model as fallback so the target agent runs on the
+    # same model as the orchestrator (gpt-oss:20b-cloud by default), not the
+    # platform default (mistral).
+    try:
+        from app.services.test_lab.execution_engine import _make_model, _make_formatter
+        tl_model = _make_model()
+        tl_formatter = _make_formatter()
+    except Exception as exc:
+        logger.warning(f"Could not load test lab model config: {exc}")
+        tl_model = None
+        tl_formatter = None
+
     try:
         react_agent = await create_agentscope_agent(
-            agent_def, db=db, tools_to_register=tools, max_iters=max_iterations
+            agent_def,
+            db=db,
+            tools_to_register=tools,
+            max_iters=max_iterations,
+            fallback_model=tl_model,
+            fallback_formatter=tl_formatter,
         )
     except Exception as exc:
         logger.warning(f"Agent creation raised an exception for '{agent_id}': {exc}")
@@ -202,6 +219,16 @@ async def run_target_agent(
             return block.get(key, default)
         return getattr(block, key, default)
 
+    def _extract_tool_output(output_field) -> str:
+        """Extract readable text from a tool_result output field."""
+        if isinstance(output_field, list):
+            parts = [item.get("text", str(item)) if isinstance(item, dict) else str(item) for item in output_field]
+            return "\n".join(parts)
+        return str(output_field)
+
+    # FIFO queue: tool_use blocks waiting to be paired with their tool_result
+    _pending_tcs: list[dict] = []
+
     try:
         msgs = await react_agent.memory.get_memory()
         for m in msgs:
@@ -209,22 +236,56 @@ async def run_target_agent(
             name = getattr(m, "name", "")
             text = m.get_text_content() if hasattr(m, "get_text_content") else ""
             content_blocks = getattr(m, "content", None)
+            _result_assigned = False
 
             if isinstance(content_blocks, list):
                 for block in content_blocks:
                     bt = _bget(block, "type", "")
                     if bt == "tool_use":
-                        tool_calls.append(
-                            {
-                                "tool_name": _bget(block, "name", "unknown"),
-                                "tool_input": str(_bget(block, "raw_input", "") or _bget(block, "input", ""))[:500],
-                            }
-                        )
+                        tc = {
+                            "tool_name": _bget(block, "name", "unknown"),
+                            "tool_input": str(_bget(block, "raw_input", "") or _bget(block, "input", ""))[:500],
+                            "tool_output": "",
+                        }
+                        tool_calls.append(tc)
+                        _pending_tcs.append(tc)
+                    elif bt == "tool_result":
+                        out = _extract_tool_output(_bget(block, "output", []))
+                        if _pending_tcs:
+                            _pending_tcs.pop(0)["tool_output"] = out[:800]
+                        _result_assigned = True
                 if not text:
                     parts = [str(_bget(b, "text", b))[:500] for b in content_blocks]
                     text = "\n".join(parts)
+            elif isinstance(content_blocks, dict):
+                if content_blocks.get("type") == "tool_result":
+                    out = _extract_tool_output(content_blocks.get("output", []))
+                    if _pending_tcs:
+                        _pending_tcs.pop(0)["tool_output"] = out[:800]
+                    _result_assigned = True
+                elif not text:
+                    text = str(content_blocks)
             elif isinstance(content_blocks, str) and not text:
                 text = content_blocks
+
+            # Fallback for system messages: try ast.literal_eval on text string repr
+            if not _result_assigned and role == "system" and _pending_tcs:
+                import ast as _ast
+                raw = (text or "").strip()
+                if not raw and isinstance(content_blocks, str):
+                    raw = content_blocks.strip()
+                if raw.startswith("{"):
+                    try:
+                        parsed = _ast.literal_eval(raw)
+                        if isinstance(parsed, dict) and parsed.get("type") == "tool_result":
+                            out = _extract_tool_output(parsed.get("output", []))
+                            _pending_tcs.pop(0)["tool_output"] = out[:800]
+                            _result_assigned = True
+                    except Exception:
+                        pass
+                if not _result_assigned and raw:
+                    # Last resort: use raw system message text as output
+                    _pending_tcs.pop(0)["tool_output"] = raw[:800]
 
             message_history.append({"role": role, "name": name, "content": text[:5000]})
 

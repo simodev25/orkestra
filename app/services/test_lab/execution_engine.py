@@ -141,7 +141,7 @@ def _get_config_sync() -> dict:
     from sqlalchemy import text
 
     config: dict = {
-        "orchestrator": {"provider": "ollama", "model": "gpt-oss:20b-cloud"},
+        "orchestrator": {"provider": "ollama", "host": "", "api_key": "", "model": "gpt-oss:20b-cloud", "thinking": False},
         "workers": {
             "preparation": {
                 "prompt": "You are a test preparation worker. Produce a structured TEST PLAN.",
@@ -171,26 +171,52 @@ def _get_config_sync() -> dict:
 
 
 def _make_model(worker_name: str | None = None):
-    """Create the OllamaChatModel for subagents, reading config from DB."""
-    from agentscope.model import OllamaChatModel
-
+    """Create the appropriate chat model for subagents, reading config from DB."""
     config = _get_config_sync()
+    orch = config.get("orchestrator", {})
 
     model_name = None
+    worker_cfg: dict = {}
     if worker_name and worker_name in config.get("workers", {}):
-        model_name = config["workers"][worker_name].get("model")
-
+        worker_cfg = config["workers"][worker_name] or {}
+        model_name = worker_cfg.get("model")
     if not model_name:
-        model_name = config.get("orchestrator", {}).get("model", "mistral")
+        model_name = orch.get("model", "mistral")
 
+    provider = orch.get("provider", "ollama")
+    api_key = orch.get("api_key", "") or ""
     settings = get_settings()
-    host = getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-    return OllamaChatModel(model_name=model_name, host=host, stream=False)
+
+    # thinking: worker-level overrides orchestrator-level; None = model default (not passed)
+    thinking: bool | None = None
+    if "thinking" in worker_cfg and worker_cfg["thinking"] is not None:
+        thinking = bool(worker_cfg["thinking"])
+    elif "thinking" in orch and orch["thinking"] is not None:
+        thinking = bool(orch["thinking"])
+
+    if provider == "openai":
+        from agentscope.model import OpenAIChatModel
+        base_url = orch.get("host", "") or getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+        key = api_key or getattr(settings, "OPENAI_API_KEY", "")
+        return OpenAIChatModel(model_name=model_name, api_key=key, base_url=base_url)
+    else:
+        from agentscope.model import OllamaChatModel
+        host = orch.get("host", "") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
+        kwargs: dict = {"model_name": model_name, "host": host, "stream": False}
+        if api_key:
+            kwargs["api_key"] = api_key
+        if thinking is not None:
+            kwargs["enable_thinking"] = thinking
+        return OllamaChatModel(**kwargs)
 
 
 def _make_formatter():
+    config = _get_config_sync()
+    provider = config.get("orchestrator", {}).get("provider", "ollama")
+    if provider == "openai":
+        from agentscope.formatter import OpenAIChatFormatter
+        return OpenAIChatFormatter()
     from agentscope.formatter import OllamaChatFormatter
-
     return OllamaChatFormatter()
 
 
@@ -631,8 +657,6 @@ async def execute_test_from_request(request: "TestExecutionRequest") -> dict:
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
-
-    from app.schemas.test_lab_session import TestExecutionRequest  # noqa: F401
 
     settings = get_settings()
     engine = create_async_engine(settings.DATABASE_URL)

@@ -226,6 +226,7 @@ class AssertionType(str, enum.Enum):
     MAX_ITERATIONS = "max_iterations"
     FINAL_STATUS_IS = "final_status_is"
     NO_TOOL_FAILURES = "no_tool_failures"
+    OUTPUT_CONTAINS = "output_contains"
 
 
 class DiagnosticCode(str, enum.Enum):

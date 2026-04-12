@@ -20,6 +20,7 @@ dependencies = [
     "aiofiles>=24.0.0",
     "prometheus-client>=0.20.0",
     "agentscope>=1.0.0",
+    "agentscope-runtime>=0.1.0",
     "ollama>=0.4.0",
     "celery[redis]>=5.4.0",
     "cryptography>=43.0.0",

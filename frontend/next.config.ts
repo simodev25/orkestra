@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8200";
+// API_INTERNAL_URL is used server-side (SSR / rewrites running inside Docker).
+// NEXT_PUBLIC_API_URL is the browser-facing URL (used by client components).
+const apiUrl =
+  process.env.API_INTERNAL_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:8200";
 
 const nextConfig: NextConfig = {
   async rewrites() {

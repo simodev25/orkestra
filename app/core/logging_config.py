@@ -31,3 +31,8 @@ def configure_logging():
         format="%(message)s",
         level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
     )
+
+    # Silence SQLAlchemy query logs
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
