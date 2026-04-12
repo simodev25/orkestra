@@ -11,10 +11,7 @@ import logging
 
 from app.models.base import new_id
 from app.schemas.test_lab_session import (
-    FollowUpOption,
     SessionMessage,
-    TestExecutionRequest,
-    TestExecutionResult,
     TestSessionState,
 )
 
@@ -182,6 +179,45 @@ def build_follow_up_request(
     )
 
 
+# ── Session helpers ───────────────────────────────────────────────────────────
+
+
+def _session_context(state: TestSessionState) -> dict:
+    """Extract a flat context dict from the session state for the SessionAgent."""
+    return {
+        "target_agent_id": state.target_agent_id,
+        "last_run_id": state.last_run_id,
+        "last_verdict": state.last_verdict,
+        "last_score": state.last_score,
+        "last_objective": state.last_objective,
+    }
+
+
+def _apply_run_result(
+    state: TestSessionState,
+    run_result: dict | None,
+    objective: str | None,
+) -> TestSessionState:
+    """Merge a run result dict (from SessionAgent) into the session state."""
+    if not run_result:
+        return state
+    recent = list(state.recent_run_ids)
+    if run_result.get("run_id"):
+        recent.append(run_result["run_id"])
+    return state.model_copy(
+        update={
+            "target_agent_id": state.target_agent_id,
+            "last_objective": objective or state.last_objective,
+            "last_scenario_id": run_result.get("scenario_id"),
+            "last_run_id": run_result.get("run_id"),
+            "last_verdict": run_result.get("verdict"),
+            "last_score": float(run_result.get("score", 0)),
+            "recent_run_ids": recent,
+            "current_status": "awaiting_user",
+        }
+    )
+
+
 # ── SessionOrchestrator ───────────────────────────────────────────────────────
 
 
@@ -223,7 +259,10 @@ class SessionOrchestrator:
     # ── Main entry point ──────────────────────────────────────────────────────
 
     async def handle_message(
-        self, state: TestSessionState, user_message: str
+        self,
+        state: TestSessionState,
+        user_message: str,
+        session_agent=None,
     ) -> tuple[TestSessionState, str]:
         """Handle a user message in the session.
 
@@ -263,10 +302,10 @@ class SessionOrchestrator:
                 )
 
         elif action == "follow_up":
-            state, response = await self._handle_follow_up(state, intent)
+            state, response = await self._handle_follow_up(state, intent, session_agent)
 
         elif action == "initial_test":
-            state, response = await self._handle_initial_test(state, intent, user_message)
+            state, response = await self._handle_initial_test(state, intent, user_message, session_agent)
 
         else:  # "help" or unknown
             response = self._help_text()
@@ -290,174 +329,73 @@ class SessionOrchestrator:
         state: TestSessionState,
         intent: dict,
         user_message: str,
+        session_agent=None,
     ) -> tuple[TestSessionState, str]:
-        """Run an initial test based on the user message."""
-        from app.services.test_lab.execution_engine import execute_test_from_request
+        """Delegate the initial test request to the SessionAgent."""
         from app.services.test_lab.subagents import generate_follow_up_options
 
-        # Resolve agent_id: intent hint → session state → error
-        agent_id = intent.get("agent_hint") or state.target_agent_id
-        if not agent_id:
-            return state, (
-                "No agent selected. Please select an agent first, e.g. *use summary_agent*, "
-                "or specify one in your message: *Test summary_agent on ...*"
+        if session_agent is None:
+            from app.services.test_lab.session_agent import SessionAgent
+            session_agent = SessionAgent()
+
+        context = _session_context(state)
+        response_text, run_result = await session_agent.run(user_message, context)
+
+        state = _apply_run_result(state, run_result, intent.get("objective") or user_message)
+
+        if run_result:
+            follow_up_opts = generate_follow_up_options(
+                verdict=run_result.get("verdict", "unknown"),
+                score=float(run_result.get("score", 0)),
+                diagnostics=[],
+                failed_assertions=[],
+            )
+            state = state.model_copy(
+                update={"available_followups": [o.key for o in follow_up_opts]}
             )
 
-        # Build request
-        objective = intent.get("objective") or user_message
-        request = TestExecutionRequest(
-            agent_id=agent_id,
-            objective=objective,
-            input_prompt=user_message,
-            source="interactive",
-            session_id=state.session_id,
-        )
-
-        # Execute
-        try:
-            result_dict = await execute_test_from_request(request)
-        except Exception as exc:
-            logger.exception("Test execution failed")
-            return state, f"Test execution failed: {exc}"
-
-        run_id = result_dict.get("run_id", "")
-        scenario_id = result_dict.get("scenario_id", "")
-        verdict = result_dict.get("verdict", "unknown")
-        score = float(result_dict.get("score", 0.0))
-
-        # Update session state
-        recent = list(state.recent_run_ids) + [run_id]
-        state = state.model_copy(
-            update={
-                "target_agent_id": agent_id,
-                "last_objective": objective,
-                "last_scenario_id": scenario_id,
-                "last_run_id": run_id,
-                "last_verdict": verdict,
-                "last_score": score,
-                "recent_run_ids": recent,
-                "current_status": "awaiting_user",
-            }
-        )
-
-        # Generate follow-up options
-        follow_up_opts = generate_follow_up_options(
-            verdict=verdict,
-            score=score,
-            diagnostics=[],
-            failed_assertions=[],
-        )
-        state = state.model_copy(
-            update={"available_followups": [o.key for o in follow_up_opts]}
-        )
-
-        response = self._format_result_response(
-            run_id=run_id,
-            verdict=verdict,
-            score=score,
-            follow_up_opts=follow_up_opts,
-        )
-        return state, response
+        return state, response_text
 
     async def _handle_follow_up(
         self,
         state: TestSessionState,
         intent: dict,
+        session_agent=None,
     ) -> tuple[TestSessionState, str]:
-        """Run a follow-up test based on the detected intent."""
-        from app.services.test_lab.execution_engine import execute_test_from_request
+        """Delegate the follow-up request to the SessionAgent."""
         from app.services.test_lab.subagents import generate_follow_up_options
 
-        # Validate prerequisites
         if not state.target_agent_id:
             return state, "No agent selected. Please select an agent before running a follow-up."
         if not state.last_run_id:
             return state, "No previous run found. Run an initial test first."
 
+        if session_agent is None:
+            from app.services.test_lab.session_agent import SessionAgent
+            session_agent = SessionAgent()
+
         follow_up_type = intent.get("follow_up_type") or "rerun"
-        original_input = intent.get("objective") or state.last_objective or ""
-
-        # Build follow-up request
-        request = build_follow_up_request(
-            state=state,
-            follow_up_type=follow_up_type,
-            original_input=original_input,
-            original_assertions=[],
+        follow_up_message = (
+            f"[{follow_up_type.upper()}] {intent.get('objective') or state.last_objective or ''}"
         )
 
-        # Execute
-        try:
-            result_dict = await execute_test_from_request(request)
-        except Exception as exc:
-            logger.exception("Follow-up execution failed")
-            return state, f"Follow-up execution failed: {exc}"
+        context = _session_context(state)
+        response_text, run_result = await session_agent.run(follow_up_message, context)
 
-        run_id = result_dict.get("run_id", "")
-        scenario_id = result_dict.get("scenario_id", "")
-        verdict = result_dict.get("verdict", "unknown")
-        score = float(result_dict.get("score", 0.0))
+        state = _apply_run_result(state, run_result, state.last_objective)
 
-        # Update session state
-        recent = list(state.recent_run_ids) + [run_id]
-        state = state.model_copy(
-            update={
-                "last_objective": state.last_objective,
-                "last_scenario_id": scenario_id,
-                "last_run_id": run_id,
-                "last_verdict": verdict,
-                "last_score": score,
-                "recent_run_ids": recent,
-                "current_status": "awaiting_user",
-            }
-        )
+        if run_result:
+            follow_up_opts = generate_follow_up_options(
+                verdict=run_result.get("verdict", "unknown"),
+                score=float(run_result.get("score", 0)),
+                diagnostics=[],
+                failed_assertions=[],
+            )
+            state = state.model_copy(
+                update={"available_followups": [o.key for o in follow_up_opts]}
+            )
 
-        # Generate follow-up options for the new run
-        follow_up_opts = generate_follow_up_options(
-            verdict=verdict,
-            score=score,
-            diagnostics=[],
-            failed_assertions=[],
-        )
-        state = state.model_copy(
-            update={"available_followups": [o.key for o in follow_up_opts]}
-        )
-
-        response = self._format_result_response(
-            run_id=run_id,
-            verdict=verdict,
-            score=score,
-            follow_up_opts=follow_up_opts,
-            follow_up_type=follow_up_type,
-        )
-        return state, response
-
-    # ── Formatting helpers ────────────────────────────────────────────────────
-
-    @staticmethod
-    def _format_result_response(
-        run_id: str,
-        verdict: str,
-        score: float,
-        follow_up_opts: list[FollowUpOption],
-        follow_up_type: str | None = None,
-    ) -> str:
-        header = (
-            f"**Follow-up ({follow_up_type})** completed."
-            if follow_up_type
-            else "**Test run** completed."
-        )
-        lines = [
-            header,
-            "",
-            f"- Run ID: `{run_id}`",
-            f"- Verdict: **{verdict}**",
-            f"- Score: **{score}/100**",
-            "",
-            "**Suggested next steps:**",
-        ]
-        for opt in follow_up_opts:
-            lines.append(f"- `{opt.key}` — {opt.label}")
-        return "\n".join(lines)
+        return state, response_text
 
     @staticmethod
     def _help_text() -> str:
