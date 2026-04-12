@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type {
   AgentCreatePayload,
   AgentDefinition,
@@ -106,6 +106,7 @@ export function AgentForm({
   const [llmProvider, setLlmProvider] = useState(initial?.llm_provider ?? "");
   const [llmModel, setLlmModel] = useState(initial?.llm_model ?? "");
   const [allowCodeExecution, setAllowCodeExecution] = useState(initial?.allow_code_execution ?? false);
+  const [allowedBuiltinTools, setAllowedBuiltinTools] = useState<string[]>(initial?.allowed_builtin_tools ?? []);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
 
   useEffect(() => {
@@ -231,6 +232,7 @@ export function AgentForm({
       llm_provider: llmProvider.trim() || null,
       llm_model: llmModel.trim() || null,
       allow_code_execution: allowCodeExecution,
+      allowed_builtin_tools: allowedBuiltinTools.length > 0 ? allowedBuiltinTools : null,
       version: version.trim() || "1.0.0",
       status,
       owner: owner.trim() || null,
@@ -629,26 +631,128 @@ export function AgentForm({
         <p className="text-[10px] font-mono text-ork-dim">
           Leave empty to use the platform default LLM configuration.
         </p>
-        <div className="flex items-center justify-between pt-1 border-t border-ork-border/30">
-          <div>
-            <p className="text-xs font-mono text-ork-text">Code execution</p>
-            <p className="text-[10px] font-mono text-ork-dim mt-0.5">
-              Enable <span className="text-ork-cyan">execute_python_code</span> — agent can run Python to call any external API.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setAllowCodeExecution((v) => !v)}
-            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
-              allowCodeExecution ? "bg-ork-amber" : "bg-ork-border"
-            }`}
-          >
-            <span
-              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                allowCodeExecution ? "translate-x-4" : "translate-x-0.5"
-              }`}
-            />
-          </button>
+        {/* Built-in tool functions — unified toggle list */}
+        <div className="pt-1 border-t border-ork-border/30 space-y-0">
+          <p className="text-xs font-mono text-ork-text mb-2">Built-in tool functions</p>
+          {([
+            {
+              name: "execute_python_code",
+              desc: <>Enable <span className="text-ork-cyan">execute_python_code</span> — run Python, call external APIs. Requires platform toggle ON.</>,
+              color: "bg-ork-amber",
+              checked: allowCodeExecution,
+              onToggle: () => setAllowCodeExecution((v) => !v),
+            },
+            {
+              name: "execute_shell_command",
+              desc: <>Enable <span className="text-ork-cyan">execute_shell_command</span> — run shell commands in an isolated sandbox.</>,
+              color: "bg-ork-red",
+              checked: allowedBuiltinTools.includes("execute_shell_command"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("execute_shell_command") ? p.filter((t) => t !== "execute_shell_command") : [...p, "execute_shell_command"]),
+            },
+            {
+              name: "view_text_file",
+              desc: <>Enable <span className="text-ork-cyan">view_text_file</span> — read files from the filesystem sandbox.</>,
+              color: "bg-ork-green",
+              checked: allowedBuiltinTools.includes("view_text_file"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("view_text_file") ? p.filter((t) => t !== "view_text_file") : [...p, "view_text_file"]),
+            },
+            {
+              name: "write_text_file",
+              desc: <>Enable <span className="text-ork-cyan">write_text_file</span> — write/overwrite files in the filesystem sandbox.</>,
+              color: "bg-ork-green",
+              checked: allowedBuiltinTools.includes("write_text_file"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("write_text_file") ? p.filter((t) => t !== "write_text_file") : [...p, "write_text_file"]),
+            },
+            {
+              name: "insert_text_file",
+              desc: <>Enable <span className="text-ork-cyan">insert_text_file</span> — insert text into files in the filesystem sandbox.</>,
+              color: "bg-ork-green",
+              checked: allowedBuiltinTools.includes("insert_text_file"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("insert_text_file") ? p.filter((t) => t !== "insert_text_file") : [...p, "insert_text_file"]),
+            },
+            {
+              name: "dashscope_text_to_image",
+              desc: <>Enable <span className="text-ork-cyan">dashscope_text_to_image</span> — generate images from text (DashScope).</>,
+              color: "bg-ork-amber",
+              checked: allowedBuiltinTools.includes("dashscope_text_to_image"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("dashscope_text_to_image") ? p.filter((t) => t !== "dashscope_text_to_image") : [...p, "dashscope_text_to_image"]),
+            },
+            {
+              name: "dashscope_text_to_audio",
+              desc: <>Enable <span className="text-ork-cyan">dashscope_text_to_audio</span> — generate audio from text (DashScope).</>,
+              color: "bg-ork-amber",
+              checked: allowedBuiltinTools.includes("dashscope_text_to_audio"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("dashscope_text_to_audio") ? p.filter((t) => t !== "dashscope_text_to_audio") : [...p, "dashscope_text_to_audio"]),
+            },
+            {
+              name: "dashscope_image_to_text",
+              desc: <>Enable <span className="text-ork-cyan">dashscope_image_to_text</span> — describe images (DashScope).</>,
+              color: "bg-ork-amber",
+              checked: allowedBuiltinTools.includes("dashscope_image_to_text"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("dashscope_image_to_text") ? p.filter((t) => t !== "dashscope_image_to_text") : [...p, "dashscope_image_to_text"]),
+            },
+            {
+              name: "openai_text_to_image",
+              desc: <>Enable <span className="text-ork-cyan">openai_text_to_image</span> — generate images from text (OpenAI).</>,
+              color: "bg-ork-cyan",
+              checked: allowedBuiltinTools.includes("openai_text_to_image"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("openai_text_to_image") ? p.filter((t) => t !== "openai_text_to_image") : [...p, "openai_text_to_image"]),
+            },
+            {
+              name: "openai_text_to_audio",
+              desc: <>Enable <span className="text-ork-cyan">openai_text_to_audio</span> — generate audio from text (OpenAI).</>,
+              color: "bg-ork-cyan",
+              checked: allowedBuiltinTools.includes("openai_text_to_audio"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("openai_text_to_audio") ? p.filter((t) => t !== "openai_text_to_audio") : [...p, "openai_text_to_audio"]),
+            },
+            {
+              name: "openai_edit_image",
+              desc: <>Enable <span className="text-ork-cyan">openai_edit_image</span> — edit images (OpenAI).</>,
+              color: "bg-ork-cyan",
+              checked: allowedBuiltinTools.includes("openai_edit_image"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("openai_edit_image") ? p.filter((t) => t !== "openai_edit_image") : [...p, "openai_edit_image"]),
+            },
+            {
+              name: "openai_create_image_variation",
+              desc: <>Enable <span className="text-ork-cyan">openai_create_image_variation</span> — create image variations (OpenAI).</>,
+              color: "bg-ork-cyan",
+              checked: allowedBuiltinTools.includes("openai_create_image_variation"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("openai_create_image_variation") ? p.filter((t) => t !== "openai_create_image_variation") : [...p, "openai_create_image_variation"]),
+            },
+            {
+              name: "openai_image_to_text",
+              desc: <>Enable <span className="text-ork-cyan">openai_image_to_text</span> — describe images (OpenAI).</>,
+              color: "bg-ork-cyan",
+              checked: allowedBuiltinTools.includes("openai_image_to_text"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("openai_image_to_text") ? p.filter((t) => t !== "openai_image_to_text") : [...p, "openai_image_to_text"]),
+            },
+            {
+              name: "openai_audio_to_text",
+              desc: <>Enable <span className="text-ork-cyan">openai_audio_to_text</span> — transcribe audio to text (OpenAI).</>,
+              color: "bg-ork-cyan",
+              checked: allowedBuiltinTools.includes("openai_audio_to_text"),
+              onToggle: () => setAllowedBuiltinTools((p) => p.includes("openai_audio_to_text") ? p.filter((t) => t !== "openai_audio_to_text") : [...p, "openai_audio_to_text"]),
+            },
+          ] as { name: string; desc: React.ReactNode; color: string; checked: boolean; onToggle: () => void }[]).map(({ name, desc, color, checked, onToggle }) => (
+            <div key={name} className="flex items-center justify-between py-1.5 border-b border-ork-border/20 last:border-0">
+              <div className="flex-1 min-w-0 pr-4">
+                <p className="text-[10px] font-mono text-ork-dim leading-snug">{desc}</p>
+              </div>
+              <button
+                type="button"
+                onClick={onToggle}
+                className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                  checked ? color : "bg-ork-border"
+                }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                    checked ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+          ))}
         </div>
       </section>
 

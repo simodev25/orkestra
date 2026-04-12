@@ -36,6 +36,7 @@ class AgentCreate(OrkBaseSchema):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     allow_code_execution: bool = False
+    allowed_builtin_tools: Optional[list[str]] = None
     version: str = "1.0.0"
     status: AgentStatus = AgentStatus.DRAFT
     owner: Optional[str] = None
@@ -63,6 +64,7 @@ class AgentUpdate(OrkBaseSchema):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     allow_code_execution: Optional[bool] = None
+    allowed_builtin_tools: Optional[list[str]] = None
     version: Optional[str] = None
     status: Optional[AgentStatus] = None
     owner: Optional[str] = None
@@ -96,6 +98,7 @@ class AgentOut(OrkBaseSchema):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     allow_code_execution: bool = False
+    allowed_builtin_tools: Optional[list[str]] = None
     version: str
     status: AgentStatus
     owner: Optional[str]

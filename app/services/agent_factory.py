@@ -189,6 +189,20 @@ async def create_agentscope_agent(
                     f"Agent {agent_def.id}: allow_code_execution=True but platform toggle is OFF — skipping"
                 )
 
+        # Register agentscope built-in tools selected for this agent
+        # Each tool gets its appropriate sandbox image (BaseSandbox / FilesystemSandbox)
+        # with automatic fallback to the bare function when Docker DinD is unavailable.
+        builtin_tools = getattr(agent_def, "allowed_builtin_tools", None) or []
+        if builtin_tools:
+            from app.services.sandbox_tool import get_sandboxed_tool
+            for tool_name in builtin_tools:
+                tool_fn = get_sandboxed_tool(tool_name)
+                if tool_fn is not None:
+                    toolkit.register_tool_function(tool_fn)
+                    logger.info(f"Agent {agent_def.id}: registered built-in tool '{tool_name}'")
+                else:
+                    logger.warning(f"Agent {agent_def.id}: built-in tool '{tool_name}' not available")
+
         # Register local tool functions, enforcing the MCP allowlist
         if tools_to_register:
             from app.services.mcp_tool_registry import get_mcp_id_for_tool

@@ -42,6 +42,7 @@ export interface AgentDefinition {
   llm_provider: string | null;
   llm_model: string | null;
   allow_code_execution: boolean;
+  allowed_builtin_tools: string[] | null;
   version: string;
   status: AgentStatus;
   owner: string | null;
@@ -153,6 +154,7 @@ export interface AgentCreatePayload {
   llm_provider?: string | null;
   llm_model?: string | null;
   allow_code_execution?: boolean;
+  allowed_builtin_tools?: string[] | null;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;
@@ -182,6 +184,7 @@ export interface AgentUpdatePayload {
   llm_provider?: string | null;
   llm_model?: string | null;
   allow_code_execution?: boolean;
+  allowed_builtin_tools?: string[] | null;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;

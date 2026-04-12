@@ -94,6 +94,7 @@ async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payloa
     agent.llm_provider = payload.llm_provider
     agent.llm_model = payload.llm_model
     agent.allow_code_execution = payload.allow_code_execution
+    agent.allowed_builtin_tools = payload.allowed_builtin_tools or []
     agent.skills_ref = payload.skills_ref
     # Auto-generate skills_content from resolved skill_ids if not explicitly provided
     skill_ids = _dedupe_str_list(payload.skill_ids)
@@ -546,6 +547,7 @@ async def enrich_agent(db: AsyncSession, agent: AgentDefinition) -> dict:
         "llm_provider": agent.llm_provider,
         "llm_model": agent.llm_model,
         "allow_code_execution": agent.allow_code_execution,
+        "allowed_builtin_tools": agent.allowed_builtin_tools or [],
         "version": agent.version,
         "status": agent.status,
         "owner": agent.owner,
