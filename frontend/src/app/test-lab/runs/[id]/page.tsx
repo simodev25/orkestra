@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { RunTopbar } from "@/components/test-lab/run-graph/RunTopbar";
+import { RunGraph } from "@/components/test-lab/run-graph/RunGraph";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { request } from "@/lib/api-client";
 import {
@@ -14,7 +16,6 @@ import {
   Shield,
   Target,
   FileText,
-  Play,
   Send,
   Loader2,
   MessageSquare,
@@ -289,6 +290,7 @@ export default function TestRunDetailPage() {
 
   const [run, setRun] = useState<any>(null);
   const [rerunning, setRerunning] = useState(false);
+  const [view, setView] = useState<'graph' | 'timeline'>('graph');
   const [events, setEvents] = useState<any[]>([]);
   const [assertions, setAssertions] = useState<any[]>([]);
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
@@ -315,7 +317,16 @@ export default function TestRunDetailPage() {
         setRun(runData);
         statusRef.current = runData.status;
       }
-      setEvents(Array.isArray(eventsData) ? eventsData : eventsData?.items ?? []);
+      const newEvents = Array.isArray(eventsData) ? eventsData : eventsData?.items ?? [];
+      setEvents(prev => {
+        // Avoid creating a new reference (and re-running animation effects) when
+        // fetchData is called again with the same event list (e.g. SSE triggers a refetch).
+        if (prev.length === newEvents.length &&
+            (prev.length === 0 || prev[prev.length - 1]?.id === newEvents[newEvents.length - 1]?.id)) {
+          return prev;
+        }
+        return newEvents;
+      });
       setAssertions(Array.isArray(assertionsData) ? assertionsData : assertionsData?.items ?? []);
       setDiagnostics(Array.isArray(diagnosticsData) ? diagnosticsData : diagnosticsData?.items ?? []);
       setError(null);
@@ -387,45 +398,68 @@ export default function TestRunDetailPage() {
   const verdictInfo = run?.verdict ? VERDICT_DISPLAY[run.verdict] : null;
   const isLive = run?.status === "running" || run?.status === "queued";
 
+  const rerunHandler = async () => {
+    if (!run?.scenario_id) return;
+    setRerunning(true);
+    try {
+      const newRun = await request<any>(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: 'POST' });
+      router.push(`/test-lab/runs/${newRun.id}`);
+    } catch {
+      setRerunning(false);
+    }
+  };
+
+  // ── Graph view ──────────────────────────────────────────────────────
+  if (view === 'graph' && run) {
+    return (
+      <div className="flex flex-col" style={{ height: '100vh', overflow: 'hidden' }}>
+        <RunTopbar
+          run={run}
+          view={view}
+          onViewChange={setView}
+          onRerun={rerunHandler}
+          rerunning={rerunning}
+        />
+        <div className="flex-1 overflow-hidden">
+          <RunGraph run={run} events={events} diagnostics={diagnostics} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/test-lab" className="text-ork-muted hover:text-ork-cyan transition-colors text-xs font-mono">TEST LAB /</Link>
-          <div>
-            <div className="flex items-center gap-3">
-              <FlaskConical size={16} className="text-ork-purple" />
-              <h1 className="font-mono text-sm tracking-wide text-ork-text">Run {id?.slice(0, 16)}...</h1>
-              {run && <StatusBadge status={run.status} />}
-              {verdictInfo && (
-                <span className={`flex items-center gap-1 text-xs font-mono font-semibold ${verdictInfo.color}`}>
-                  {verdictInfo.icon === "pass" && <CheckCircle size={14} />}
-                  {verdictInfo.icon === "warn" && <AlertTriangle size={14} />}
-                  {verdictInfo.icon === "fail" && <XCircle size={14} />}
-                  {verdictInfo.label}
-                </span>
-              )}
-            </div>
-            <p className="text-[10px] text-ork-dim font-mono mt-0.5">Agent: {run?.agent_id} &middot; v{run?.agent_version}</p>
-          </div>
+      {/* Topbar in timeline mode */}
+      {run && (
+        <div className="-mx-6 -mt-6 mb-4">
+          <RunTopbar
+            run={run}
+            view={view}
+            onViewChange={setView}
+            onRerun={rerunHandler}
+            rerunning={rerunning}
+          />
         </div>
-        {run?.scenario_id && run?.status !== "running" && run?.status !== "queued" && (
-          <button
-            disabled={rerunning}
-            onClick={async () => {
-              setRerunning(true);
-              try {
-                const newRun = await request<{ id: string }>(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: "POST" });
-                router.push(`/test-lab/runs/${newRun.id}`);
-              } catch { /* ignore */ }
-              finally { setRerunning(false); }
-            }}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider rounded border bg-ork-cyan/10 text-ork-cyan border-ork-cyan/30 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40"
-          >
-            <Play size={13} /> {rerunning ? "Running..." : "Re-run"}
-          </button>
-        )}
+      )}
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Link href="/test-lab" className="text-ork-muted hover:text-ork-cyan transition-colors text-xs font-mono">TEST LAB /</Link>
+        <div>
+          <div className="flex items-center gap-3">
+            <FlaskConical size={16} className="text-ork-purple" />
+            <h1 className="font-mono text-sm tracking-wide text-ork-text">Run {id?.slice(0, 16)}...</h1>
+            {run && <StatusBadge status={run.status} />}
+            {verdictInfo && (
+              <span className={`flex items-center gap-1 text-xs font-mono font-semibold ${verdictInfo.color}`}>
+                {verdictInfo.icon === "pass" && <CheckCircle size={14} />}
+                {verdictInfo.icon === "warn" && <AlertTriangle size={14} />}
+                {verdictInfo.icon === "fail" && <XCircle size={14} />}
+                {verdictInfo.label}
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-ork-dim font-mono mt-0.5">Agent: {run?.agent_id} &middot; v{run?.agent_version}</p>
+        </div>
       </div>
 
       {/* Stats Row */}
@@ -456,6 +490,16 @@ export default function TestRunDetailPage() {
           <p className="font-mono text-sm text-ork-muted mt-1">{formatDate(run?.started_at)} &rarr; {formatDate(run?.ended_at)}</p>
         </div>
       </div>
+
+      {/* Final Output — shown prominently before the event timeline */}
+      {run?.final_output && (
+        <div>
+          <h2 className="section-title mb-4 flex items-center gap-2"><FileText size={13} /> Agent Output</h2>
+          <div className="glass-panel p-0 overflow-hidden border border-ork-cyan/20">
+            <pre className="p-5 text-xs font-mono text-ork-muted whitespace-pre-wrap max-h-[500px] overflow-y-auto leading-relaxed">{run.final_output}</pre>
+          </div>
+        </div>
+      )}
 
       {/* Error Message */}
       {run?.error_message && (
@@ -617,16 +661,6 @@ export default function TestRunDetailPage() {
                 </div>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* Final Output */}
-      {run?.final_output && (
-        <div>
-          <h2 className="section-title mb-4 flex items-center gap-2"><FileText size={13} /> Final Output</h2>
-          <div className="glass-panel p-0 overflow-hidden">
-            <pre className="p-5 text-xs font-mono text-ork-muted whitespace-pre-wrap max-h-[500px] overflow-y-auto leading-relaxed">{run.final_output}</pre>
           </div>
         </div>
       )}

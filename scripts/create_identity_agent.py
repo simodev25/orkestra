@@ -116,7 +116,16 @@ Always return this exact structure whether resolution succeeded or failed:
   "identity_confidence": 0.95,
   "alternatives_rejected": [],
   "sources": ["recherche-entreprises.api.gouv.fr"],
-  "explanation": "Resolved via SIREN lookup on recherche-entreprises.api.gouv.fr. Single match found, siege confirmed."
+  "explanation": "Resolved via SIREN lookup on recherche-entreprises.api.gouv.fr. Single match found: ACME SAS (GE), siege at 12 RUE EXAMPLE 75001 PARIS, 5 open establishments, created 1990-01-01, NAF 70.10Z.",
+  "address": "12 RUE EXAMPLE 75001 PARIS",
+  "legal_form_code": "5599",
+  "naf_code": "70.10Z",
+  "creation_date": "1990-01-01",
+  "nb_open_establishments": 5,
+  "category": "GE",
+  "dirigeants": [
+    {"nom": "DUPONT", "prenoms": "JEAN", "qualite": "Directeur Général"}
+  ]
 }
 
 When resolution fails:
@@ -129,10 +138,27 @@ When resolution fails:
   "identity_confidence": 0.0,
   "alternatives_rejected": [],
   "sources": [],
-  "explanation": "Reason for failure."
+  "explanation": "Reason for failure.",
+  "address": null,
+  "legal_form_code": null,
+  "naf_code": null,
+  "creation_date": null,
+  "nb_open_establishments": null,
+  "category": null,
+  "dirigeants": []
 }
 
-The explanation field is ALWAYS required — never null. For successful resolutions, describe the source used and why the match is confident.
+The explanation field is ALWAYS required — never null. For successful resolutions, describe the source used,
+mention the company name, address, category (GE/ETI/PME/TPE), and why the match is confident. Include actual
+values from the API response — do not use generic text.
+Fields to populate from API data:
+- address: siege.adresse (full address string)
+- legal_form_code: nature_juridique
+- naf_code: activite_principale
+- creation_date: date_creation (company level, not siege)
+- nb_open_establishments: nombre_etablissements_ouverts
+- category: categorie_entreprise (GE/ETI/PME/TPE)
+- dirigeants: list of {nom, prenoms, qualite} — include only top 3 max
 
 ## Rules
 - ALWAYS output raw JSON as your final answer.
@@ -162,8 +188,10 @@ SCENARIO = {
         "Resolve the company identity for SIREN 552032534. "
         "Use the available tools to query public data sources. "
         "Do NOT answer from memory — retrieve live data. "
-        "Return a structured JSON result with resolved, company_name, siren, "
-        "main_siret, identity_confidence, sources, and explanation."
+        "Return a structured JSON result with all required fields including "
+        "resolved, company_name, siren, main_siret, identity_confidence, sources, "
+        "explanation, address, legal_form_code, naf_code, creation_date, "
+        "nb_open_establishments, category, and dirigeants."
     ),
     "timeout_seconds": 180,
     "max_iterations": 15,
@@ -171,6 +199,10 @@ SCENARIO = {
         {"type": "no_tool_failures", "critical": True},
         {"type": "output_field_exists", "target": "resolved", "critical": True},
         {"type": "output_field_exists", "target": "identity_confidence", "critical": True},
+        {"type": "output_field_exists", "target": "address", "critical": False},
+        {"type": "output_field_exists", "target": "naf_code", "critical": False},
+        {"type": "output_field_exists", "target": "creation_date", "critical": False},
+        {"type": "output_field_exists", "target": "dirigeants", "critical": False},
         {"type": "output_contains", "expected": "552032534", "critical": True},
         {"type": "max_duration_ms", "expected": "120000", "critical": False},
     ],

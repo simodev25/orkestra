@@ -44,6 +44,7 @@ const STATUS_COLORS: Record<string, string> = {
   validated: "bg-ork-green/15 text-ork-green border-ork-green/30",
   not_tested: "bg-ork-dim/20 text-ork-muted border-ork-dim/30",
   passed: "bg-ork-green/15 text-ork-green border-ork-green/30",
+  passed_with_warnings: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
   partial: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
 };
 
