@@ -130,9 +130,9 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
                   ÉVÉNEMENTS ({node.events.length})
                 </p>
                 <div className="flex flex-col gap-1.5">
-                  {node.events.slice(0, 10).map((ev) => (
+                  {node.events.slice(0, 10).map((ev, i) => (
                     <div
-                      key={ev.id}
+                      key={`${ev.id}-${i}`}
                       className="flex items-start gap-2 rounded-lg p-2"
                       style={{ background: '#0d0d18', border: '1px solid #1a1a28' }}
                     >
