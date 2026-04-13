@@ -351,19 +351,21 @@ export default function ScenarioDetailPage() {
                     <td className="px-4 py-2.5">
                       {run.verdict ? (
                         <span className="flex items-center gap-1">
-                          {run.verdict === "pass" ? (
+                          {run.verdict === "passed" ? (
                             <CheckCircle size={12} className="text-ork-green" />
+                          ) : run.verdict === "passed_with_warnings" ? (
+                            <CheckCircle size={12} className="text-ork-amber" />
                           ) : (
                             <XCircle size={12} className="text-ork-red" />
                           )}
-                          <StatusBadge status={run.verdict === "pass" ? "passed" : "failed"} />
+                          <StatusBadge status={run.verdict} />
                         </span>
                       ) : (
                         <span className="text-ork-dim font-mono">--</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-ork-text">
-                      {run.score != null ? `${(run.score * 100).toFixed(0)}%` : "--"}
+                      {run.score != null ? `${run.score.toFixed(0)}/100` : "--"}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-ork-dim">
                       {run.duration_ms != null ? `${(run.duration_ms / 1000).toFixed(1)}s` : "--"}

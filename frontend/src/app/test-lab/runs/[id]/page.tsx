@@ -509,6 +509,16 @@ export default function TestRunDetailPage() {
         </div>
       </div>
 
+      {/* Final Output — shown prominently before the event timeline */}
+      {run?.final_output && (
+        <div>
+          <h2 className="section-title mb-4 flex items-center gap-2"><FileText size={13} /> Agent Output</h2>
+          <div className="glass-panel p-0 overflow-hidden border border-ork-cyan/20">
+            <pre className="p-5 text-xs font-mono text-ork-muted whitespace-pre-wrap max-h-[500px] overflow-y-auto leading-relaxed">{run.final_output}</pre>
+          </div>
+        </div>
+      )}
+
       {/* Error Message */}
       {run?.error_message && (
         <div className="glass-panel p-4 border-ork-red/30 bg-ork-red/5">
@@ -669,16 +679,6 @@ export default function TestRunDetailPage() {
                 </div>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* Final Output */}
-      {run?.final_output && (
-        <div>
-          <h2 className="section-title mb-4 flex items-center gap-2"><FileText size={13} /> Final Output</h2>
-          <div className="glass-panel p-0 overflow-hidden">
-            <pre className="p-5 text-xs font-mono text-ork-muted whitespace-pre-wrap max-h-[500px] overflow-y-auto leading-relaxed">{run.final_output}</pre>
           </div>
         </div>
       )}

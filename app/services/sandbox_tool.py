@@ -36,6 +36,40 @@ def _docker_socket_accessible() -> bool:
     return os.path.exists("/var/run/docker.sock")
 
 
+def _extract_ipython_text(result: dict) -> str:
+    """Extract plain text from a run_ipython_cell result dict.
+
+    BaseSandbox returns Jupyter-style cell output — a dict with an ``output``
+    key that is a *list* of cell output objects (stream, execute_result, error).
+    We also check ``stdout`` as a plain-string fallback.
+    """
+    # Plain string fallback (some sandbox versions use this)
+    stdout = result.get("stdout") or ""
+    if stdout:
+        return stdout.strip()
+
+    output_cells = result.get("output") or []
+    if isinstance(output_cells, str):
+        return output_cells.strip()
+
+    parts: list[str] = []
+    for cell in output_cells:
+        if not isinstance(cell, dict):
+            parts.append(str(cell))
+            continue
+        otype = cell.get("output_type", "")
+        if otype == "stream":
+            parts.append(cell.get("text", ""))
+        elif otype == "execute_result":
+            data = cell.get("data", {})
+            parts.append(data.get("text/plain", ""))
+        elif otype == "error":
+            parts.append(f"{cell.get('ename', 'Error')}: {cell.get('evalue', '')}")
+        elif "text" in cell:
+            parts.append(cell["text"])
+    return "\n".join(p for p in parts if p).strip()
+
+
 def _probe_base_sandbox() -> bool:
     """Return True if BaseSandbox can actually create and run a container."""
     global _base_sandbox_ok
@@ -45,7 +79,7 @@ def _probe_base_sandbox() -> bool:
         from agentscope_runtime.sandbox import BaseSandbox
         with BaseSandbox() as sb:
             result = sb.run_ipython_cell("print(1)")
-            output = result.get("output", "") if isinstance(result, dict) else str(result)
+            output = _extract_ipython_text(result) if isinstance(result, dict) else str(result)
             _base_sandbox_ok = "1" in output
     except Exception as exc:
         logger.warning(f"BaseSandbox probe failed: {exc}")
@@ -83,9 +117,11 @@ def _make_base_sandboxed(fn_name: str, bare_fn):
                 with BaseSandbox() as sb:
                     result = sb.run_ipython_cell(code)
                     if isinstance(result, dict):
-                        output = result.get("output") or result.get("stdout") or ""
-                        error  = result.get("error")  or result.get("stderr")  or ""
-                        return (f"{output}\n[stderr]: {error}".strip()) if error else (output or "(no output)")
+                        output = _extract_ipython_text(result)
+                        error  = result.get("error") or result.get("stderr") or ""
+                        if error:
+                            return f"{output}\n[stderr]: {error}".strip() if output else f"[stderr]: {error}"
+                        return output or "(no output)"
                     return str(result)
             except Exception as exc:
                 return f"Sandbox execution error: {exc}"
@@ -98,9 +134,16 @@ def _make_base_sandboxed(fn_name: str, bare_fn):
                 with BaseSandbox() as sb:
                     result = sb.run_shell_command(command)
                     if isinstance(result, dict):
-                        output = result.get("output") or result.get("stdout") or ""
-                        error  = result.get("error")  or result.get("stderr")  or ""
-                        return (f"{output}\n[stderr]: {error}".strip()) if error else (output or "(no output)")
+                        output = result.get("stdout") or result.get("output") or ""
+                        if isinstance(output, list):
+                            output = "\n".join(
+                                c.get("text", "") if isinstance(c, dict) else str(c)
+                                for c in output
+                            ).strip()
+                        error = result.get("error") or result.get("stderr") or ""
+                        if error:
+                            return f"{output}\n[stderr]: {error}".strip() if output else f"[stderr]: {error}"
+                        return str(output) or "(no output)"
                     return str(result)
             except Exception as exc:
                 return f"Sandbox execution error: {exc}"
