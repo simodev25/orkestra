@@ -155,6 +155,7 @@ _ALLOWED_UPDATE_FIELDS = frozenset({
     "duration_ms",
     "started_at",
     "ended_at",
+    "agent_version",
 })
 
 

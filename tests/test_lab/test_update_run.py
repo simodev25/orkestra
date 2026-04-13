@@ -27,6 +27,7 @@ class TestAllowedFieldsWhitelist:
             "status", "final_output", "score", "verdict", "summary",
             "error_message", "assertion_results", "diagnostic_results",
             "iteration_count", "duration_ms", "started_at", "ended_at",
+            "agent_version",
         }
         assert expected == _ALLOWED_UPDATE_FIELDS
 
