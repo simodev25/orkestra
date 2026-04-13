@@ -23,15 +23,9 @@ import { AnimatedEdge } from './edges/AnimatedEdge';
 import { DetailPanel } from './DetailPanel';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const NODE_TYPES: any = {
-  orchestratorNode: OrchestratorNode,
-  agentNode: AgentNode,
-};
-
+const NODE_TYPES: any = { orchestratorNode: OrchestratorNode, agentNode: AgentNode };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const EDGE_TYPES: any = {
-  animatedEdge: AnimatedEdge,
-};
+const EDGE_TYPES: any = { animatedEdge: AnimatedEdge };
 
 interface RunGraphProps {
   run: TestRun;
@@ -39,27 +33,21 @@ interface RunGraphProps {
   diagnostics: TestRunDiagnostic[];
 }
 
-/** Total animation duration to replay the full run (ms) */
+/** Replay duration for completed runs */
 const ANIM_DURATION_MS = 5000;
 
-/** Events that signal a phase node has started */
+/** Events that mean a phase just started */
 const PHASE_START_EVENTS = new Set([
-  'subagent_start',   // preparation agent starting
-  'phase_start',      // runtime phase starting
-  'phase_started',    // generic fallback
-  'assertion_phase_started',
-  'diagnostic_phase_started',
-  'report_phase_started',
+  'subagent_start', 'phase_start', 'phase_started',
+  'assertion_phase_started', 'diagnostic_phase_started', 'report_phase_started',
 ]);
 
-/** Events that signal a phase node has completed */
+/** Events that mean a phase just finished */
 const PHASE_DONE_EVENTS = new Set([
-  'subagent_done',    // preparation agent done
-  'agent_done',       // runtime agent done
-  'phase_completed',  // generic fallback
+  'subagent_done', 'agent_done', 'phase_completed',
 ]);
 
-/** Normalize event phase strings to node IDs */
+/** Normalize API phase strings to ReactFlow node IDs */
 const PHASE_MAP: Record<string, string> = {
   orchestration: 'orchestrator',
   orchestrator:  'orchestrator',
@@ -71,8 +59,15 @@ const PHASE_MAP: Record<string, string> = {
   verdict:       'report',
 };
 
-/** How long the edge pulses before the node pops in (ms, in animation time) */
+/** Edge pulses this long before the target node springs in */
 const EDGE_LEAD_MS = 400;
+
+function statusFromEvent(ev: TestRunEvent): string {
+  const msg = (ev.message ?? '').toLowerCase();
+  if (msg.includes('fail') || msg.includes('error')) return 'failed';
+  if (msg.includes('warn')) return 'warning';
+  return 'completed';
+}
 
 export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
   const { nodes: initNodes, edges: initEdges } = useMemo(
@@ -80,120 +75,180 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
     [events, run, diagnostics]
   );
 
-  const [nodes, , onNodesChange] = useNodesState<RunNode>(initNodes);
-  const [edges, , onEdgesChange] = useEdgesState<RunEdge>(initEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState<RunNode>(initNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<RunEdge>(initEdges);
   const [selectedNodeData, setSelectedNodeData] = useState<AgentNodeData | null>(null);
 
-  // ── Progressive reveal state ───────────────────────────────────────────────
-  const [visiblePhases, setVisiblePhases]       = useState<Set<string>>(new Set(['orchestrator']));
+  // ── Animation state ────────────────────────────────────────────────────────
+  const [visiblePhases, setVisiblePhases]         = useState<Set<string>>(new Set(['orchestrator']));
   const [activeEdgeTargets, setActiveEdgeTargets] = useState<Set<string>>(new Set());
-  const [phaseStatuses, setPhaseStatuses]       = useState<Record<string, string>>({ orchestrator: 'running' });
+  const [phaseStatuses, setPhaseStatuses]         = useState<Record<string, string>>({ orchestrator: 'running' });
 
-  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const timeoutsRef      = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /** IDs of events already processed (live mode) */
+  const processedIdsRef  = useRef<Set<string>>(new Set());
+  /** True once the completed-run replay has been scheduled */
+  const replayDoneRef    = useRef(false);
 
-  // Schedule progressive reveal driven by event timestamps
+  const isLive = run.status === 'running' || run.status === 'queued';
+
+  // ── Sync ReactFlow nodes/edges when graph structure grows (live mode) ───────
+  useEffect(() => { setNodes(initNodes); }, [initNodes, setNodes]);
+  useEffect(() => { setEdges(initEdges); }, [initEdges, setEdges]);
+
+  // ── Core animation logic ────────────────────────────────────────────────────
   useEffect(() => {
-    // Clear any running animation
-    timeoutsRef.current.forEach(t => clearTimeout(t));
-    timeoutsRef.current = [];
+    if (!isLive) {
+      // ── REPLAY MODE (completed / failed run) ──────────────────────────────
+      // Only schedule once — don't restart when parent re-renders
+      if (replayDoneRef.current) return;
+      replayDoneRef.current = true;
 
-    if (!events.length) {
-      // No events → show everything at final status immediately
-      setVisiblePhases(new Set(initNodes.map(n => n.id)));
-      const statuses: Record<string, string> = {};
-      for (const n of initNodes) statuses[n.id] = n.data.status;
-      setPhaseStatuses(statuses);
-      return;
+      timeoutsRef.current.forEach(t => clearTimeout(t));
+      timeoutsRef.current = [];
+
+      if (!events.length) {
+        setVisiblePhases(new Set(initNodes.map(n => n.id)));
+        const s: Record<string, string> = {};
+        initNodes.forEach(n => { s[n.id] = n.data.status; });
+        setPhaseStatuses(s);
+        return;
+      }
+
+      const timestamps = events.map(e => new Date(e.timestamp).getTime());
+      const startTs    = Math.min(...timestamps);
+      const totalMs    = Math.max(...timestamps) - startTs || 1;
+      const scale      = ANIM_DURATION_MS / totalMs;
+
+      const schedule = (delayMs: number, fn: () => void) => {
+        const t = setTimeout(fn, Math.max(0, delayMs));
+        timeoutsRef.current.push(t);
+      };
+
+      for (const ev of events) {
+        const delay = (new Date(ev.timestamp).getTime() - startTs) * scale;
+
+        if (ev.event_type === 'run_started') {
+          schedule(delay, () => {
+            setVisiblePhases(prev => new Set([...prev, 'orchestrator']));
+            setPhaseStatuses(prev => ({ ...prev, orchestrator: 'running' }));
+          });
+        }
+
+        if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
+          const nodeId = PHASE_MAP[ev.phase];
+          if (nodeId && nodeId !== 'orchestrator') {
+            schedule(delay, () =>
+              setActiveEdgeTargets(prev => new Set([...prev, nodeId]))
+            );
+            schedule(delay + EDGE_LEAD_MS, () => {
+              setVisiblePhases(prev => new Set([...prev, nodeId]));
+              setActiveEdgeTargets(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
+              setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
+            });
+          }
+        }
+
+        if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
+          const nodeId = PHASE_MAP[ev.phase];
+          if (nodeId) {
+            schedule(delay, () =>
+              setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }))
+            );
+          }
+        }
+
+        if (ev.event_type === 'run_completed') {
+          schedule(delay, () =>
+            setActiveEdgeTargets(prev => new Set([...prev, 'report']))
+          );
+          schedule(delay + EDGE_LEAD_MS, () => {
+            setVisiblePhases(prev => new Set([...prev, 'report']));
+            setActiveEdgeTargets(prev => { const n = new Set(prev); n.delete('report'); return n; });
+            setPhaseStatuses(prev => ({
+              ...prev,
+              orchestrator: 'completed',
+              report: statusFromEvent(ev),
+            }));
+          });
+        }
+      }
+
+      return () => timeoutsRef.current.forEach(t => clearTimeout(t));
     }
 
-    const timestamps = events.map(e => new Date(e.timestamp).getTime());
-    const startTs    = Math.min(...timestamps);
-    const totalMs    = Math.max(...timestamps) - startTs || 1;
-    const scale      = ANIM_DURATION_MS / totalMs;
+    // ── LIVE MODE (run still in progress) ────────────────────────────────────
+    // First time: wasEmpty = true → apply current events immediately (no anim)
+    // Subsequent calls: only new events, with edge-lead animation
+    const wasFirstBatch = processedIdsRef.current.size === 0;
+    const newEvents = events.filter(ev => !processedIdsRef.current.has(ev.id));
+    if (newEvents.length === 0) return;
 
-    const schedule = (delayMs: number, fn: () => void) => {
-      const t = setTimeout(fn, Math.max(0, delayMs));
-      timeoutsRef.current.push(t);
-    };
+    newEvents.forEach(ev => processedIdsRef.current.add(ev.id));
 
-    for (const ev of events) {
-      const delay = (new Date(ev.timestamp).getTime() - startTs) * scale;
+    for (const ev of newEvents) {
+      const animated = !wasFirstBatch; // historical → instant; new → animate
 
-      // Orchestrator starts
+      const revealNode = (nodeId: string, leadMs: number) => {
+        if (animated) {
+          setActiveEdgeTargets(prev => new Set([...prev, nodeId]));
+          const t = setTimeout(() => {
+            setVisiblePhases(prev => new Set([...prev, nodeId]));
+            setActiveEdgeTargets(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
+            setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
+          }, leadMs);
+          timeoutsRef.current.push(t);
+        } else {
+          setVisiblePhases(prev => new Set([...prev, nodeId]));
+          setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
+        }
+      };
+
       if (ev.event_type === 'run_started') {
-        schedule(delay, () => {
-          setVisiblePhases(prev => new Set([...prev, 'orchestrator']));
-          setPhaseStatuses(prev => ({ ...prev, orchestrator: 'running' }));
-        });
+        setVisiblePhases(prev => new Set([...prev, 'orchestrator']));
+        setPhaseStatuses(prev => ({ ...prev, orchestrator: 'running' }));
       }
 
-      // Phase/subagent starts → activate edge immediately, reveal node after a short lead
       if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
         const nodeId = PHASE_MAP[ev.phase];
-        if (nodeId && nodeId !== 'orchestrator') {
-          // Edge pulses first
-          schedule(delay, () =>
-            setActiveEdgeTargets(prev => new Set([...prev, nodeId]))
-          );
-          // Node springs in after lead time
-          schedule(delay + EDGE_LEAD_MS, () => {
-            setVisiblePhases(prev => new Set([...prev, nodeId]));
-            setActiveEdgeTargets(prev => {
-              const next = new Set(prev);
-              next.delete(nodeId);
-              return next;
-            });
-            setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
-          });
-        }
+        if (nodeId && nodeId !== 'orchestrator') revealNode(nodeId, EDGE_LEAD_MS);
       }
 
-      // Phase/subagent done → mark final status
       if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
         const nodeId = PHASE_MAP[ev.phase];
-        if (nodeId) {
-          schedule(delay, () => {
-            const msg = (ev.message ?? '').toLowerCase();
-            const s = msg.includes('fail') || msg.includes('error') ? 'failed'
-              : msg.includes('warn') ? 'warning' : 'completed';
-            setPhaseStatuses(prev => ({ ...prev, [nodeId]: s }));
-          });
-        }
+        if (nodeId) setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
       }
 
-      // Run completed → reveal verdict/report node, then mark orchestrator done
       if (ev.event_type === 'run_completed') {
-        // Activate edge to report node
-        schedule(delay, () =>
-          setActiveEdgeTargets(prev => new Set([...prev, 'report']))
-        );
-        // Reveal report node after edge lead
-        schedule(delay + EDGE_LEAD_MS, () => {
+        if (animated) {
+          setActiveEdgeTargets(prev => new Set([...prev, 'report']));
+          const t = setTimeout(() => {
+            setVisiblePhases(prev => new Set([...prev, 'report']));
+            setActiveEdgeTargets(prev => { const n = new Set(prev); n.delete('report'); return n; });
+            setPhaseStatuses(prev => ({
+              ...prev,
+              orchestrator: 'completed',
+              report: statusFromEvent(ev),
+            }));
+          }, EDGE_LEAD_MS);
+          timeoutsRef.current.push(t);
+        } else {
           setVisiblePhases(prev => new Set([...prev, 'report']));
-          setActiveEdgeTargets(prev => {
-            const next = new Set(prev);
-            next.delete('report');
-            return next;
-          });
-          const msg = (ev.message ?? '').toLowerCase();
-          const reportStatus = msg.includes('fail') || msg.includes('error') ? 'failed'
-            : msg.includes('warn') ? 'warning' : 'completed';
           setPhaseStatuses(prev => ({
             ...prev,
             orchestrator: 'completed',
-            report: reportStatus,
+            report: statusFromEvent(ev),
           }));
-        });
+        }
       }
     }
 
-    return () => {
-      timeoutsRef.current.forEach(t => clearTimeout(t));
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events]);
+    return () => timeoutsRef.current.forEach(t => clearTimeout(t));
 
-  // ── Derive display state ───────────────────────────────────────────────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, isLive]);
+
+  // ── Display nodes / edges with animation overlay ───────────────────────────
   const displayNodes = useMemo(
     () => nodes.map(node => ({
       ...node,
@@ -250,38 +305,24 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
             maxZoom={2.0}
             proOptions={{ hideAttribution: true }}
           >
-            <Background
-              variant={BackgroundVariant.Dots}
-              gap={32}
-              size={1}
-              color="rgba(255,255,255,0.04)"
-            />
+            <Background variant={BackgroundVariant.Dots} gap={32} size={1} color="rgba(255,255,255,0.04)" />
             <Controls
               position="bottom-right"
-              style={{
-                background: 'rgba(9,9,18,0.9)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 10,
-              }}
+              style={{ background: 'rgba(9,9,18,0.9)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10 }}
             />
             <MiniMap
               position="bottom-left"
               nodeColor={(node) => {
                 const d = node.data as AgentNodeData;
-                if (!d?.visible)              return 'transparent';
-                if (d?.status === 'running')  return d?.color ?? '#a78bfa';
+                if (!d?.visible)             return 'transparent';
+                if (d?.status === 'running') return d?.color ?? '#a78bfa';
                 return d?.color ?? '#52525b';
               }}
-              style={{
-                background: 'rgba(9,9,18,0.85)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 10,
-              }}
+              style={{ background: 'rgba(9,9,18,0.85)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10 }}
               maskColor="rgba(7,7,15,0.7)"
             />
           </ReactFlow>
         </div>
-
         <DetailPanel node={selectedNodeData} onClose={onPaneClick} />
       </div>
     </div>
