@@ -205,11 +205,10 @@ _CONFIG_CACHE_TTL = 60.0  # secondes
 
 def _get_config_sync() -> dict:
     """Load test lab config from ``test_lab_config`` table using the shared engine."""
-    import time as _time
     from sqlalchemy import text
 
     global _config_cache, _config_cache_ts
-    if _config_cache is not None and (_time.monotonic() - _config_cache_ts) < _CONFIG_CACHE_TTL:
+    if _config_cache is not None and (time.monotonic() - _config_cache_ts) < _CONFIG_CACHE_TTL:
         return _config_cache
 
     config: dict = {
@@ -241,7 +240,7 @@ def _get_config_sync() -> dict:
             exc_info=False,
         )
     _config_cache = config
-    _config_cache_ts = _time.monotonic()
+    _config_cache_ts = time.monotonic()
     return config
 
 
