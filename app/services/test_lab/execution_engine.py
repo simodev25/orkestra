@@ -140,9 +140,35 @@ def emit_event(
         pass
 
 
+# ── Colonnes autorisées pour update_run ──────────────────────────────────
+
+_ALLOWED_UPDATE_FIELDS = frozenset({
+    "status",
+    "final_output",
+    "score",
+    "verdict",
+    "summary",
+    "error_message",
+    "assertion_results",
+    "diagnostic_results",
+    "iteration_count",
+    "duration_ms",
+})
+
+
 def update_run(run_id: str, **fields):
-    """Update a ``test_runs`` row via raw SQL."""
+    """Update a ``test_runs`` row via raw SQL.
+
+    Only columns in ``_ALLOWED_UPDATE_FIELDS`` are accepted to prevent
+    SQL injection via crafted column names.
+    """
     from sqlalchemy import text
+
+    unknown = set(fields.keys()) - _ALLOWED_UPDATE_FIELDS
+    if unknown:
+        raise ValueError(f"update_run: disallowed fields {unknown!r}")
+    if not fields:
+        return
 
     sets = ", ".join(f"{k} = :{k}" for k in fields)
     engine = _get_sync_engine()
@@ -183,8 +209,12 @@ def _get_config_sync() -> dict:
             for row in result.fetchall():
                 if row[0] in config and isinstance(config[row[0]], dict):
                     config[row[0]] = {**config[row[0]], **row[1]}
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "Failed to load test_lab_config from DB, using defaults: %s",
+            e,
+            exc_info=False,
+        )
     return config
 
 
