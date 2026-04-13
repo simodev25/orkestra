@@ -12,3 +12,4 @@ storage/
 .remember/*
 debug-strategy/*
 debug-scenarios/*
+.superpowers/

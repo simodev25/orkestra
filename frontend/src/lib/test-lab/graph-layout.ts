@@ -182,7 +182,7 @@ export function buildGraph(
     orchestrator:  'orchestrator',
     preparation:   'preparation',
     runtime:       'runtime',
-    judgment:      'assertions',
+    judgment:      'report',
     assertions:    'assertions',
     diagnostics:   'diagnostics',
     report:        'report',

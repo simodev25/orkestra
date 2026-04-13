@@ -38,7 +38,7 @@ const ANIM_DURATION_MS = 5000;
 
 /** Events that mean a phase just started */
 const PHASE_START_EVENTS = new Set([
-  'subagent_start', 'phase_start', 'phase_started',
+  'phase_start', 'phase_started',
   'assertion_phase_started', 'diagnostic_phase_started', 'report_phase_started',
 ]);
 
@@ -53,7 +53,7 @@ const PHASE_MAP: Record<string, string> = {
   orchestrator:  'orchestrator',
   preparation:   'preparation',
   runtime:       'runtime',
-  judgment:      'assertions',
+  judgment:      'report',
   assertions:    'assertions',
   diagnostics:   'diagnostics',
   report:        'report',
@@ -90,6 +90,9 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
   const processedIdsRef  = useRef<Set<string>>(new Set());
   /** True once the completed-run replay has been scheduled */
   const replayDoneRef    = useRef(false);
+  /** ReactFlow instance — captured in onInit */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfInstanceRef    = useRef<any>(null);
 
   const isLive = run.status === 'running' || run.status === 'queued';
 
@@ -123,7 +126,10 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
           }
           if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
             const nodeId = PHASE_MAP[ev.phase];
-            if (nodeId) setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
+            if (nodeId) {
+              setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
+              setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
+            }
           }
           if (ev.event_type === 'run_completed') {
             setVisiblePhases(prev => new Set([...prev, 'report']));
@@ -176,7 +182,10 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
             schedule(delay + EDGE_LEAD_MS, () => {
               setVisiblePhases(prev => new Set([...prev, nodeId]));
               setActiveEdgeTargets(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
-              setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
+              setPhaseStatuses(prev => ({
+                ...prev,
+                [nodeId]: ['completed', 'failed', 'warning'].includes(prev[nodeId]) ? prev[nodeId] : 'running',
+              }));
             });
           }
         }
@@ -184,9 +193,10 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
         if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
           const nodeId = PHASE_MAP[ev.phase];
           if (nodeId) {
-            schedule(delay, () =>
-              setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }))
-            );
+            schedule(delay, () => {
+              setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
+              setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
+            });
           }
         }
 
@@ -233,7 +243,10 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
           const t = setTimeout(() => {
             setVisiblePhases(prev => new Set([...prev, nodeId]));
             setActiveEdgeTargets(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
-            setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
+            setPhaseStatuses(prev => ({
+              ...prev,
+              [nodeId]: ['completed', 'failed', 'warning'].includes(prev[nodeId]) ? prev[nodeId] : 'running',
+            }));
           }, leadMs);
           timeoutsRef.current.push(t);
         } else {
@@ -254,7 +267,10 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
 
       if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
         const nodeId = PHASE_MAP[ev.phase];
-        if (nodeId) setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
+        if (nodeId) {
+          setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
+          setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
+        }
       }
 
       if (ev.event_type === 'run_completed') {
@@ -311,6 +327,14 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
     [edges, visiblePhases, activeEdgeTargets]
   );
 
+  // ── Auto-fitView whenever new nodes become visible ─────────────────────────
+  useEffect(() => {
+    if (!rfInstanceRef.current) return;
+    window.requestAnimationFrame(() => {
+      rfInstanceRef.current?.fitView({ padding: 0.18, maxZoom: 1.4, duration: 400 });
+    });
+  }, [visiblePhases]);
+
   // ── Interaction ────────────────────────────────────────────────────────────
   const onNodeClick: NodeMouseHandler = useCallback((_evt, node) => {
     setSelectedNodeData(node.data as AgentNodeData);
@@ -320,6 +344,7 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onInit = useCallback((instance: any) => {
+    rfInstanceRef.current = instance;
     window.requestAnimationFrame(() => {
       instance.fitView({ padding: 0.18, maxZoom: 1.4, duration: 0 });
     });
