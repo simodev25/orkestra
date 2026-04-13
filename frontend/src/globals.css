@@ -24,6 +24,35 @@
   }
 }
 
+@keyframes edgeDash {
+  to { stroke-dashoffset: -26; }
+}
+
+@keyframes verdictPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+  50%       { opacity: 0.6; box-shadow: 0 0 0 4px transparent; }
+}
+
+/* ReactFlow overrides */
+.react-flow__attribution { display: none !important; }
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  color: #52525b !important;
+  fill: #52525b !important;
+}
+.react-flow__controls-button:hover {
+  color: #00d4ff !important;
+  fill: #00d4ff !important;
+}
+.react-flow__handle {
+  border-radius: 50% !important;
+  transition: transform 0.15s, box-shadow 0.15s !important;
+}
+.react-flow__handle:hover {
+  transform: scale(1.5) !important;
+}
+
 @layer components {
   .glass-panel {
     @apply bg-ork-surface border border-ork-border rounded-lg;

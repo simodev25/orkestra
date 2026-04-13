@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { RunTopbar } from "@/components/test-lab/run-graph/RunTopbar";
+import { RunGraph } from "@/components/test-lab/run-graph/RunGraph";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { request } from "@/lib/api-client";
 import {
@@ -289,6 +291,7 @@ export default function TestRunDetailPage() {
 
   const [run, setRun] = useState<any>(null);
   const [rerunning, setRerunning] = useState(false);
+  const [view, setView] = useState<'graph' | 'timeline'>('graph');
   const [events, setEvents] = useState<any[]>([]);
   const [assertions, setAssertions] = useState<any[]>([]);
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
@@ -387,8 +390,48 @@ export default function TestRunDetailPage() {
   const verdictInfo = run?.verdict ? VERDICT_DISPLAY[run.verdict] : null;
   const isLive = run?.status === "running" || run?.status === "queued";
 
+  const rerunHandler = async () => {
+    setRerunning(true);
+    try {
+      const newRun = await request<any>(`/api/test-lab/runs/${id}/rerun`, { method: 'POST' });
+      router.push(`/test-lab/runs/${newRun.id}`);
+    } catch {
+      setRerunning(false);
+    }
+  };
+
+  // ── Graph view ──────────────────────────────────────────────────────
+  if (view === 'graph' && run) {
+    return (
+      <div className="flex flex-col" style={{ height: '100vh', overflow: 'hidden' }}>
+        <RunTopbar
+          run={run}
+          view={view}
+          onViewChange={setView}
+          onRerun={rerunHandler}
+          rerunning={rerunning}
+        />
+        <div className="flex-1 overflow-hidden">
+          <RunGraph run={run} events={events} diagnostics={diagnostics} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-6 animate-fade-in">
+      {/* Topbar in timeline mode */}
+      {run && (
+        <div className="-mx-6 -mt-6 mb-4">
+          <RunTopbar
+            run={run}
+            view={view}
+            onViewChange={setView}
+            onRerun={rerunHandler}
+            rerunning={rerunning}
+          />
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
