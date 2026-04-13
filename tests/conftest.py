@@ -56,6 +56,21 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
     from app.main import app
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-API-Key": "test-orkestra-api-key"},
+    ) as ac:
+        yield ac
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def unauthed_client() -> AsyncGenerator[AsyncClient, None]:
+    """Client sans header auth — pour tester les comportements 401."""
+    from app.main import app
+    app.dependency_overrides[get_db] = override_get_db
+    transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
