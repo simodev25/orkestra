@@ -12,7 +12,7 @@ export const OrchestratorNode = memo(function OrchestratorNode({
   data,
   selected,
 }: NodeProps<OrchestratorNodeType>) {
-  const { label, subLabel, iconName, color, status, durationMs, visible } = data;
+  const { label, subLabel, iconName, color, status, durationMs, visible, events } = data;
 
   const isRunning = status === 'running';
 
@@ -89,7 +89,9 @@ export const OrchestratorNode = memo(function OrchestratorNode({
             <p className="text-[12px] font-bold leading-tight truncate" style={{ color: '#c4b5fd' }}>
               {label}
             </p>
-            <p className="text-[9px] font-mono opacity-40 truncate">{subLabel}</p>
+            <p className="text-[9px] font-mono opacity-40 truncate">
+              {subLabel}{events?.length > 0 ? ` · ${events.length} events` : ''}
+            </p>
           </div>
         </div>
 

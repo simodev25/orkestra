@@ -26,6 +26,9 @@ export interface AgentNodeData extends Record<string, unknown> {
   diagnostics: TestRunDiagnostic[];
   output: unknown;
   index: number;
+  /** verdict + score — only set on the report node */
+  verdict?: string | null;
+  score?: number | null;
 }
 
 export interface EdgeData extends Record<string, unknown> {

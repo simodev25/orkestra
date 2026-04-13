@@ -319,9 +319,10 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
     () => edges.map(edge => ({
       ...edge,
       data: {
-        ...edge.data,
-        visible: visiblePhases.has(edge.target),
-        active:  activeEdgeTargets.has(edge.target),
+        toolName: edge.data?.toolName ?? null,
+        color:    edge.data?.color ?? '#52525b',
+        visible:  visiblePhases.has(edge.target),
+        active:   activeEdgeTargets.has(edge.target),
       },
     })),
     [edges, visiblePhases, activeEdgeTargets]

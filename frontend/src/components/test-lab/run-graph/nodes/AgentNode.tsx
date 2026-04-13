@@ -3,6 +3,7 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import { motion } from 'framer-motion';
+import { CheckCircle, XCircle } from 'lucide-react';
 import type { AgentNodeData } from '@/lib/test-lab/graph-types';
 import { NodeIcon } from '../NodeIcon';
 
@@ -15,26 +16,45 @@ const hexToRgba = (hex: string, alpha: number) => {
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
+const PHASE_TAG: Record<string, string> = {
+  preparation: 'AGENT · PREP',
+  runtime:     'RUNTIME · AGENT',
+  assertions:  'AGENT · ASSERT',
+  diagnostics: 'AGENT · DIAG',
+  report:      'JUDGE · REPORT',
+};
+
 export const AgentNode = memo(function AgentNode({
   data,
   selected,
 }: NodeProps<AgentNodeType>) {
-  const { label, subLabel, iconName, color, status, durationMs, visible } = data;
+  const { kind, label, subLabel, iconName, color, status, durationMs, visible, verdict, score } = data;
 
-  const isRunning = status === 'running';
-  const isFailed  = status === 'failed';
+  const isRunning  = status === 'running';
+  const isFailed   = status === 'failed';
+  const isReport   = kind === 'report';
   const accentColor = isFailed ? '#ef4444' : color;
 
   const statusColor =
     status === 'completed' ? '#10b981' :
     status === 'failed'    ? '#ef4444' :
     status === 'warning'   ? '#f59e0b' :
-    '#a78bfa'; // running
+    '#a78bfa';
 
   const durationLabel =
     durationMs != null
       ? durationMs >= 1000 ? `${(durationMs / 1000).toFixed(1)}s` : `${durationMs}ms`
       : null;
+
+  const phaseTag = PHASE_TAG[kind] ?? 'AGENT';
+
+  // ── Verdict display (report node) ───────────────────────────────────────────
+  const verdictPassed = verdict === 'passed' || verdict === 'passed_with_warnings';
+  const verdictColor  =
+    verdict === 'passed'               ? '#10b981' :
+    verdict === 'passed_with_warnings' ? '#f59e0b' :
+    verdict === 'failed'               ? '#ef4444' :
+    color;
 
   return (
     <motion.div
@@ -61,14 +81,18 @@ export const AgentNode = memo(function AgentNode({
         className="relative rounded-2xl border overflow-hidden"
         style={{
           width: 210,
-          background: hexToRgba(accentColor, 0.05),
+          background: isReport && verdict
+            ? hexToRgba(verdictColor, 0.07)
+            : hexToRgba(accentColor, 0.05),
           borderColor: selected
             ? '#00d4ff'
             : isRunning  ? `${color}99`
+            : isReport && verdict ? `${verdictColor}55`
             : hexToRgba(accentColor, 0.25),
           boxShadow: selected
             ? '0 0 0 2px #00d4ff, 0 16px 48px rgba(0,212,255,0.18)'
             : isRunning ? `0 8px 32px ${color}22`
+            : isReport && verdict ? `0 8px 32px ${verdictColor}22`
             : '0 8px 32px rgba(0,0,0,0.4)',
         }}
       >
@@ -84,21 +108,42 @@ export const AgentNode = memo(function AgentNode({
             className="flex items-center justify-center rounded-xl flex-shrink-0"
             style={{
               width: 38, height: 38,
-              background: hexToRgba(accentColor, 0.12),
+              background: hexToRgba(isReport && verdict ? verdictColor : accentColor, 0.12),
             }}
           >
-            <NodeIcon name={iconName} size={18} color={accentColor} strokeWidth={1.8} />
+            <NodeIcon
+              name={iconName}
+              size={18}
+              color={isReport && verdict ? verdictColor : accentColor}
+              strokeWidth={1.8}
+            />
           </div>
-          <div className="min-w-0">
-            <p className="text-[8px] font-bold tracking-[0.14em] uppercase opacity-55" style={{ color: accentColor }}>
-              AGENT
+          <div className="min-w-0 flex-1">
+            <p className="text-[8px] font-bold tracking-[0.14em] uppercase opacity-55" style={{ color: isReport && verdict ? verdictColor : accentColor }}>
+              {phaseTag}
             </p>
-            <p className="text-[12px] font-bold leading-tight truncate" style={{ color: accentColor }}>
+            <p className="text-[12px] font-bold leading-tight truncate" style={{ color: isReport && verdict ? verdictColor : accentColor }}>
               {label}
             </p>
             <p className="text-[9px] font-mono opacity-40 truncate">{subLabel}</p>
           </div>
         </div>
+
+        {/* Report verdict row */}
+        {isReport && verdict && (
+          <div
+            className="flex items-center gap-2 px-3.5 pb-2.5"
+          >
+            {verdictPassed
+              ? <CheckCircle size={13} color={verdictColor} />
+              : <XCircle    size={13} color={verdictColor} />
+            }
+            <span className="text-[11px] font-bold font-mono" style={{ color: verdictColor }}>
+              {verdict === 'passed_with_warnings' ? 'PASSED ⚠' : verdict?.toUpperCase()}
+              {score != null && ` · ${score.toFixed(0)}/100`}
+            </span>
+          </div>
+        )}
 
         {/* Footer */}
         <div

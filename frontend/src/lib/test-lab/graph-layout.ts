@@ -167,7 +167,15 @@ function detectDuration(evs: TestRunEvent[]): number | null {
 
 function parseOutput(raw: string | null): unknown {
   if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+  // Try direct parse first
+  try { return JSON.parse(raw); } catch { /* fall through */ }
+  // Extract first JSON object from text (agent may wrap with prose)
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch { /* fall through */ }
+  }
+  // Return raw string so panel still shows something
+  return raw.length > 0 ? raw : null;
 }
 
 // ── Main export ────────────────────────────────────────────────────────────
@@ -253,6 +261,8 @@ export function buildGraph(
       diagnostics: ['runtime', 'diagnostics'].includes(phase) ? diagnostics : [],
       output: phase === 'runtime' ? parseOutput(run.final_output) : null,
       index,
+      verdict: phase === 'report' ? (run.verdict ?? null) : undefined,
+      score:   phase === 'report' ? (run.score   ?? null) : undefined,
     };
 
     g.setNode(phase, { width: NODE_W, height: NODE_H });

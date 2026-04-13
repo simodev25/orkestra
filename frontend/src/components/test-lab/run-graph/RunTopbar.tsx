@@ -108,8 +108,8 @@ export function RunTopbar({ run, view, onViewChange, onRerun, rerunning }: RunTo
           </div>
         )}
         {run.score != null && (
-          <span className="font-mono text-[13px] font-bold" style={{ color: '#10b981' }}>
-            {run.score}/100
+          <span className="font-mono text-[13px] font-bold" style={{ color: run.score >= 80 ? '#10b981' : run.score >= 50 ? '#f59e0b' : '#ef4444' }}>
+            {Math.round(run.score)}/100
           </span>
         )}
         <div style={{ width: 1, height: 14, background: '#1e1e2e' }} />

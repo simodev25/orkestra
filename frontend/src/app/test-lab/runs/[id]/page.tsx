@@ -16,7 +16,6 @@ import {
   Shield,
   Target,
   FileText,
-  Play,
   Send,
   Loader2,
   MessageSquare,
@@ -400,9 +399,10 @@ export default function TestRunDetailPage() {
   const isLive = run?.status === "running" || run?.status === "queued";
 
   const rerunHandler = async () => {
+    if (!run?.scenario_id) return;
     setRerunning(true);
     try {
-      const newRun = await request<any>(`/api/test-lab/runs/${id}/rerun`, { method: 'POST' });
+      const newRun = await request<any>(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: 'POST' });
       router.push(`/test-lab/runs/${newRun.id}`);
     } catch {
       setRerunning(false);
@@ -442,42 +442,24 @@ export default function TestRunDetailPage() {
         </div>
       )}
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/test-lab" className="text-ork-muted hover:text-ork-cyan transition-colors text-xs font-mono">TEST LAB /</Link>
-          <div>
-            <div className="flex items-center gap-3">
-              <FlaskConical size={16} className="text-ork-purple" />
-              <h1 className="font-mono text-sm tracking-wide text-ork-text">Run {id?.slice(0, 16)}...</h1>
-              {run && <StatusBadge status={run.status} />}
-              {verdictInfo && (
-                <span className={`flex items-center gap-1 text-xs font-mono font-semibold ${verdictInfo.color}`}>
-                  {verdictInfo.icon === "pass" && <CheckCircle size={14} />}
-                  {verdictInfo.icon === "warn" && <AlertTriangle size={14} />}
-                  {verdictInfo.icon === "fail" && <XCircle size={14} />}
-                  {verdictInfo.label}
-                </span>
-              )}
-            </div>
-            <p className="text-[10px] text-ork-dim font-mono mt-0.5">Agent: {run?.agent_id} &middot; v{run?.agent_version}</p>
+      <div className="flex items-center gap-4">
+        <Link href="/test-lab" className="text-ork-muted hover:text-ork-cyan transition-colors text-xs font-mono">TEST LAB /</Link>
+        <div>
+          <div className="flex items-center gap-3">
+            <FlaskConical size={16} className="text-ork-purple" />
+            <h1 className="font-mono text-sm tracking-wide text-ork-text">Run {id?.slice(0, 16)}...</h1>
+            {run && <StatusBadge status={run.status} />}
+            {verdictInfo && (
+              <span className={`flex items-center gap-1 text-xs font-mono font-semibold ${verdictInfo.color}`}>
+                {verdictInfo.icon === "pass" && <CheckCircle size={14} />}
+                {verdictInfo.icon === "warn" && <AlertTriangle size={14} />}
+                {verdictInfo.icon === "fail" && <XCircle size={14} />}
+                {verdictInfo.label}
+              </span>
+            )}
           </div>
+          <p className="text-[10px] text-ork-dim font-mono mt-0.5">Agent: {run?.agent_id} &middot; v{run?.agent_version}</p>
         </div>
-        {run?.scenario_id && run?.status !== "running" && run?.status !== "queued" && (
-          <button
-            disabled={rerunning}
-            onClick={async () => {
-              setRerunning(true);
-              try {
-                const newRun = await request<{ id: string }>(`/api/test-lab/scenarios/${run.scenario_id}/run`, { method: "POST" });
-                router.push(`/test-lab/runs/${newRun.id}`);
-              } catch { /* ignore */ }
-              finally { setRerunning(false); }
-            }}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider rounded border bg-ork-cyan/10 text-ork-cyan border-ork-cyan/30 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40"
-          >
-            <Play size={13} /> {rerunning ? "Running..." : "Re-run"}
-          </button>
-        )}
       </div>
 
       {/* Stats Row */}
