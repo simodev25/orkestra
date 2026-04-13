@@ -153,6 +153,8 @@ _ALLOWED_UPDATE_FIELDS = frozenset({
     "diagnostic_results",
     "iteration_count",
     "duration_ms",
+    "started_at",
+    "ended_at",
 })
 
 
