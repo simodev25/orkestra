@@ -2,13 +2,14 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     APP_NAME: str = "Orkestra"
     APP_VERSION: str = "0.1.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://orkestra:orkestra@localhost:5432/orkestra"
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
     STORAGE_LOCAL_PATH: str = "./storage/documents"
 
     # LLM Provider
-    LLM_PROVIDER: str = "ollama"  # "ollama", "openai", "mistral"
+    LLM_PROVIDER: str = "ollama"
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "mistral"
     OPENAI_API_KEY: str = ""
@@ -41,7 +42,7 @@ class Settings(BaseSettings):
     # Observability
     LOG_LEVEL: str = "INFO"
     PROMETHEUS_ENABLED: bool = False
-    OTEL_ENDPOINT: str = ""  # e.g. http://otel-collector:4318/v1/traces
+    OTEL_ENDPOINT: str = ""
 
     # Obot MCP source of truth
     OBOT_BASE_URL: str = ""
@@ -54,7 +55,19 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3300,http://localhost:5173"
 
     # Encryption
-    FERNET_KEY: str = ""  # Auto-generates in dev if empty
+    FERNET_KEY: str = ""  # Auto-generates in dev if empty; set in production
+
+    @field_validator("FERNET_KEY", mode="after")
+    @classmethod
+    def warn_empty_fernet_key(cls, v: str) -> str:
+        """Log a warning when FERNET_KEY is empty — ephemeral key is dev-only."""
+        if not v:
+            import logging
+            logging.getLogger("orkestra.config").warning(
+                "FERNET_KEY is not set. Secrets are encrypted with an ephemeral key "
+                "that changes on every restart. Set ORKESTRA_FERNET_KEY in production."
+            )
+        return v
 
     class Config:
         env_file = ".env"
