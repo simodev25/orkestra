@@ -303,6 +303,8 @@ export default function TestRunDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -353,23 +355,40 @@ export default function TestRunDetailPage() {
           return;
         }
         setEvents((prev) => {
-          if (prev.some((e: any) => e.id === evt.id)) return prev;
+          if (seenEventIdsRef.current.has(evt.id)) return prev;
+          seenEventIdsRef.current.add(evt.id);
           return [...prev, evt];
         });
       } catch { /* ignore parse errors */ }
     };
     evtSource.onerror = () => { evtSource.close(); };
-    return () => evtSource.close();
+    return () => {
+      evtSource.close();
+      // Réinitialiser le Set des IDs vus pour éviter les fantômes d'une session précédente
+      seenEventIdsRef.current = new Set();
+    };
   }, [id, fetchData]);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => {
-      if (statusRef.current === "running" || statusRef.current === "queued" || statusRef.current === null) {
+    intervalRef.current = setInterval(() => {
+      const s = statusRef.current;
+      if (s === "running" || s === "queued" || s === null) {
         fetchData();
+      } else {
+        // Run terminé : plus besoin de polling
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
       }
     }, 10000); // Slower polling since SSE handles live updates
-    return () => clearInterval(interval);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [fetchData]);
 
   if (loading) {
