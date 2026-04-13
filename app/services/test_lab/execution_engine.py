@@ -349,7 +349,23 @@ async def run_subagent(
     )
 
     task_msg = Msg("user", user_prompt, "user")
-    response = await worker(task_msg)
+    try:
+        async with asyncio.timeout(45):  # 45s max per LLM call
+            response = await worker(task_msg)
+    except TimeoutError:
+        logger.warning(
+            "LLM timeout in run_subagent: phase=%s worker=%s run_id=%s",
+            phase, worker_name, run_id,
+        )
+        emit_event(
+            run_id,
+            "subagent_timeout",
+            phase,
+            f"[{worker_name}] LLM did not respond within 45s",
+            details={"worker": worker_name, "timeout_s": 45},
+        )
+        return f"[TIMEOUT] {worker_name} did not respond in 45s"
+
     text = (
         response.get_text_content()
         if hasattr(response, "get_text_content")
