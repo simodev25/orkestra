@@ -387,21 +387,21 @@ async def list_agents(
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[AgentDefinition], int]:
-    stmt = select(AgentDefinition).options(
+    base_stmt = select(AgentDefinition).options(
         selectinload(AgentDefinition.family_rel),
         selectinload(AgentDefinition.agent_skills),
     )
     if family and family != "all":
-        stmt = stmt.where(AgentDefinition.family_id == family)
+        base_stmt = base_stmt.where(AgentDefinition.family_id == family)
     if status and status != "all":
-        stmt = stmt.where(AgentDefinition.status == status)
+        base_stmt = base_stmt.where(AgentDefinition.status == status)
     if criticality and criticality != "all":
-        stmt = stmt.where(AgentDefinition.criticality == criticality)
+        base_stmt = base_stmt.where(AgentDefinition.criticality == criticality)
     if cost_profile and cost_profile != "all":
-        stmt = stmt.where(AgentDefinition.cost_profile == cost_profile)
+        base_stmt = base_stmt.where(AgentDefinition.cost_profile == cost_profile)
     if q:
         pattern = f"%{q}%"
-        stmt = stmt.where(
+        base_stmt = base_stmt.where(
             or_(
                 AgentDefinition.id.ilike(pattern),
                 AgentDefinition.name.ilike(pattern),
@@ -410,17 +410,24 @@ async def list_agents(
             )
         )
     if mcp_id:
-        stmt = stmt.where(AgentDefinition.allowed_mcps.contains([mcp_id]))
+        base_stmt = base_stmt.where(AgentDefinition.allowed_mcps.contains([mcp_id]))
 
-    result = await db.execute(stmt.order_by(AgentDefinition.name))
-    items = list(result.scalars().all())
-
+    # Path A: workflow filter requires in-memory filtering — load all
     if used_in_workflow_only and workflow_id:
+        result = await db.execute(base_stmt.order_by(AgentDefinition.name))
+        items = list(result.scalars().all())
         items = [a for a in items if _workflow_matches(a, workflow_id)]
-    # workflow_id without the toggle is soft context only — no filtering applied.
+        total = len(items)
+        return items[offset : offset + limit], total
 
-    total = len(items)
-    return items[offset : offset + limit], total
+    # Path B: standard case — use SQL LIMIT/OFFSET + COUNT
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = (await db.execute(count_stmt)).scalar_one()
+
+    page_stmt = base_stmt.order_by(AgentDefinition.name).offset(offset).limit(limit)
+    result = await db.execute(page_stmt)
+    items = list(result.scalars().all())
+    return items, total
 
 
 async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
