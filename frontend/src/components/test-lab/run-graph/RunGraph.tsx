@@ -53,6 +53,7 @@ const PHASE_MAP: Record<string, string> = {
   orchestrator:  'orchestrator',
   preparation:   'preparation',
   runtime:       'runtime',
+  judgment:      'assertions',
   assertions:    'assertions',
   diagnostics:   'diagnostics',
   report:        'report',
@@ -138,17 +139,13 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
 
       // ── REPLAY MODE (fresh page load for a completed run) ─────────────────
       if (replayDoneRef.current) return;
+      // Wait for events to load before locking replay — otherwise we'd lock
+      // with an empty initNodes list and block the real replay forever.
+      if (!events.length) return;
+
       replayDoneRef.current = true;
       timeoutsRef.current.forEach(t => clearTimeout(t));
       timeoutsRef.current = [];
-
-      if (!events.length) {
-        setVisiblePhases(new Set(initNodes.map(n => n.id)));
-        const s: Record<string, string> = {};
-        initNodes.forEach(n => { s[n.id] = n.data.status; });
-        setPhaseStatuses(s);
-        return;
-      }
 
       const timestamps = events.map(e => new Date(e.timestamp).getTime());
       const startTs    = Math.min(...timestamps);
@@ -209,7 +206,13 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
         }
       }
 
-      return () => timeoutsRef.current.forEach(t => clearTimeout(t));
+      // On cleanup (unmount or StrictMode remount): cancel timeouts and reset the
+      // replay lock so a remount can re-schedule from scratch.
+      return () => {
+        replayDoneRef.current = false;
+        timeoutsRef.current.forEach(t => clearTimeout(t));
+        timeoutsRef.current = [];
+      };
     }
 
     // ── LIVE MODE (run still in progress) ────────────────────────────────────

@@ -318,7 +318,16 @@ export default function TestRunDetailPage() {
         setRun(runData);
         statusRef.current = runData.status;
       }
-      setEvents(Array.isArray(eventsData) ? eventsData : eventsData?.items ?? []);
+      const newEvents = Array.isArray(eventsData) ? eventsData : eventsData?.items ?? [];
+      setEvents(prev => {
+        // Avoid creating a new reference (and re-running animation effects) when
+        // fetchData is called again with the same event list (e.g. SSE triggers a refetch).
+        if (prev.length === newEvents.length &&
+            (prev.length === 0 || prev[prev.length - 1]?.id === newEvents[newEvents.length - 1]?.id)) {
+          return prev;
+        }
+        return newEvents;
+      });
       setAssertions(Array.isArray(assertionsData) ? assertionsData : assertionsData?.items ?? []);
       setDiagnostics(Array.isArray(diagnosticsData) ? diagnosticsData : diagnosticsData?.items ?? []);
       setError(null);
