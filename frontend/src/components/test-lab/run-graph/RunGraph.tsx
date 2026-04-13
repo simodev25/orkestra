@@ -99,14 +99,14 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
   // ── Core animation logic ────────────────────────────────────────────────────
   useEffect(() => {
     if (!isLive) {
-      // ── REPLAY MODE (completed / failed run) ──────────────────────────────
-      if (replayDoneRef.current) return;
-      replayDoneRef.current = true;
-
-      // Transition from live → completed: the live mode already applied state.
-      // Just flush any remaining unprocessed events immediately, then stop.
+      // ── LIVE → COMPLETED TRANSITION ────────────────────────────────────────
+      // Live mode already applied most state. Keep flushing any events that
+      // arrive AFTER isLive switches (e.g. run_completed from fetchData()).
+      // Do NOT gate this path with replayDoneRef — new events must always land.
       if (processedIdsRef.current.size > 0) {
+        replayDoneRef.current = true; // block replay mode
         const remaining = events.filter(ev => !processedIdsRef.current.has(ev.id));
+        if (remaining.length === 0) return;
         remaining.forEach(ev => processedIdsRef.current.add(ev.id));
         for (const ev of remaining) {
           if (ev.event_type === 'run_started') {
@@ -136,7 +136,9 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
         return;
       }
 
-      // Fresh page load for a completed run: full replay animation.
+      // ── REPLAY MODE (fresh page load for a completed run) ─────────────────
+      if (replayDoneRef.current) return;
+      replayDoneRef.current = true;
       timeoutsRef.current.forEach(t => clearTimeout(t));
       timeoutsRef.current = [];
 
