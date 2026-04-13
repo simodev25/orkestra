@@ -2,7 +2,7 @@
  * Tests unitaires pour graph-layout.ts — computePlaybackState()
  */
 import { describe, it, expect } from 'vitest';
-import { computePlaybackState, TOOL_TO_PHASE } from '../graph-layout';
+import { computePlaybackState, TOOL_TO_PHASE, buildGraph, calcInitialViewport } from '../graph-layout';
 import type { TestRunEvent } from '../types';
 
 const START_TS = new Date('2024-01-01T00:00:00.000Z').getTime();
@@ -154,5 +154,125 @@ describe('TOOL_TO_PHASE', () => {
 
   it('maps compute_final_verdict to report', () => {
     expect(TOOL_TO_PHASE['compute_final_verdict']).toBe('report');
+  });
+});
+
+// ── buildGraph() helpers ───────────────────────────────────────────────────────
+
+function makeRun(overrides: Partial<any> = {}): any {
+  return {
+    id: 'trun_test',
+    scenario_id: 'scn_test',
+    agent_id: 'identity_resolution_agent',
+    status: 'completed',
+    verdict: 'passed',
+    score: 100,
+    duration_ms: 1200,
+    final_output: null,
+    iteration_count: 2,
+    error_message: null,
+    created_at: '2026-04-13T10:00:00Z',
+    updated_at: '2026-04-13T10:00:01Z',
+    ...overrides,
+  };
+}
+
+function makeEv(
+  event_type: string,
+  phase: string,
+  timestamp = '2026-04-13T10:00:00.000Z',
+  details: Record<string, unknown> = {},
+): any {
+  return { id: `ev_${event_type}`, run_id: 'trun_test', event_type, phase, message: null, details, timestamp };
+}
+
+describe('buildGraph()', () => {
+  it('always includes orchestrator node', () => {
+    const { nodes } = buildGraph([], makeRun(), []);
+    expect(nodes.some((n: any) => n.id === 'orchestrator')).toBe(true);
+  });
+
+  it('nodes get numeric positions from dagre', () => {
+    const events = [makeEv('orchestrator_started', 'orchestrator'), makeEv('phase_started', 'preparation')];
+    const { nodes } = buildGraph(events, makeRun(), []);
+    const orch = nodes.find((n: any) => n.id === 'orchestrator')!;
+    expect(typeof orch.position.x).toBe('number');
+    expect(typeof orch.position.y).toBe('number');
+  });
+
+  it('creates edge from tool_call event to target phase', () => {
+    const events = [
+      makeEv('orchestrator_tool_call', 'orchestrator', '2026-04-13T10:00:00Z', { tool_name: 'prepare_test_scenario' }),
+      makeEv('phase_started', 'preparation'),
+    ];
+    const { edges } = buildGraph(events, makeRun(), []);
+    expect(edges.some((e: any) => e.source === 'orchestrator' && e.target === 'preparation')).toBe(true);
+  });
+
+  it('does not duplicate edges for repeated tool calls', () => {
+    const events = [
+      makeEv('orchestrator_tool_call', 'orchestrator', '2026-04-13T10:00:00Z', { tool_name: 'execute_target_agent' }),
+      makeEv('orchestrator_tool_call', 'orchestrator', '2026-04-13T10:00:01Z', { tool_name: 'execute_target_agent' }),
+      makeEv('phase_started', 'runtime'),
+    ];
+    const { edges } = buildGraph(events, makeRun(), []);
+    const runtimeEdges = edges.filter((e: any) => e.target === 'runtime');
+    expect(runtimeEdges.length).toBe(1);
+  });
+
+  it('falls back to sequential edges when no tool call events', () => {
+    const events = [makeEv('orchestrator_started', 'orchestrator'), makeEv('phase_started', 'preparation')];
+    const { edges } = buildGraph(events, makeRun(), []);
+    expect(edges.length).toBeGreaterThan(0);
+  });
+
+  it('runtime node uses run.agent_id as subLabel', () => {
+    const events = [makeEv('phase_started', 'runtime')];
+    const { nodes } = buildGraph(events, makeRun({ agent_id: 'chat_agent' }), []);
+    const runtime = nodes.find((n: any) => n.id === 'runtime');
+    expect(runtime?.data.subLabel).toBe('chat_agent');
+  });
+
+  it('report node includes verdict and score', () => {
+    const events = [makeEv('report_phase_started', 'report')];
+    const { nodes } = buildGraph(events, makeRun({ verdict: 'passed', score: 95 }), []);
+    const report = nodes.find((n: any) => n.id === 'report');
+    expect(report?.data.verdict).toBe('passed');
+    expect(report?.data.score).toBe(95);
+  });
+
+  it('verdict phase maps to report node (no separate verdict node)', () => {
+    const events = [makeEv('phase_started', 'verdict')];
+    const { nodes } = buildGraph(events, makeRun(), []);
+    expect(nodes.find((n: any) => n.id === 'verdict')).toBeUndefined();
+  });
+});
+
+describe('calcInitialViewport()', () => {
+  it('returns default when nodes array is empty', () => {
+    const vp = calcInitialViewport([], 800, 600);
+    expect(vp).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it('zoom does not exceed 1.5', () => {
+    const nodes = [{ id: 'n', position: { x: 0, y: 0 }, width: 10, height: 10 }] as any;
+    const vp = calcInitialViewport(nodes, 2000, 2000);
+    expect(vp.zoom).toBeLessThanOrEqual(1.5);
+  });
+
+  it('zoom is greater than 0', () => {
+    const nodes = [
+      { id: 'a', position: { x: 0, y: 0 }, width: 210, height: 108 },
+      { id: 'b', position: { x: 340, y: 0 }, width: 210, height: 108 },
+    ] as any;
+    const vp = calcInitialViewport(nodes, 1280, 720);
+    expect(vp.zoom).toBeGreaterThan(0);
+  });
+
+  it('centers the graph — x and y are finite numbers', () => {
+    const nodes = [{ id: 'n', position: { x: 100, y: 50 }, width: 210, height: 108 }] as any;
+    const vp = calcInitialViewport(nodes, 1280, 720);
+    expect(Number.isFinite(vp.x)).toBe(true);
+    expect(Number.isFinite(vp.y)).toBe(true);
   });
 });
