@@ -197,11 +197,30 @@ async def run_target_agent(
     except Exception as exc:
         duration_ms = int((time.time() - t0) * 1000)
         logger.warning(f"Agent '{agent_id}' raised an error during execution: {exc}")
+        # Try to salvage partial memory so assertions have something to evaluate
+        partial_output = ""
+        partial_history: list[dict] = []
+        try:
+            msgs = await react_agent.memory.get_memory()
+            for m in msgs:
+                role = getattr(m, "role", "")
+                name = getattr(m, "name", "")
+                text = m.get_text_content() if hasattr(m, "get_text_content") else ""
+                partial_history.append({"role": role, "name": name, "content": (text or "")[:5000]})
+            for m in reversed(msgs):
+                if getattr(m, "role", "") == "assistant":
+                    t = m.get_text_content() if hasattr(m, "get_text_content") else ""
+                    if t and t.strip():
+                        partial_output = t[:10000]
+                        break
+        except Exception:
+            pass
         return TargetAgentResult(
             status="failed",
-            final_output="",
+            final_output=partial_output,
             duration_ms=duration_ms,
-            iteration_count=0,
+            iteration_count=len(partial_history),
+            message_history=partial_history,
             error=f"Execution error: {exc}",
             connected_mcps=connected_mcps,
             discovered_tools=discovered_tools,
