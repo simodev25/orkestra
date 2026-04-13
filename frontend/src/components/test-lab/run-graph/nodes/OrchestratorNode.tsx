@@ -12,35 +12,55 @@ export const OrchestratorNode = memo(function OrchestratorNode({
   data,
   selected,
 }: NodeProps<OrchestratorNodeType>) {
-  const { label, subLabel, iconName, color, status, durationMs, index } = data;
+  const { label, subLabel, iconName, color, status, durationMs, visible } = data;
+
+  const isRunning = status === 'running';
 
   const statusColor =
     status === 'completed' ? '#10b981' :
     status === 'failed'    ? '#ef4444' :
     status === 'warning'   ? '#f59e0b' :
-    '#00d4ff'; // running
+    '#a78bfa'; // running
 
   const durationLabel =
     durationMs != null
-      ? durationMs >= 1000
-        ? `${(durationMs / 1000).toFixed(1)}s`
-        : `${durationMs}ms`
+      ? durationMs >= 1000 ? `${(durationMs / 1000).toFixed(1)}s` : `${durationMs}ms`
       : null;
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.85, y: 12 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 28, delay: index * 0.08 }}
+      animate={visible
+        ? { opacity: 1, scale: 1, y: 0 }
+        : { opacity: 0, scale: 0.85, y: 12 }
+      }
+      transition={{ type: 'spring', stiffness: 300, damping: 28 }}
     >
+      {/* Running pulse ring */}
+      {isRunning && visible && (
+        <div
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{
+            border: '1px solid rgba(167,139,250,0.8)',
+            boxShadow: '0 0 18px rgba(167,139,250,0.4)',
+            animation: 'nodeRingPulse 1.4s ease-in-out infinite',
+          }}
+        />
+      )}
+
       <div
         className="relative rounded-2xl border overflow-hidden"
         style={{
           width: 210,
-          background: `rgba(167,139,250,0.07)`,
-          borderColor: selected ? '#00d4ff' : `rgba(167,139,250,0.3)`,
+          background: 'rgba(167,139,250,0.07)',
+          borderColor: selected
+            ? '#00d4ff'
+            : isRunning ? 'rgba(167,139,250,0.7)'
+            : 'rgba(167,139,250,0.3)',
           boxShadow: selected
             ? '0 0 0 2px #00d4ff, 0 16px 48px rgba(0,212,255,0.18)'
+            : isRunning
+            ? '0 8px 32px rgba(167,139,250,0.2)'
             : '0 8px 32px rgba(0,0,0,0.4)',
         }}
       >
@@ -78,14 +98,17 @@ export const OrchestratorNode = memo(function OrchestratorNode({
           className="flex items-center gap-1.5 px-3.5 py-2"
           style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
         >
-          <div
-            className="rounded-full flex-shrink-0"
-            style={{
-              width: 5, height: 5,
-              background: statusColor,
-              boxShadow: `0 0 6px ${statusColor}`,
-            }}
-          />
+          {isRunning ? (
+            <div
+              className="rounded-full flex-shrink-0"
+              style={{ width: 5, height: 5, background: '#a78bfa', animation: 'dotBlink 0.8s ease-in-out infinite' }}
+            />
+          ) : (
+            <div
+              className="rounded-full flex-shrink-0"
+              style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 6px ${statusColor}` }}
+            />
+          )}
           <span className="text-[9px] font-semibold" style={{ color: statusColor }}>
             {status}
           </span>

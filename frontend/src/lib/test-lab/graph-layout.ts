@@ -40,13 +40,100 @@ const EDGE_COLOURS: Record<PhaseKind, string> = {
 };
 
 // Map orchestrator tool names → target phase
-const TOOL_TO_PHASE: Record<string, PhaseKind> = {
+export const TOOL_TO_PHASE: Record<string, PhaseKind> = {
   prepare_test_scenario:    'preparation',
   execute_target_agent:     'runtime',
   run_assertion_evaluation: 'assertions',
   run_diagnostic_analysis:  'diagnostics',
   compute_final_verdict:    'report',
 };
+
+export type PlaybackStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+const PHASE_MAP_PB: Record<string, string> = {
+  orchestrator: 'orchestrator',
+  preparation:  'preparation',
+  runtime:      'runtime',
+  assertions:   'assertions',
+  diagnostics:  'diagnostics',
+  report:       'report',
+  verdict:      'report',
+};
+
+const PHASE_START_EV = new Set([
+  'phase_started', 'assertion_phase_started',
+  'diagnostic_phase_started', 'report_phase_started',
+]);
+
+/**
+ * Given a sorted event list and a playback cursor (ms from run start),
+ * return the current status of each phase node and which edges are "active"
+ * (tool call fired but target phase not started yet).
+ */
+export function computePlaybackState(
+  events: TestRunEvent[],
+  startTs: number,
+  cutoffMs: number,
+): {
+  phaseStatuses: Record<string, PlaybackStatus>;
+  activeEdgeTargets: Set<string>;
+} {
+  const cutoffTs = startTs + cutoffMs;
+
+  const phaseStatuses: Record<string, PlaybackStatus> = {
+    orchestrator: 'pending',
+    preparation:  'pending',
+    runtime:      'pending',
+    assertions:   'pending',
+    diagnostics:  'pending',
+    report:       'pending',
+  };
+
+  const toolCallTimes: Record<string, number> = {};
+
+  for (const ev of events) {
+    const evTs = new Date(ev.timestamp).getTime();
+    if (evTs > cutoffTs) continue;
+
+    const phase = PHASE_MAP_PB[ev.phase ?? ''];
+
+    // Orchestrator lifecycle
+    if (ev.event_type === 'run_created' || ev.event_type === 'orchestrator_started') {
+      phaseStatuses['orchestrator'] = 'running';
+    }
+    if (ev.event_type === 'run_completed') {
+      phaseStatuses['orchestrator'] = 'completed';
+    }
+
+    // Tool calls
+    if (ev.event_type === 'orchestrator_tool_call' && ev.details?.tool_name) {
+      toolCallTimes[ev.details.tool_name as string] = evTs;
+    }
+
+    // Phase lifecycle
+    if (phase && phase !== 'orchestrator') {
+      if (PHASE_START_EV.has(ev.event_type)) {
+        phaseStatuses[phase] = 'running';
+      }
+      if (ev.event_type === 'phase_completed') {
+        const msg = (ev.message ?? '').toLowerCase();
+        phaseStatuses[phase] = (msg.includes('fail') || msg.includes('error'))
+          ? 'failed' : 'completed';
+      }
+    }
+  }
+
+  // Active edges: tool call happened but target still pending
+  const activeEdgeTargets = new Set<string>();
+  for (const [toolName] of Object.entries(toolCallTimes)) {
+    const target = TOOL_TO_PHASE[toolName];
+    if (target && phaseStatuses[target] === 'pending') {
+      activeEdgeTargets.add(target);
+    }
+  }
+
+  return { phaseStatuses, activeEdgeTargets };
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function toTitle(agentId: string): string {
@@ -91,13 +178,14 @@ export function buildGraph(
 ): { nodes: RunNode[]; edges: RunEdge[] } {
   // 1. Group events by phase (preserve order of first appearance)
   const PHASE_MAP: Record<string, PhaseKind> = {
-    orchestrator: 'orchestrator',
-    preparation:  'preparation',
-    runtime:      'runtime',
-    assertions:   'assertions',
-    diagnostics:  'diagnostics',
-    report:       'report',
-    verdict:      'report',
+    orchestration: 'orchestrator',
+    orchestrator:  'orchestrator',
+    preparation:   'preparation',
+    runtime:       'runtime',
+    assertions:    'assertions',
+    diagnostics:   'diagnostics',
+    report:        'report',
+    verdict:       'report',
   };
 
   const phaseOrder: PhaseKind[] = [];
@@ -119,7 +207,7 @@ export function buildGraph(
 
   // Ensure orchestrator bucket gets events with no phase
   for (const ev of events) {
-    if (!ev.phase || ev.phase === 'orchestrator') {
+    if (!ev.phase || ev.phase === 'orchestrator' || ev.phase === 'orchestration') {
       phaseEvs.get('orchestrator')!.push(ev);
     }
   }
@@ -158,6 +246,7 @@ export function buildGraph(
       iconName,
       color,
       status: detectStatus(evList),
+      visible: phase === 'orchestrator',
       durationMs: phase === 'runtime' ? run.duration_ms ?? null : detectDuration(evList),
       events: evList,
       diagnostics: ['runtime', 'diagnostics'].includes(phase) ? diagnostics : [],
