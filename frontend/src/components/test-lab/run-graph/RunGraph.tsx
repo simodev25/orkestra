@@ -100,10 +100,43 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
   useEffect(() => {
     if (!isLive) {
       // ── REPLAY MODE (completed / failed run) ──────────────────────────────
-      // Only schedule once — don't restart when parent re-renders
       if (replayDoneRef.current) return;
       replayDoneRef.current = true;
 
+      // Transition from live → completed: the live mode already applied state.
+      // Just flush any remaining unprocessed events immediately, then stop.
+      if (processedIdsRef.current.size > 0) {
+        const remaining = events.filter(ev => !processedIdsRef.current.has(ev.id));
+        remaining.forEach(ev => processedIdsRef.current.add(ev.id));
+        for (const ev of remaining) {
+          if (ev.event_type === 'run_started') {
+            setVisiblePhases(prev => new Set([...prev, 'orchestrator']));
+            setPhaseStatuses(prev => ({ ...prev, orchestrator: 'running' }));
+          }
+          if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
+            const nodeId = PHASE_MAP[ev.phase];
+            if (nodeId && nodeId !== 'orchestrator') {
+              setVisiblePhases(prev => new Set([...prev, nodeId]));
+              setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
+            }
+          }
+          if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
+            const nodeId = PHASE_MAP[ev.phase];
+            if (nodeId) setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
+          }
+          if (ev.event_type === 'run_completed') {
+            setVisiblePhases(prev => new Set([...prev, 'report']));
+            setPhaseStatuses(prev => ({
+              ...prev,
+              orchestrator: 'completed',
+              report: statusFromEvent(ev),
+            }));
+          }
+        }
+        return;
+      }
+
+      // Fresh page load for a completed run: full replay animation.
       timeoutsRef.current.forEach(t => clearTimeout(t));
       timeoutsRef.current = [];
 
