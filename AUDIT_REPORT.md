@@ -1,3 +1,15 @@
+> **Historical document — 2026-04-07 (pre-refactor)**
+>
+> This audit was conducted before several critical issues were resolved:
+>
+> - Authentication middleware has since been implemented (`app/core/auth.py`)
+> - Secret encryption (Fernet) is now in place (`app/services/secret_service.py`)
+> - All Test Lab database tables now have Alembic migrations (18 migrations total)
+> - The Test Lab has been fully refactored to v0.2 (multi-agent LLM evaluation)
+>
+> The current limitations and system status are documented in `docs/limitations.md`.
+> **Do not use this document as a reference for the current system state.**
+
 # Audit Architecture & Production Readiness
 ## Agents / Families / Agent Skills / Test Lab / MCP Catalog
 
