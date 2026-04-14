@@ -2,7 +2,7 @@
 
 ## Overview
 
-Orkestra Mesh is a platform for defining, governing, and testing AI agents. It wraps the full agent lifecycle: from definition and versioning, through governed deployment and MCP tool binding, to automated test execution with LLM evaluation.
+Orkestra Mesh is a registry and test harness for AI agents. It covers agent definition and versioning, MCP tool binding via Obot, and automated test execution with LLM-based evaluation. Agent deployment to external endpoints is not implemented.
 
 The system is composed of eleven backend subsystems, a Next.js frontend, and an async task queue. All subsystems communicate through a shared PostgreSQL database; no direct inter-service calls exist except for the Obot integration.
 
@@ -15,7 +15,7 @@ The system is composed of eleven backend subsystems, a Next.js frontend, and an 
 | Agent Registry | CRUD, versioning, lifecycle state machine | `app/services/agent_registry_service.py`, `app/models/registry.py`, `app/state_machines/agent_lifecycle_sm.py` |
 | Agent Factory | Creates live ReActAgent from an AgentDefinition | `app/services/agent_factory.py` |
 | Families / Skills | Reusable prompt blocks; seeded from JSON at startup | `app/services/seed_service.py`, `app/config/families.seed.json`, `app/config/skills.seed.json` |
-| MCP Integration | Obot catalog sync + local governance overlay | `app/services/obot_catalog_service.py`, `app/services/mcp_registry_service.py` |
+| MCP Integration | Obot catalog sync; per-binding `enabled_in_orkestra` flag controls tool availability | `app/services/obot_catalog_service.py`, `app/services/mcp_registry_service.py` |
 | Test Lab | Scenario execution and LLM-based evaluation | `app/services/test_lab/` (16 files), `app/tasks/test_lab.py` |
 | Governance | Approval workflows, audit trail, forbidden-effect declarations | `app/services/approval_service.py`, `app/services/audit_service.py`, `app/state_machines/` |
 | Prompt Builder | Assembles the 7-layer system prompt | `app/services/prompt_builder.py` |

@@ -1,26 +1,19 @@
 # Orkestra Mesh
 
-A platform for defining, governing, and testing AI agents.
+A system for defining, versioning, and testing AI agents with structured metadata and lifecycle management.
 
 ## What it is
 
-Orkestra Mesh is a backend-first system that provides structured management of AI agents from definition through deployment. It is built around four concerns:
+Orkestra Mesh is a backend-first registry and testing system for AI agents. It is built around four concerns:
 
-1. **Agent Registry** — agents are defined with structured metadata: system prompts, skills, allowed MCP tools, and governance constraints. A lifecycle state machine controls transitions (draft → active → deprecated).
-2. **MCP Integration Layer** — agents connect to external tools via Obot's MCP catalog. A local governance overlay controls which tools are enabled per agent, with family and workflow bindings.
-3. **Test Lab** — scenarios run against real agents (real LLM, real MCP tools) and are evaluated by LLM sub-agents acting as judge, policy checker, and robustness tester.
-4. **Governance Layer** — approval workflows, audit logging, and lifecycle state management applied to all agent changes.
+1. **Agent Registry** — agents are defined as database records with metadata: system prompts, skills, allowed MCP tool IDs, and declared effect constraints. A lifecycle state machine enforces sequential promotion: `draft → designed → tested → registered → active → deprecated/disabled → archived`.
+2. **MCP Integration** — agents connect to external tool servers via Obot's MCP catalog. A local flag (`OrkestraMCPBinding.enabled_in_orkestra`) controls which tools are available per agent; `family_bindings` and `workflow_bindings` are stored but their runtime effect depends on the calling code.
+3. **Test Lab** — scenarios run against real agents (real LLM, real MCP calls) and are evaluated by four LLM sub-agents (scenario planner, judge, policy checker, robustness tester). Scores and verdicts come from the judge LLM and are non-deterministic.
+4. **Audit and control** — lifecycle transitions, definition changes, and approval decisions are written to an append-only `audit_events` table. Approval requests exist in the API but are not triggered automatically during agent execution.
 
 ## What problem it solves
 
-Most agent frameworks focus on runtime execution. Orkestra Mesh focuses on the layer before that: making agent definitions auditable, testable, and governable before they reach production. The Test Lab replaces manual prompt testing with structured scenarios evaluated by secondary LLMs.
-
-## What makes it different
-
-- Agents are versioned entities with a formal lifecycle, not ad-hoc prompt strings.
-- Tool access is governed centrally via Obot's MCP catalog with per-agent overlays.
-- Evaluation is structured: a scenario produces a score from an LLM judge, not a human eyeballing output.
-- A 7-layer prompt pipeline assembles the final system prompt from reusable Families and Skills blocks.
+Orkestra Mesh provides a structured registry and test harness for LLM agents: track what an agent is supposed to do, what tools it can reach, and whether its output meets a declared test scenario. The Test Lab runs agents against structured scenarios and logs the results for comparison over time.
 
 ## What is implemented (v0.1.0)
 
@@ -37,7 +30,7 @@ Most agent frameworks focus on runtime execution. Orkestra Mesh focuses on the l
 ## What this does not do
 
 - Does not run MCP servers locally — all MCP execution is delegated to Obot.
-- Does not provide a production-grade auth system — auth is disabled by default.
+- Does not include a production-grade auth system — authentication is API-key only and is disabled in the provided docker-compose.yml (`ORKESTRA_AUTH_ENABLED: "false"`).
 - Does not containerize Ollama — it must run on the host.
 - Does not back workflow execution with Celery — only Test Lab tasks use the queue.
 - Does not provide deterministic evaluation — Test Lab scores vary across runs because evaluation is LLM-driven.
@@ -116,7 +109,7 @@ These are not optional warnings. They describe the current state of the system.
 
 1. **Auth disabled by default.** `ORKESTRA_AUTH_ENABLED` is set to `"false"` in `docker-compose.yml`. All endpoints are unauthenticated unless you explicitly enable auth and configure it.
 
-2. **Ephemeral encryption key.** `FERNET_KEY` is auto-generated at startup in dev mode. Any secrets stored in the database (e.g. API keys for MCP tools) are lost on container restart unless you set `ORKESTRA_FERNET_KEY` to a stable value in `.env`.
+2. **Ephemeral encryption key.** `FERNET_KEY` is auto-generated at startup in dev mode. Any secrets stored in the database (e.g. API keys for MCP tools) are lost on container restart unless you set `ORKESTRA_FERNET_KEY` directly in `docker-compose.yml` — the api container does not read from `.env` in the provided compose configuration.
 
 3. **Default API key is public.** The default key `test-orkestra-api-key` is in this repository. Change it before using Orkestra on any non-localhost network.
 
@@ -134,7 +127,7 @@ Agents are defined in the registry with a system prompt, a set of Skills (reusab
 
 The Test Lab accepts a scenario (a structured input + expected behavior description), executes it against the live agent, and passes the output to three LLM sub-agents for evaluation. Results are stored with a score, reasoning, and policy flags.
 
-MCP tool access is mediated through Obot. The local governance overlay can enable or disable specific tools per agent and bind them to particular families or workflows.
+MCP tool access is mediated through Obot. Each binding record (`OrkestraMCPBinding`) has an `enabled_in_orkestra` flag that controls whether the agent factory exposes the tool to the agent. `family_bindings` and `workflow_bindings` are stored in the same record but their runtime effect depends on the calling code.
 
 For a full architectural description, see `docs/architecture.md`.
 
