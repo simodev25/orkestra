@@ -1,8 +1,8 @@
 """API Key authentication for Orkestra."""
-from fastapi import HTTPException, status
+from fastapi import status
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 
 from app.core.config import get_settings
 
@@ -33,9 +33,9 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
         valid_keys = [k.strip() for k in settings.API_KEYS.split(",")]
 
         if not api_key or api_key not in valid_keys:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing or invalid API key",
+                content={"detail": "Missing or invalid API key"},
             )
 
         return await call_next(request)

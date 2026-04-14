@@ -96,6 +96,7 @@ export function OperationalStates({
                   </div>
                   {reachable && onTransition && (
                     <button
+                      type="button"
                       disabled={transitioning}
                       onClick={() => onTransition(s.status)}
                       className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${styles.btn}`}
@@ -137,6 +138,7 @@ export function OperationalStates({
                   </div>
                   {reachable && onTransition && (
                     <button
+                      type="button"
                       disabled={transitioning}
                       onClick={() => onTransition("archived")}
                       className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${styles.btn}`}

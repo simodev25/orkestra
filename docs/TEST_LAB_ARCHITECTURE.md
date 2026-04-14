@@ -1,3 +1,7 @@
+> **Internal reference document.** This is the v0.2 design document written during development (in French). The user-facing documentation is at [`docs/test-lab.md`](test-lab.md).
+>
+> This document remains accurate as an implementation reference but is not the primary docs entry point.
+
 # Test Lab -- Documentation Technique Complete
 
 **Version :** v0.2 (post-refactor multi-agent)

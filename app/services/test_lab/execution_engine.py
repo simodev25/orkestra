@@ -73,8 +73,21 @@ def _get_sync_engine():
                 .replace("+asyncpg", "")
                 .replace("asyncpg", "psycopg2")
             )
-        _sync_engine = create_engine(sync_url, pool_size=5, max_overflow=3)
+        _sync_engine = create_engine(sync_url, pool_size=10, max_overflow=5, pool_pre_ping=True)
     return _sync_engine
+
+
+# ── Redis connection pool singleton ──────────────────────────────────────────
+
+_redis_pool: redis.ConnectionPool | None = None
+
+
+def _get_redis_pool() -> redis.ConnectionPool:
+    global _redis_pool
+    if _redis_pool is None:
+        settings = get_settings()
+        _redis_pool = redis.ConnectionPool.from_url(settings.REDIS_URL)
+    return _redis_pool
 
 
 # ── Event publishing ──────────────────────────────────────────────────────────
@@ -119,7 +132,7 @@ def emit_event(
 
     # Publish to Redis for SSE streaming (best-effort)
     try:
-        r = redis.Redis.from_url(settings.REDIS_URL)
+        r = redis.Redis(connection_pool=_get_redis_pool())
         r.publish(
             f"test_lab:run:{run_id}",
             json.dumps(
@@ -135,14 +148,43 @@ def emit_event(
                 default=str,
             ),
         )
-        r.close()
+        # Ne pas appeler r.close() — la connexion retourne au pool
     except Exception:
         pass
 
 
+# ── Colonnes autorisées pour update_run ──────────────────────────────────
+
+_ALLOWED_UPDATE_FIELDS = frozenset({
+    "status",
+    "final_output",
+    "score",
+    "verdict",
+    "summary",
+    "error_message",
+    "assertion_results",
+    "diagnostic_results",
+    "iteration_count",
+    "duration_ms",
+    "started_at",
+    "ended_at",
+    "agent_version",
+})
+
+
 def update_run(run_id: str, **fields):
-    """Update a ``test_runs`` row via raw SQL."""
+    """Update a ``test_runs`` row via raw SQL.
+
+    Only columns in ``_ALLOWED_UPDATE_FIELDS`` are accepted to prevent
+    SQL injection via crafted column names.
+    """
     from sqlalchemy import text
+
+    unknown = set(fields.keys()) - _ALLOWED_UPDATE_FIELDS
+    if unknown:
+        raise ValueError(f"update_run: disallowed fields {unknown!r}")
+    if not fields:
+        return
 
     sets = ", ".join(f"{k} = :{k}" for k in fields)
     engine = _get_sync_engine()
@@ -156,10 +198,18 @@ def update_run(run_id: str, **fields):
 
 # ── Config loader ─────────────────────────────────────────────────────────────
 
+_config_cache: dict | None = None
+_config_cache_ts: float = 0.0
+_CONFIG_CACHE_TTL = 60.0  # secondes
+
 
 def _get_config_sync() -> dict:
     """Load test lab config from ``test_lab_config`` table using the shared engine."""
     from sqlalchemy import text
+
+    global _config_cache, _config_cache_ts
+    if _config_cache is not None and (time.monotonic() - _config_cache_ts) < _CONFIG_CACHE_TTL:
+        return _config_cache
 
     config: dict = {
         "orchestrator": {"provider": "ollama", "host": "", "api_key": "", "model": "gpt-oss:20b-cloud", "thinking": False},
@@ -183,8 +233,14 @@ def _get_config_sync() -> dict:
             for row in result.fetchall():
                 if row[0] in config and isinstance(config[row[0]], dict):
                     config[row[0]] = {**config[row[0]], **row[1]}
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "Failed to load test_lab_config from DB, using defaults: %s",
+            e,
+            exc_info=False,
+        )
+    _config_cache = config
+    _config_cache_ts = time.monotonic()
     return config
 
 
@@ -319,7 +375,23 @@ async def run_subagent(
     )
 
     task_msg = Msg("user", user_prompt, "user")
-    response = await worker(task_msg)
+    try:
+        async with asyncio.timeout(45):  # 45s max per LLM call
+            response = await worker(task_msg)
+    except TimeoutError:
+        logger.warning(
+            "LLM timeout in run_subagent: phase=%s worker=%s run_id=%s",
+            phase, worker_name, run_id,
+        )
+        emit_event(
+            run_id,
+            "subagent_timeout",
+            phase,
+            f"[{worker_name}] LLM did not respond within 45s",
+            details={"worker": worker_name, "timeout_s": 45},
+        )
+        return f"[TIMEOUT] {worker_name} did not respond in 45s"
+
     text = (
         response.get_text_content()
         if hasattr(response, "get_text_content")
@@ -337,6 +409,32 @@ async def run_subagent(
     return text or ""
 
 
+# ── Async engine singleton ────────────────────────────────────────────────────
+
+_async_engine = None
+_async_session_factory = None
+
+
+def _get_async_session_factory():
+    """Return (or lazily create) the shared async SQLAlchemy session factory."""
+    global _async_engine, _async_session_factory
+    if _async_session_factory is None:
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.orm import sessionmaker
+
+        settings = get_settings()
+        _async_engine = create_async_engine(
+            settings.DATABASE_URL,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=3,
+        )
+        _async_session_factory = sessionmaker(
+            _async_engine, class_=AsyncSession, expire_on_commit=False
+        )
+    return _async_session_factory
+
+
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
 
@@ -346,8 +444,6 @@ async def execute_test_run(run_id: str, scenario_id: str):
     This is the primary entry point used by the Celery task (batch mode).
     """
     from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-    from sqlalchemy.orm import sessionmaker
 
     from app.models.test_lab import (
         TestRun,
@@ -364,9 +460,7 @@ async def execute_test_run(run_id: str, scenario_id: str):
         run_target_agent,
     )
 
-    settings = get_settings()
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    Session = _get_async_session_factory()
 
     async with Session() as db:
         scenario = await db.get(TestScenario, scenario_id)
@@ -662,8 +756,6 @@ async def execute_test_run(run_id: str, scenario_id: str):
             f"Run completed: {verdict} ({score}/100)",
         )
 
-    await engine.dispose()
-
 
 # ── Interactive entry point ───────────────────────────────────────────────────
 
@@ -676,12 +768,8 @@ async def execute_test_from_request(request: "TestExecutionRequest") -> dict:
     Returns a dict with ``run_id``, ``scenario_id``, ``verdict``, and ``score``.
     """
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-    from sqlalchemy.orm import sessionmaker
 
-    settings = get_settings()
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    Session = _get_async_session_factory()
 
     scenario_id = new_id("scn_")
     run_id = new_id("trun_")
@@ -730,8 +818,6 @@ async def execute_test_from_request(request: "TestExecutionRequest") -> dict:
             },
         )
         await db.commit()
-
-    await engine.dispose()
 
     # Delegate to the main pipeline
     await execute_test_run(run_id, scenario_id)

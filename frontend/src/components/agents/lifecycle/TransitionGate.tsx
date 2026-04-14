@@ -114,6 +114,7 @@ export function TransitionGate({
       {/* Promote button */}
       {onPromote && (
         <button
+          type="button"
           disabled={!transition.eligible || promoting}
           onClick={() => onPromote(transition.to)}
           className={`w-full py-2 text-xs font-mono uppercase tracking-wider rounded border transition-colors ${

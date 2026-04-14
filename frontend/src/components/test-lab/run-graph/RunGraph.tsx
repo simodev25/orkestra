@@ -93,6 +93,8 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
   /** ReactFlow instance — captured in onInit */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rfInstanceRef    = useRef<any>(null);
+  /** Debounce timer for fitView to avoid layout thrash */
+  const fitViewTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLive = run.status === 'running' || run.status === 'queued';
 
@@ -331,9 +333,16 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
   // ── Auto-fitView whenever new nodes become visible ─────────────────────────
   useEffect(() => {
     if (!rfInstanceRef.current) return;
-    window.requestAnimationFrame(() => {
-      rfInstanceRef.current?.fitView({ padding: 0.18, maxZoom: 1.4, duration: 400 });
-    });
+    // Cancel previous timer if visiblePhases changes rapidly (e.g. during replay)
+    if (fitViewTimerRef.current) {
+      clearTimeout(fitViewTimerRef.current);
+    }
+    fitViewTimerRef.current = setTimeout(() => {
+      window.requestAnimationFrame(() => {
+        rfInstanceRef.current?.fitView({ padding: 0.18, maxZoom: 1.4, duration: 400 });
+      });
+      fitViewTimerRef.current = null;
+    }, 200);
   }, [visiblePhases]);
 
   // ── Interaction ────────────────────────────────────────────────────────────

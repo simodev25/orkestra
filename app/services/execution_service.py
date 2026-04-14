@@ -134,21 +134,13 @@ async def complete_node(db: AsyncSession, node_id: str) -> RunNode:
     node.status = RunNodeStatus.COMPLETED
     node.ended_at = datetime.now(timezone.utc)
 
-    # Check if any pending nodes' dependencies are now all completed
-    stmt = select(RunNode).where(
-        RunNode.run_id == node.run_id,
-        RunNode.status == RunNodeStatus.PENDING,
-    )
-    result = await db.execute(stmt)
-    pending_nodes = list(result.scalars().all())
+    # Une seule requête pour tous les nodes du run — élimine le N+1
+    stmt_all = select(RunNode).where(RunNode.run_id == node.run_id)
+    result_all = await db.execute(stmt_all)
+    all_nodes = list(result_all.scalars().all())
 
-    # Get all completed node refs
-    stmt2 = select(RunNode).where(
-        RunNode.run_id == node.run_id,
-        RunNode.status == RunNodeStatus.COMPLETED,
-    )
-    result2 = await db.execute(stmt2)
-    completed_refs = {n.node_ref for n in result2.scalars().all()}
+    completed_refs = {n.node_ref for n in all_nodes if n.status == RunNodeStatus.COMPLETED}
+    pending_nodes = [n for n in all_nodes if n.status == RunNodeStatus.PENDING]
 
     for pending in pending_nodes:
         deps = pending.depends_on or []

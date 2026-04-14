@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   FlaskConical, Play, Eye, Plus, Settings, Send, ChevronDown, Loader2,
-  MessageSquare, List, Pencil, Trash2,
+  MessageSquare, List, Pencil, Trash2, Search, X,
 } from "lucide-react";
 import { request } from "@/lib/api-client";
 import { listAgents } from "@/lib/agent-registry/service";
@@ -124,6 +124,12 @@ export default function TestLabPage() {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // ─── Scenarios filter state ─────────────────────────────────────────────
+  const [filterText, setFilterText] = useState("");
+  const [filterAgent, setFilterAgent] = useState("");
+  const [filterTag, setFilterTag] = useState("");
+  const [filterEnabled, setFilterEnabled] = useState<"all" | "enabled" | "disabled">("all");
 
   // ─── Chat state ─────────────────────────────────────────────────────────
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -300,6 +306,35 @@ export default function TestLabPage() {
   }
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+
+  // ─── Scenarios: derived filter data ────────────────────────────────────
+  const scenarioAgents = useMemo(
+    () => [...new Set(scenarios.map((s) => s.agent_id))].sort(),
+    [scenarios],
+  );
+  const scenarioTags = useMemo(
+    () => [...new Set(scenarios.flatMap((s) => s.tags ?? []))].sort(),
+    [scenarios],
+  );
+  const filteredScenarios = useMemo(() => {
+    const q = filterText.toLowerCase();
+    return scenarios.filter((s) => {
+      if (q && !s.name.toLowerCase().includes(q) && !s.agent_id.toLowerCase().includes(q)) return false;
+      if (filterAgent && s.agent_id !== filterAgent) return false;
+      if (filterTag && !s.tags?.includes(filterTag)) return false;
+      if (filterEnabled === "enabled" && !s.enabled) return false;
+      if (filterEnabled === "disabled" && s.enabled) return false;
+      return true;
+    });
+  }, [scenarios, filterText, filterAgent, filterTag, filterEnabled]);
+  const hasActiveFilter = !!(filterText || filterAgent || filterTag || filterEnabled !== "all");
+
+  function clearFilters() {
+    setFilterText("");
+    setFilterAgent("");
+    setFilterTag("");
+    setFilterEnabled("all");
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Render
@@ -557,6 +592,78 @@ export default function TestLabPage() {
               </div>
             )}
 
+            {/* ── Filter bar ── */}
+            {!scenariosLoading && scenarios.length > 0 && (
+              <div className="glass-panel p-3 flex flex-wrap items-center gap-2">
+                {/* Text search */}
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ork-dim pointer-events-none" />
+                  <input
+                    type="text"
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                    placeholder="Search name or agent…"
+                    className="w-full pl-7 pr-3 py-1.5 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim/50 focus:outline-none focus:border-ork-cyan/40 transition-colors"
+                  />
+                </div>
+
+                {/* Agent filter */}
+                <select
+                  value={filterAgent}
+                  onChange={(e) => setFilterAgent(e.target.value)}
+                  className="py-1.5 pl-2.5 pr-6 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-muted focus:outline-none focus:border-ork-cyan/40 transition-colors appearance-none cursor-pointer"
+                >
+                  <option value="">All agents</option>
+                  {scenarioAgents.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+
+                {/* Tag filter */}
+                {scenarioTags.length > 0 && (
+                  <select
+                    value={filterTag}
+                    onChange={(e) => setFilterTag(e.target.value)}
+                    className="py-1.5 pl-2.5 pr-6 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-muted focus:outline-none focus:border-ork-cyan/40 transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="">All tags</option>
+                    {scenarioTags.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Enabled filter */}
+                <select
+                  value={filterEnabled}
+                  onChange={(e) => setFilterEnabled(e.target.value as "all" | "enabled" | "disabled")}
+                  className="py-1.5 pl-2.5 pr-6 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-muted focus:outline-none focus:border-ork-cyan/40 transition-colors appearance-none cursor-pointer"
+                >
+                  <option value="all">All</option>
+                  <option value="enabled">Enabled</option>
+                  <option value="disabled">Disabled</option>
+                </select>
+
+                {/* Clear + count */}
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-[10px] font-mono text-ork-dim">
+                    {filteredScenarios.length}
+                    {filteredScenarios.length !== scenarios.length && (
+                      <span className="text-ork-dim/50"> / {scenarios.length}</span>
+                    )}
+                  </span>
+                  {hasActiveFilter && (
+                    <button
+                      onClick={clearFilters}
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-ork-dim hover:text-ork-text border border-ork-border rounded hover:border-ork-dim transition-colors"
+                    >
+                      <X size={10} /> Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {scenariosLoading ? (
               <div className="glass-panel p-16 text-center">
                 <div className="text-ork-cyan font-mono text-sm animate-pulse">Loading scenarios...</div>
@@ -567,6 +674,13 @@ export default function TestLabPage() {
                   <p className="text-ork-muted font-mono text-xs text-center py-12">
                     No scenarios yet. Create one to get started.
                   </p>
+                ) : filteredScenarios.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-ork-muted font-mono text-xs">No scenarios match the current filters.</p>
+                    <button onClick={clearFilters} className="mt-2 text-[10px] font-mono text-ork-cyan hover:text-ork-cyan/80 transition-colors">
+                      Clear filters
+                    </button>
+                  </div>
                 ) : (
                   <table className="w-full text-xs">
                     <thead>
@@ -581,7 +695,7 @@ export default function TestLabPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {scenarios.map((s) => (
+                      {filteredScenarios.map((s) => (
                         <tr key={s.id} className="border-b border-ork-border/50 hover:bg-ork-hover/30 transition-colors">
                           <td className="px-4 py-2.5 font-mono text-ork-text font-medium">{s.name}</td>
                           <td className="px-4 py-2.5 font-mono text-ork-muted">{s.agent_id}</td>
