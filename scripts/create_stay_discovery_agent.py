@@ -21,7 +21,7 @@ API_KEY = os.environ.get("ORKESTRA_API_KEY", "test-orkestra-api-key")
 
 # MCP server ID — verify against your Obot catalog before running.
 # GET http://localhost:8200/api/mcp-catalog  to list available server IDs.
-MCP_TAVILY = "ms_tavily_search"  # Tavily Search MCP — replace with real ID from catalog
+MCP_TAVILY = "ms19gshw"  # Tavily Search MCP (confirmed from catalog)
 
 AGENT = {
     "id": "stay_discovery_agent",
