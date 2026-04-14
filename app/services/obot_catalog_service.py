@@ -141,7 +141,18 @@ def _normalize_obot_payload(raw: dict[str, Any]) -> ObotServerDetails:
     )
 
     remote_config = manifest.get("remoteConfig") if isinstance(manifest.get("remoteConfig"), dict) else {}
-    mcp_endpoint_url = remote_config.get("url") or None
+    # Prefer manifest.remoteConfig.url; fall back to top-level connectURL (used by
+    # Obot-hosted MCP servers like Tavily that don't expose a remoteConfig block).
+    # connectURL uses localhost:8080 (Obot's self-reference) — rewrite to the Docker
+    # service name so the API container can reach it from inside the network.
+    raw_connect_url = raw.get("connectURL") or raw.get("connect_url") or None
+    if raw_connect_url:
+        raw_connect_url = (
+            raw_connect_url
+            .replace("http://localhost:8080", "http://obot:8080")
+            .replace("https://localhost:8080", "http://obot:8080")
+        )
+    mcp_endpoint_url = remote_config.get("url") or raw_connect_url or None
 
     return ObotServerDetails(
         id=str(raw.get("id") or raw.get("server_id") or raw.get("name") or ""),
