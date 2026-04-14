@@ -91,8 +91,9 @@ git clone https://github.com/simodev25/orkestra.git
 cd orkestra
 cp .env.example .env
 # Edit .env — at minimum set:
-#   ORKESTRA_OPENAI_API_KEY=<your key>  (required by Obot for tool containers)
-#   ORKESTRA_FERNET_KEY=<base64 key>    (optional in dev; required to persist secrets across restarts)
+#   OPENAI_API_KEY=<your key>  (read by docker-compose for Obot tool containers)
+# To change other Orkestra settings in Docker, edit docker-compose.yml directly
+# (ORKESTRA_* vars are hardcoded in the compose service definitions, not read from .env)
 
 # Ensure Ollama is running on the host and the model is available:
 ollama pull mistral

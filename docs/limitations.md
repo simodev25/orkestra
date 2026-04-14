@@ -124,5 +124,4 @@ Multiple agents in a workflow do not share a common memory space. Each agent ins
 | 20 | Multi-tenancy | Not implemented — single shared environment, no user accounts |
 | 21 | Streaming inference | Not implemented — Ollama calls block until full response is received |
 | 22 | Automatic retry on LLM failure | Not implemented — agent runs fail on LLM errors without retry |
-| 23 | `base_service.py` | Stub — `app/services/base_service.py` is 2 lines; not a real base class |
-| 24 | Plans/workflow execution | Incomplete — Plans and Runs API exists but full Celery-backed end-to-end execution is not implemented |
+| 23 | Plans/workflow execution | Incomplete — Plans and Runs API exists but full Celery-backed end-to-end execution is not implemented |

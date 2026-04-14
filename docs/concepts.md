@@ -61,7 +61,7 @@ Key fields:
 
 A skill can only be assigned to agents whose family appears in the skill's `allowed_families` list. This is validated at agent creation and update time.
 
-Skills are loaded from `app/config/skills.seed.json` into an in-memory registry at startup. **Skills are NOT stored in the database.**
+Skills are seeded from `app/config/skills.seed.json` on startup via `seed_service.seed_all()` and **are stored in the `skill_definitions` database table** (`app/models/skill.py`). An in-memory registry (`app/services/skill_registry_service.py`) is also populated for fast lookup during prompt composition. The database is the runtime source of truth; the JSON file is the seed source.
 
 ---
 
@@ -154,9 +154,12 @@ Allowed transitions:
 | `tested` | `registered` |
 | `registered` | `active` |
 | `active` | `deprecated` or `disabled` |
-| `deprecated` or `disabled` | `archived` |
+| `deprecated` | `archived` |
+| `disabled` | `active` or `archived` |
 
-Transitions are validated — you cannot jump directly from `draft` to `active`. Gate condition for `tested → registered`: `last_test_status` must be `"passed"`.
+Transitions are validated — you cannot jump directly from `draft` to `active`. Invalid transitions return HTTP 409. Note: `disabled` can also transition back to `active` (see table above).
+
+**No programmatic gate conditions** are enforced on the `tested → registered` transition beyond the state machine's allowed-transitions table. The `last_test_status` field exists and is updated by the Test Lab but is not checked by the state machine logic (`app/state_machines/agent_lifecycle_sm.py`) at transition time.
 
 ---
 

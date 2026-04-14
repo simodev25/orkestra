@@ -50,17 +50,22 @@ cp .env.example .env
 
 Open `.env` in your editor and set the following variables:
 
-**Required:**
+**Required for Obot (MCP tools):**
 
 ```
-ORKESTRA_OPENAI_API_KEY=<your-openai-api-key>
+OPENAI_API_KEY=<your-openai-api-key>
 ```
 
-Required by Obot. Without this, MCP tools will not be available.
+`docker-compose.yml` passes this to the Obot container via `${OPENAI_API_KEY:-}` substitution. Without it, Obot cannot spawn tool containers and MCP tools will be unavailable.
 
-**Optional but strongly recommended:**
+Note: the Orkestra API service reads its own OpenAI settings from `ORKESTRA_OPENAI_API_KEY` if you use OpenAI as the LLM provider, but that variable is separate from the one Obot needs.
+
+**To override other settings in Docker Compose:** most `ORKESTRA_*` variables are hardcoded in the `api` and `celery-worker` service definitions in `docker-compose.yml` and do **not** read from `.env`. To change them (e.g., to enable auth or set a stable Fernet key), edit `docker-compose.yml` directly or add the variables under the service's `environment:` block.
+
+**Optional — stable secret encryption key:**
 
 ```
+# In docker-compose.yml, under the api service environment:
 ORKESTRA_FERNET_KEY=<base64-encoded-key>
 ```
 
@@ -201,10 +206,10 @@ Change this value in production by setting `ORKESTRA_API_KEYS` in your `.env`.
 
 On first startup, the FastAPI lifespan event automatically runs `seed_service.seed_all(db)`. This loads:
 
-- `app/config/families.seed.json` → `FamilyDefinition` records in the database
-- `app/config/skills.seed.json` → `SkillDefinition` records into the in-memory registry (not persisted to the database)
+- `app/config/families.seed.json` → `FamilyDefinition` records in the `family_definitions` table
+- `app/config/skills.seed.json` → `SkillDefinition` records in the `skill_definitions` table
 
-The seed is idempotent — it uses upserts and will never overwrite manual changes you make after the initial load.
+The seed uses upserts and runs on every startup. **It will overwrite manual edits** made to seeded family and skill records. To create custom families or skills, add new records via the API rather than editing seeded ones.
 
 ---
 
@@ -240,7 +245,7 @@ Replace `"family_id": "analysis"` with a family ID that exists in your seeded da
 
 ## Running tests
 
-From your local Python environment (requires Python 3.11+):
+From your local Python environment (requires Python 3.12 — matching the project's Dockerfile and sandbox image):
 
 ```bash
 pip install -e ".[dev]"

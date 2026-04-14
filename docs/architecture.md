@@ -20,7 +20,7 @@ The system is composed of eleven backend subsystems, a Next.js frontend, and an 
 | Governance | Approval workflows, audit trail, forbidden-effect declarations | `app/services/approval_service.py`, `app/services/audit_service.py`, `app/state_machines/` |
 | Prompt Builder | Assembles the 7-layer system prompt | `app/services/prompt_builder.py` |
 | Secrets | Fernet-encrypted secrets stored in the database | `app/services/secret_service.py`, `app/models/secret.py` |
-| API Layer | FastAPI, 19 routers, rate limiting, auth | `app/main.py`, `app/api/routes/` |
+| API Layer | FastAPI, 20 routers, rate limiting, auth | `app/main.py`, `app/api/routes/` |
 | Async Queue | Celery + Redis; one registered task type | `app/celery_app.py`, `app/tasks/test_lab.py` |
 | Observability | OpenTelemetry traces, Prometheus metrics | `app/core/tracing.py`, `observability/` |
 
@@ -227,7 +227,7 @@ Log verbosity is controlled by the `ORKESTRA_LOG_LEVEL` environment variable.
          |  HTTP                     | HTTP (sync)                | HTTP
          v                           v                            v
 +--------+---------------------------+-----------+----------------+---------+
-|                        FastAPI (19 routers)                               |
+|                        FastAPI (20 routers)                               |
 |                           app/main.py                                     |
 +---+-------------------+-------------------+-------------------+-----------+
     |                   |                   |                   |

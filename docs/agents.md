@@ -49,11 +49,23 @@ State machine defined in `app/state_machines/agent_lifecycle_sm.py`. Promotion t
 draft → designed → tested → registered → active
                                               ↓          ↓
                                         deprecated    disabled
-                                              ↓          ↓
-                                           archived   archived
+                                              ↓       ↓    ↓
+                                           archived  active archived
 ```
 
-Gate condition for `tested → registered`: `last_test_status == "passed"`.
+Transitions allowed per state (confirmed by `app/state_machines/agent_lifecycle_sm.py`):
+
+| From | To |
+|------|----|
+| `draft` | `designed` |
+| `designed` | `tested` |
+| `tested` | `registered` |
+| `registered` | `active` |
+| `active` | `deprecated` or `disabled` |
+| `deprecated` | `archived` |
+| `disabled` | `active` or `archived` |
+
+**No programmatic gate conditions exist** on any transition beyond the allowed-transitions table. The `last_test_status` field is tracked by the Test Lab but is not checked by the state machine at transition time.
 
 Lifecycle transitions are exposed via:
 
