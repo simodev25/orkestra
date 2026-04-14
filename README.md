@@ -50,7 +50,6 @@ Most agent frameworks focus on runtime execution. Orkestra Mesh focuses on the l
 |-------|-------|
 | Version | 0.1.0 |
 | Maturity | Experimental — development only |
-| Branch | feature/review_01 |
 | Models | 24 SQLAlchemy models |
 | Migrations | 18 Alembic migrations |
 | Tests | 44 test files |
@@ -91,16 +90,24 @@ Most agent frameworks focus on runtime execution. Orkestra Mesh focuses on the l
 git clone https://github.com/simodev25/orkestra.git
 cd orkestra
 cp .env.example .env
-# Edit .env: set ORKESTRA_OPENAI_API_KEY
-# Ensure Ollama is running on the host: ollama pull mistral
+# Edit .env — at minimum set:
+#   ORKESTRA_OPENAI_API_KEY=<your key>  (required by Obot for tool containers)
+#   ORKESTRA_FERNET_KEY=<base64 key>    (optional in dev; required to persist secrets across restarts)
+
+# Ensure Ollama is running on the host and the model is available:
+ollama pull mistral
+# Verify: ollama list  (should show mistral)
+
 docker compose up -d
-# Wait for startup (~30s), then check health:
+# Wait for startup (~30s), then verify:
 curl http://localhost:8200/api/health
-# Open the UI:
-open http://localhost:3300
+# Expected: {"status":"ok"} or similar
+
+# Open the UI in your browser:
+# http://localhost:3300
 ```
 
-The API will be at `http://localhost:8200` and the UI at `http://localhost:3300`.
+If `.env.example` is missing, create `.env` manually with the variables listed in `docs/configuration.md`.
 
 ## Security caveats — read before use
 
