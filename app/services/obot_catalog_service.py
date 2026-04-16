@@ -154,6 +154,17 @@ def _normalize_obot_payload(raw: dict[str, Any]) -> ObotServerDetails:
         )
     mcp_endpoint_url = remote_config.get("url") or raw_connect_url or None
 
+    # Extract tool preview from manifest.toolPreview
+    raw_tools = manifest.get("toolPreview") or []
+    tool_preview = []
+    for t in raw_tools:
+        if isinstance(t, dict) and t.get("name"):
+            tool_preview.append({
+                "name": t["name"],
+                "description": t.get("description"),
+                "params": t.get("params") or {},
+            })
+
     return ObotServerDetails(
         id=str(raw.get("id") or raw.get("server_id") or raw.get("name") or ""),
         name=str(
@@ -182,6 +193,7 @@ def _normalize_obot_payload(raw: dict[str, Any]) -> ObotServerDetails:
         health_status=raw.get("health_status") or derived_health,
         version=raw.get("version") or _metadata_value(combined_metadata, "version"),
         obot_url=obot_url,
+        tool_preview=tool_preview,
         metadata=combined_metadata,
         usage_last_24h=raw.get("usage_last_24h"),
         incidents_last_7d=raw.get("incidents_last_7d"),

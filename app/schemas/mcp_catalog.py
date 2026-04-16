@@ -8,6 +8,12 @@ from pydantic import Field
 from app.schemas.common import OrkBaseSchema
 
 
+class McpToolPreview(OrkBaseSchema):
+    name: str
+    description: Optional[str] = None
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
 class ObotServerSummary(OrkBaseSchema):
     id: str
     name: str
@@ -20,6 +26,7 @@ class ObotServerSummary(OrkBaseSchema):
     health_status: Optional[str] = None
     version: Optional[str] = None
     obot_url: Optional[str] = None
+    tool_preview: list[McpToolPreview] = Field(default_factory=list)
 
 
 class ObotServerDetails(ObotServerSummary):
