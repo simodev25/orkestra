@@ -157,6 +157,8 @@ export interface AgentCreatePayload {
   llm_model?: string | null;
   allow_code_execution?: boolean;
   allowed_builtin_tools?: string[] | null;
+  pipeline_agent_ids?: string[] | null;
+  routing_mode?: string;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;
@@ -187,6 +189,8 @@ export interface AgentUpdatePayload {
   llm_model?: string | null;
   allow_code_execution?: boolean;
   allowed_builtin_tools?: string[] | null;
+  pipeline_agent_ids?: string[] | null;
+  routing_mode?: string;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;
