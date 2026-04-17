@@ -203,5 +203,5 @@ export interface OrchestratorGenerationRequest {
 export interface OrchestratorGenerationResponse {
   draft: GeneratedAgentDraft;
   source: string;
-  selected_agent_ids: string[];      // populated in auto mode
+  selected_agent_ids: string[];      // non-empty only in auto mode (always present)
 }
