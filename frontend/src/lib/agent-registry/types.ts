@@ -191,3 +191,17 @@ export interface AgentUpdatePayload {
   last_test_status?: string;
   usage_count?: number;
 }
+
+export interface OrchestratorGenerationRequest {
+  name: string;
+  agent_ids: string[];               // ordered; empty = auto mode
+  use_case_description?: string;     // auto mode: free-text pipeline description
+  user_instructions?: string;        // always: extra context for LLM
+  routing_strategy?: string;         // default: "sequential"
+}
+
+export interface OrchestratorGenerationResponse {
+  draft: GeneratedAgentDraft;
+  source: string;
+  selected_agent_ids: string[];      // populated in auto mode
+}
