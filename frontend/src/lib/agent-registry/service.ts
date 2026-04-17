@@ -8,6 +8,8 @@ import type {
   AgentUpdatePayload,
   GeneratedAgentDraft,
   McpCatalogSummary,
+  OrchestratorGenerationRequest,
+  OrchestratorGenerationResponse,
 } from "./types";
 import { request } from "../api-client";
 
@@ -132,4 +134,13 @@ export async function listMcpCatalogForAgentDesign(): Promise<McpCatalogSummary[
       obot_state: item.obot_state,
       orkestra_state: item.orkestra_state,
     }));
+}
+
+export async function generateOrchestratorDraft(
+  payload: OrchestratorGenerationRequest,
+): Promise<OrchestratorGenerationResponse> {
+  return request<OrchestratorGenerationResponse>(`${BASE}/generate-orchestrator`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
