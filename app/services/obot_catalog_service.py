@@ -152,7 +152,9 @@ def _normalize_obot_payload(raw: dict[str, Any]) -> ObotServerDetails:
             .replace("http://localhost:8080", "http://obot:8080")
             .replace("https://localhost:8080", "http://obot:8080")
         )
-    mcp_endpoint_url = remote_config.get("url") or raw_connect_url or None
+    # Prefer connectURL (Obot proxy) — Obot manages the downstream API key internally.
+    # Fall back to remoteConfig.url only when connectURL is absent (self-hosted MCPs).
+    mcp_endpoint_url = raw_connect_url or remote_config.get("url") or None
 
     # Extract tool preview from manifest.toolPreview
     raw_tools = manifest.get("toolPreview") or []

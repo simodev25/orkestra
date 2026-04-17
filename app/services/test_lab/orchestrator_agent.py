@@ -73,7 +73,13 @@ def _make_model(worker_name: str | None = None):
     else:
         from agentscope.model import OllamaChatModel
         host = orch.get("host", "") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-        kwargs = {"model_name": model_name, "host": host, "stream": False}
+        kwargs = {
+            "model_name": model_name,
+            "host": host,
+            "stream": False,
+            "enable_thinking": False,
+            "options": {"num_ctx": 32768},
+        }
         if api_key:
             kwargs["api_key"] = api_key
         return OllamaChatModel(**kwargs)
@@ -1141,10 +1147,37 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
         user_msg = Msg("user", user_msg_text, "user")
         recorder.record_orchestrator_start(user_msg_text)
 
-        response = await asyncio.wait_for(
-            orchestrator(user_msg),
-            timeout=ctx.timeout_seconds + 180,
-        )
+        # Retry up to 2 times on transient Ollama 5xx errors.
+        # The orchestrator's reasoning step is stateless enough that a retry
+        # after a short backoff usually succeeds once Ollama recovers from OOM.
+        _last_exc: Exception | None = None
+        response = None
+        for _attempt in range(1, 4):  # 3 tries total
+            try:
+                response = await asyncio.wait_for(
+                    orchestrator(user_msg),
+                    timeout=ctx.timeout_seconds + 180,
+                )
+                break  # success
+            except asyncio.TimeoutError:
+                raise  # don't retry on timeout
+            except Exception as _exc:
+                _err = str(_exc)
+                _is_transient = any(
+                    tag in _err for tag in ("500", "502", "503", "504", "Internal Server Error")
+                )
+                if _is_transient and _attempt < 3:
+                    logger.warning(
+                        f"Orchestrator LLM transient error (attempt {_attempt}/3) "
+                        f"for run {run_id}: {_err[:200]} — retrying in {_attempt}s"
+                    )
+                    import asyncio as _asyncio
+                    await _asyncio.sleep(float(_attempt))
+                    _last_exc = _exc
+                    continue
+                raise
+        if response is None and _last_exc is not None:
+            raise _last_exc
 
         final_text = _extract_text(response.content if hasattr(response, "content") else str(response))
 
@@ -1289,6 +1322,10 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
         if ctx and ctx.target_output and not ctx.verdict:
             # Try assertion-based auto-evaluation instead of giving a 0 score
             auto_verdict, auto_score, auto_summary = _auto_evaluate(ctx)
+            # Set ctx fields so recorder.finalize() picks up the right values
+            ctx.verdict = auto_verdict
+            ctx.score = auto_score
+            ctx.summary = auto_summary
             update_run(run_id, status="completed",
                        verdict=auto_verdict, score=auto_score,
                        duration_ms=ctx.target_duration_ms,

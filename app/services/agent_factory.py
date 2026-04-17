@@ -11,6 +11,23 @@ from app.llm.provider import get_chat_model, get_formatter, is_agentscope_availa
 logger = logging.getLogger(__name__)
 
 
+def _format_mcp_exception(e: Exception) -> str:
+    """Unwrap BaseExceptionGroup to extract and display the real inner exceptions.
+
+    AgentScope's HttpStatelessClient wraps downstream errors (HTTP 403, network
+    failures, JSON-RPC errors) inside an asyncio TaskGroup ExceptionGroup.
+    str(ExceptionGroup) only shows 'unhandled errors in a TaskGroup (N sub-exception)'
+    which is opaque. This helper extracts the inner exceptions for clear logging.
+    """
+    # Python 3.11+ ExceptionGroup / BaseExceptionGroup
+    if hasattr(e, "exceptions"):
+        parts = []
+        for inner in e.exceptions:  # type: ignore[attr-defined]
+            parts.append(_format_mcp_exception(inner))
+        return f"[{type(e).__name__}] " + " | ".join(parts)
+    return f"{type(e).__name__}: {e}"
+
+
 def _docker_safe_host(host: str) -> str:
     """Replace localhost/127.0.0.1 with host.docker.internal for Docker compat."""
     if os.path.exists("/.dockerenv") or os.environ.get("ORKESTRA_DATABASE_URL", "").startswith("postgresql"):
@@ -34,6 +51,7 @@ def _get_agent_specific_model(provider: str, model_name: str):
                 host=host,
                 stream=False,
                 enable_thinking=False,
+                options={"num_ctx": 32768},
             )
         elif provider == "openai":
             from agentscope.model import OpenAIChatModel
@@ -229,11 +247,17 @@ async def create_agentscope_agent(
                 continue
             try:
                 from agentscope.mcp import HttpStatelessClient
+                from app.core.config import get_settings as _get_settings
+                _settings = _get_settings()
+                _mcp_headers: dict[str, str] = {}
+                if _settings.OBOT_API_KEY:
+                    _mcp_headers["Authorization"] = f"Bearer {_settings.OBOT_API_KEY}"
                 mcp_client = HttpStatelessClient(
                     name=mcp_id,
                     transport="streamable_http",
                     url=srv["url"],
                     timeout=30,
+                    headers=_mcp_headers,
                 )
                 # List available tools and register them
                 mcp_tools = await mcp_client.list_tools()
@@ -249,17 +273,41 @@ async def create_agentscope_agent(
                         "url": srv["url"],
                         "tools": [t.name for t in mcp_tools],
                     })
+                    # Probe: verify that tool execution is actually reachable.
+                    # list_tools() only checks the /tools/list endpoint; the
+                    # downstream API key (e.g. Google Maps X-GOOG-API-KEY) is
+                    # only validated on the first real tool call.  We call the
+                    # first tool with empty arguments — it will fail with
+                    # invalid-argument, but an API-key error appears here too
+                    # and is much easier to diagnose than a silent TaskGroup
+                    # failure inside the agent loop.
+                    try:
+                        probe_fn = await mcp_client.get_callable_function(
+                            mcp_tools[0].name, wrap_tool_result=False
+                        )
+                        await probe_fn()
+                    except BaseException as probe_err:  # noqa: BLE001
+                        real_err = _format_mcp_exception(probe_err)
+                        # A JSON-RPC "invalid params" error is fine (tool works).
+                        # A 403/blocked message means the API key is missing.
+                        if "invalid" in real_err.lower() or "argument" in real_err.lower() or "param" in real_err.lower():
+                            logger.debug(f"MCP {mcp_id} probe OK (expected param error): {real_err}")
+                        else:
+                            logger.warning(
+                                f"MCP {mcp_id} probe FAILED — tools may not work at runtime. "
+                                f"Real error: {real_err}"
+                            )
             except Exception as e:
-                logger.warning(f"Failed to connect MCP {mcp_id} ({srv.get('url')}): {e}")
+                logger.warning(f"Failed to connect MCP {mcp_id} ({srv.get('url')}): {_format_mcp_exception(e)}")
 
         if connected_mcps:
             logger.info(f"Agent {agent_def.id}: connected {len(connected_mcps)} MCP servers")
 
-        # Build multi-layer system prompt + AgentScope skill prompt
+        # Build multi-layer system prompt.
+        # NOTE: do NOT manually append skill_prompt here — ReActAgent.sys_prompt
+        # property calls toolkit.get_agent_skill_prompt() automatically on every
+        # model call, so adding it here would double the skills content.
         sys_prompt = await build_agent_prompt(db, agent_def)
-        skill_prompt = toolkit.get_agent_skill_prompt()
-        if skill_prompt:
-            sys_prompt = f"{sys_prompt}\n\n{skill_prompt}"
 
         agent = ReActAgent(
             name=agent_def.id,

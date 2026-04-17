@@ -177,6 +177,32 @@ export default function McpDetailsPage() {
         </div>
       )}
 
+      {obot.tool_preview.length > 0 && (
+        <section className="glass-panel p-5 space-y-3">
+          <h2 className="section-title">Tools ({obot.tool_preview.length})</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {obot.tool_preview.map((tool) => (
+              <div key={tool.name} className="bg-ork-bg border border-ork-border rounded p-3 space-y-1.5">
+                <p className="text-xs font-mono text-ork-cyan font-semibold">{tool.name}</p>
+                {tool.description && (
+                  <p className="text-[11px] text-ork-muted leading-relaxed">{tool.description}</p>
+                )}
+                {Object.keys(tool.params).length > 0 && (
+                  <div className="pt-1 space-y-0.5">
+                    {Object.entries(tool.params).map(([param, desc]) => (
+                      <div key={param} className="flex gap-1.5 text-[10px] font-mono">
+                        <span className="text-ork-amber shrink-0">{param}</span>
+                        <span className="text-ork-dim">{desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section className="glass-panel p-5 space-y-4">
           <h2 className="section-title">Block A — Obot Data</h2>

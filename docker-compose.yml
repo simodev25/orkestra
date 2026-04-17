@@ -85,7 +85,7 @@ services:
       ORKESTRA_DEBUG: "true"
       ORKESTRA_LOG_LEVEL: INFO
       ORKESTRA_OBOT_BASE_URL: http://obot:8080
-      ORKESTRA_OBOT_API_KEY: ""
+      ORKESTRA_OBOT_API_KEY: "ok1-1-2-mG0pa6vhqmKu7UhoBGYghsjz9fDtQ4sV4Mys-4TaONo"
       ORKESTRA_OBOT_USE_MOCK: "false"
       ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
       ORKESTRA_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
@@ -137,6 +137,7 @@ services:
       ORKESTRA_DEBUG: "true"
       ORKESTRA_LOG_LEVEL: INFO
       ORKESTRA_OBOT_BASE_URL: http://obot:8080
+      ORKESTRA_OBOT_API_KEY: "ok1-1-2-mG0pa6vhqmKu7UhoBGYghsjz9fDtQ4sV4Mys-4TaONo"
       ORKESTRA_OBOT_USE_MOCK: "false"
       ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
       ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
