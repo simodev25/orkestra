@@ -198,13 +198,13 @@ class OrchestratorGenerationRequest(OrkBaseSchema):
         None,
         description="Extra context/priorities/constraints passed to LLM in both modes.",
     )
-    routing_strategy: str = Field(default="sequential")
+    routing_strategy: str = Field(default="sequential", description="Pipeline execution strategy. Currently only 'sequential' is supported.")
 
 
 class OrchestratorGenerationResponse(OrkBaseSchema):
     """Response from POST /generate-orchestrator."""
     draft: GeneratedAgentDraft
-    source: str = "llm"
+    source: str = Field("llm", description="Origin of the draft: 'llm'.")
     selected_agent_ids: list[str] = Field(
         default_factory=list,
         description="Agent IDs picked by the LLM (populated in auto mode).",
