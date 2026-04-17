@@ -23,7 +23,12 @@ from app.schemas.agent import (
     OrchestratorGenerationResponse,
     SaveGeneratedDraftRequest,
 )
-from app.services import agent_generation_service, agent_registry_service, agent_test_run_service, orchestrator_builder_service
+from app.services import (
+    agent_generation_service,
+    agent_registry_service,
+    agent_test_run_service,
+    orchestrator_builder_service,
+)
 from app.services.test_lab.target_agent_runner import run_target_agent
 from sqlalchemy import select
 
@@ -238,8 +243,6 @@ async def generate_orchestrator(
     Manual mode: provide agent_ids (ordered list of ≥2 agent IDs).
     Auto mode: provide use_case_description; LLM selects agents from registry.
     """
-    if not data.name or len(data.name) < 3:
-        raise HTTPException(status_code=400, detail="name must be at least 3 characters")
     if not data.agent_ids and not data.use_case_description:
         raise HTTPException(
             status_code=400,
@@ -256,7 +259,7 @@ async def generate_orchestrator(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("Orchestrator generation failed")
-        raise HTTPException(status_code=503, detail=f"LLM generation failed: {exc}")
+        raise HTTPException(status_code=503, detail="LLM generation failed. Please retry.")
 
 
 # ── Test Lab ───────────────────────────────────────────────────────────
