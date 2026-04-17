@@ -43,6 +43,8 @@ export interface AgentDefinition {
   llm_model: string | null;
   allow_code_execution: boolean;
   allowed_builtin_tools: string[] | null;
+  pipeline_agent_ids?: string[];
+  routing_mode?: string;
   version: string;
   status: AgentStatus;
   owner: string | null;
