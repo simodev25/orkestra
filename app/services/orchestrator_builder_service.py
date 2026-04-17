@@ -274,4 +274,8 @@ async def generate_orchestrator(
         draft = GeneratedAgentDraft.model_validate(data)
     except ValidationError as exc:
         raise ValueError(f"LLM response missing required fields: {exc}") from exc
+
+    # Attach pipeline agent IDs to the draft so save_generated_draft persists them
+    draft.pipeline_agent_ids = selected_ids
+
     return draft, selected_ids

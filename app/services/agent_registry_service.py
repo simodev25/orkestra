@@ -95,6 +95,8 @@ async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payloa
     agent.llm_model = payload.llm_model
     agent.allow_code_execution = payload.allow_code_execution
     agent.allowed_builtin_tools = payload.allowed_builtin_tools or []
+    agent.pipeline_agent_ids = payload.pipeline_agent_ids or []
+    agent.routing_mode = payload.routing_mode or "sequential"
     agent.skills_ref = payload.skills_ref
     # Auto-generate skills_content from resolved skill_ids if not explicitly provided
     skill_ids = _dedupe_str_list(payload.skill_ids)
@@ -620,6 +622,8 @@ async def save_generated_draft(db: AsyncSession, draft: GeneratedAgentDraft) -> 
         owner=draft.owner,
         version=draft.version,
         status="draft" if draft.status == "designed" else draft.status,
+        pipeline_agent_ids=draft.pipeline_agent_ids,
+        routing_mode=draft.routing_mode,
     )
 
     return await create_agent(db, payload)

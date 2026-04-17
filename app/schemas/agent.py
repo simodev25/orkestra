@@ -37,6 +37,8 @@ class AgentCreate(OrkBaseSchema):
     llm_model: Optional[str] = None
     allow_code_execution: bool = False
     allowed_builtin_tools: Optional[list[str]] = None
+    pipeline_agent_ids: Optional[list[str]] = None
+    routing_mode: str = "sequential"
     version: str = "1.0.0"
     status: AgentStatus = AgentStatus.DRAFT
     owner: Optional[str] = None
@@ -65,6 +67,8 @@ class AgentUpdate(OrkBaseSchema):
     llm_model: Optional[str] = None
     allow_code_execution: Optional[bool] = None
     allowed_builtin_tools: Optional[list[str]] = None
+    pipeline_agent_ids: Optional[list[str]] = None
+    routing_mode: Optional[str] = None
     version: Optional[str] = None
     status: Optional[AgentStatus] = None
     owner: Optional[str] = None
@@ -99,6 +103,8 @@ class AgentOut(OrkBaseSchema):
     llm_model: Optional[str] = None
     allow_code_execution: bool = False
     allowed_builtin_tools: Optional[list[str]] = None
+    pipeline_agent_ids: Optional[list[str]] = None
+    routing_mode: str = "sequential"
     version: str
     status: AgentStatus
     owner: Optional[str]
@@ -171,6 +177,8 @@ class GeneratedAgentDraft(OrkBaseSchema):
     status: AgentStatus = AgentStatus.DRAFT
     suggested_missing_mcps: list[str] = Field(default_factory=list)
     mcp_rationale: dict[str, str] = Field(default_factory=dict)
+    pipeline_agent_ids: list[str] = Field(default_factory=list)
+    routing_mode: str = "sequential"
 
 
 class AgentGenerationResponse(OrkBaseSchema):
