@@ -10,6 +10,7 @@ from app.services.orchestrator_builder_service import (
 def test_slugify_name():
     assert _slugify_name("Hotel Pipeline Orchestrator") == "hotel_pipeline_orchestrator"
     assert _slugify_name("  My Agent!! ") == "my_agent"
+    assert len(_slugify_name("a" * 200)) <= 90  # DB column is String(100)
 
 
 def test_parse_llm_json_clean():

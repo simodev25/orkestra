@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 def _slugify_name(name: str) -> str:
     """Convert a human name to a snake_case id."""
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-    return slug or "orchestrator"
+    slug = slug or "orchestrator"
+    return slug[:90]  # DB column is String(100); leave room for suffixes
 
 
 def _build_agents_block(agents: list[dict]) -> str:
@@ -31,10 +32,10 @@ def _build_agents_block(agents: list[dict]) -> str:
         limitations = a.get("limitations") or []
         lim_text = "; ".join(limitations[:3]) if limitations else "none specified"
         lines.append(
-            f"{i}. {a['id']}\n"
-            f"   Name: {a['name']}\n"
-            f"   Purpose: {a['purpose']}\n"
-            f"   Description: {a['description']}\n"
+            f"{i}. {a.get('id', 'unknown')}\n"
+            f"   Name: {a.get('name', '')}\n"
+            f"   Purpose: {a.get('purpose', '')}\n"
+            f"   Description: {a.get('description', '')}\n"
             f"   Limitations: {lim_text}"
         )
     return "\n\n".join(lines)
@@ -174,13 +175,19 @@ async def _fetch_all_agents_as_dicts(db: AsyncSession) -> list[dict]:
             "limitations": a.limitations or [],
         }
         for a in agents
+        if (a.family_id or "").lower() != "orchestration"
     ]
 
 
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
-def _call_llm(system_prompt: str) -> str:
-    """Call the configured LLM with a single system prompt. Returns raw text."""
+async def _call_llm(system_prompt: str) -> str:
+    """Call the configured LLM with a single system prompt. Returns raw text.
+
+    OllamaChatModel.__call__ is a coroutine — must be awaited.
+    Messages must be plain dicts (list[dict[str, Any]]).
+    Text is extracted from ChatResponse.content (list of TextBlock dicts).
+    """
     from app.llm.provider import get_chat_model, is_agentscope_available
 
     if not is_agentscope_available():
@@ -190,14 +197,22 @@ def _call_llm(system_prompt: str) -> str:
     if model is None:
         raise ValueError("LLM model could not be created. Check OLLAMA_HOST / LLM_PROVIDER config.")
 
-    from agentscope.message import Msg
-
-    response = model([
-        Msg(name="system", content=system_prompt, role="system"),
-        Msg(name="user", content="Generate the orchestrator JSON configuration now.", role="user"),
+    response = await model([
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "Generate the orchestrator JSON configuration now."},
     ])
 
-    text = response.text if hasattr(response, "text") else str(response)
+    # ChatResponse.content is a list of TextBlock-like dicts: {"type": "text", "text": "..."}
+    content = response.get("content") or []
+    text_parts = [
+        block.get("text", "")
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    ]
+    text = "".join(text_parts)
+    if not text:
+        # Fallback: stringify the whole response
+        text = str(response)
     logger.debug("LLM raw response (first 500): %s", text[:500])
     return text
 
@@ -240,7 +255,7 @@ async def generate_orchestrator(
     )
 
     # Call LLM
-    raw = _call_llm(system_prompt)
+    raw = await _call_llm(system_prompt)
     data = _parse_llm_json(raw)
 
     # Ensure required non-empty fields
@@ -254,5 +269,9 @@ async def generate_orchestrator(
             "transmitted to subsequent agents"
         )
 
-    draft = GeneratedAgentDraft.model_validate(data)
+    from pydantic import ValidationError
+    try:
+        draft = GeneratedAgentDraft.model_validate(data)
+    except ValidationError as exc:
+        raise ValueError(f"LLM response missing required fields: {exc}") from exc
     return draft, selected_ids
