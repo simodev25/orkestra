@@ -181,3 +181,31 @@ class AgentGenerationResponse(OrkBaseSchema):
 
 class SaveGeneratedDraftRequest(OrkBaseSchema):
     draft: GeneratedAgentDraft
+
+
+class OrchestratorGenerationRequest(OrkBaseSchema):
+    """Request body for POST /generate-orchestrator."""
+    name: str = Field(..., min_length=3, description="snake_case id for the orchestrator")
+    agent_ids: list[str] = Field(
+        default_factory=list,
+        description="Ordered list of agent IDs (manual mode). Empty = auto mode.",
+    )
+    use_case_description: Optional[str] = Field(
+        None,
+        description="Free-text pipeline description (auto mode). LLM selects agents.",
+    )
+    user_instructions: Optional[str] = Field(
+        None,
+        description="Extra context/priorities/constraints passed to LLM in both modes.",
+    )
+    routing_strategy: str = Field(default="sequential")
+
+
+class OrchestratorGenerationResponse(OrkBaseSchema):
+    """Response from POST /generate-orchestrator."""
+    draft: GeneratedAgentDraft
+    source: str = "llm"
+    selected_agent_ids: list[str] = Field(
+        default_factory=list,
+        description="Agent IDs picked by the LLM (populated in auto mode).",
+    )
