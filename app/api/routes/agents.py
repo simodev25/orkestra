@@ -259,7 +259,7 @@ async def generate_orchestrator(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("Orchestrator generation failed")
-        raise HTTPException(status_code=503, detail="LLM generation failed. Please retry.")
+        raise HTTPException(status_code=503, detail=f"LLM generation failed: {exc}")
 
 
 # ── Test Lab ───────────────────────────────────────────────────────────

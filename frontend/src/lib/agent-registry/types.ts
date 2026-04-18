@@ -119,6 +119,8 @@ export interface GeneratedAgentDraft {
   status: AgentStatus;
   suggested_missing_mcps: string[];
   mcp_rationale: Record<string, string>;
+  pipeline_agent_ids?: string[];
+  routing_mode?: string;
 }
 
 export interface AgentGenerationResponse {

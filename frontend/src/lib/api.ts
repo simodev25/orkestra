@@ -110,6 +110,14 @@ export const api = {
       body: JSON.stringify({ value: value ? "true" : "false" }),
     }),
 
+  // LLM Configuration
+  getLlmConfig: () => request<T.LlmConfig>("/settings/llm-config"),
+  saveLlmConfig: (data: T.LlmConfig) =>
+    request<{ status: string }>("/settings/llm-config", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
   // Metrics
   getPlatformMetrics: () => request<T.PlatformMetrics>("/metrics/platform"),
 };

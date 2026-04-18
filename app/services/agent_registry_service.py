@@ -557,6 +557,8 @@ async def enrich_agent(db: AsyncSession, agent: AgentDefinition) -> dict:
         "llm_model": agent.llm_model,
         "allow_code_execution": agent.allow_code_execution,
         "allowed_builtin_tools": agent.allowed_builtin_tools or [],
+        "pipeline_agent_ids": agent.pipeline_agent_ids or [],
+        "routing_mode": agent.routing_mode or "sequential",
         "version": agent.version,
         "status": agent.status,
         "owner": agent.owner,

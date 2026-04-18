@@ -87,6 +87,16 @@ async def build_agent_prompt(
         mission_parts.append(agent.prompt_content)
     sections.append(_format_section("AGENT MISSION", "\n\n".join(mission_parts)))
 
+    # Layer 4.5 — Pipeline agents (orchestration family only)
+    pipeline_agent_ids = getattr(agent, "pipeline_agent_ids", None) or []
+    if (agent.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
+        try:
+            from app.services.pipeline_executor import build_pipeline_prompt_section
+            pipeline_section = await build_pipeline_prompt_section(db, pipeline_agent_ids)
+            sections.append(_format_section("PIPELINE AGENTS & TOOLS", pipeline_section))
+        except Exception as exc:
+            logger.warning("Could not build pipeline prompt section for %s: %s", agent.id, exc)
+
     # Layer 4.5 — Code execution guide (injected only when opted in)
     if getattr(agent, "allow_code_execution", False):
         sections.append(_format_section("CODE EXECUTION", _CODE_EXECUTION_GUIDE))

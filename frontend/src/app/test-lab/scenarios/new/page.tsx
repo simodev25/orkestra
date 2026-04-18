@@ -204,7 +204,7 @@ export default function CreateScenarioPage() {
         body: JSON.stringify(payload),
       });
 
-      router.push("/test-lab");
+      router.push("/test-lab?tab=scenarios");
     } catch (e: any) {
       setError(e.message);
     } finally {

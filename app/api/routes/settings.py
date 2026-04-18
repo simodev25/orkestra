@@ -152,3 +152,68 @@ async def set_capability(cap_key: str, data: CapabilityUpsert, db: AsyncSession 
         db.add(PlatformCapability(key=cap_key, value=normalized))
     await db.flush()
     return {"key": cap_key, "value": normalized == "true"}
+
+
+# ---- LLM Configuration ----
+
+_LLM_CONFIG_KEYS = ["LLM_PROVIDER", "OLLAMA_HOST", "OLLAMA_MODEL", "OPENAI_MODEL", "OPENAI_BASE_URL"]
+
+_LLM_DEFAULTS = {
+    "LLM_PROVIDER": "ollama",
+    "OLLAMA_HOST": "http://localhost:11434",
+    "OLLAMA_MODEL": "mistral",
+    "OPENAI_MODEL": "mistral-small-latest",
+    "OPENAI_BASE_URL": "https://api.mistral.ai/v1",
+}
+
+
+class LlmConfigUpdate(PydanticBaseModel):
+    provider: str = "ollama"
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = "mistral"
+    openai_model: str = "mistral-small-latest"
+    openai_base_url: str = "https://api.mistral.ai/v1"
+
+
+@router.get("/llm-config")
+async def get_llm_config(db: AsyncSession = Depends(get_db)):
+    """Return current LLM configuration (DB overrides env vars)."""
+    from app.models.platform_capability import PlatformCapability
+    from app.core.config import get_settings
+    result = await db.execute(
+        select(PlatformCapability).where(PlatformCapability.key.in_(_LLM_CONFIG_KEYS))
+    )
+    rows = {r.key: r.value for r in result.scalars().all()}
+    settings = get_settings()
+    def _get(cap_key: str, env_attr: str) -> str:
+        return rows.get(cap_key) or getattr(settings, env_attr, None) or _LLM_DEFAULTS[cap_key]
+    return {
+        "provider":       _get("LLM_PROVIDER",    "LLM_PROVIDER"),
+        "ollama_host":    _get("OLLAMA_HOST",      "OLLAMA_HOST"),
+        "ollama_model":   _get("OLLAMA_MODEL",     "OLLAMA_MODEL"),
+        "openai_model":   _get("OPENAI_MODEL",     "OPENAI_MODEL"),
+        "openai_base_url":_get("OPENAI_BASE_URL",  "OPENAI_BASE_URL"),
+    }
+
+
+@router.put("/llm-config")
+async def save_llm_config(data: LlmConfigUpdate, db: AsyncSession = Depends(get_db)):
+    """Persist LLM configuration to platform_capabilities."""
+    from app.models.platform_capability import PlatformCapability
+    from datetime import datetime, timezone
+    updates = {
+        "LLM_PROVIDER":    data.provider.strip(),
+        "OLLAMA_HOST":     data.ollama_host.strip(),
+        "OLLAMA_MODEL":    data.ollama_model.strip(),
+        "OPENAI_MODEL":    data.openai_model.strip(),
+        "OPENAI_BASE_URL": data.openai_base_url.strip(),
+    }
+    for key, value in updates.items():
+        existing = await db.get(PlatformCapability, key)
+        if existing:
+            existing.value = value
+            existing.updated_at = datetime.now(timezone.utc)
+        else:
+            db.add(PlatformCapability(key=key, value=value))
+    await db.flush()
+    return {"status": "saved", **{k.lower(): v for k, v in updates.items()}}

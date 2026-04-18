@@ -93,10 +93,10 @@ services:
       ORKESTRA_DEBUG_STRATEGY_DIR: /app/storage/debug-strategy
       ORKESTRA_TRACE_DIR: /app/storage/debug-scenarios
       ORKESTRA_AUTH_ENABLED: "false"
-      ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
+      ORKESTRA_OLLAMA_HOST: https://ollama.com
+      ORKESTRA_OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      ORKESTRA_FERNET_KEY: "N2OXby291ViF7uHhX7tz5UmEZ52rC_nFj1ncfO40kww="
       ORKESTRA_SANDBOX_IMAGE: python:3.12-slim
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,9 +140,9 @@ services:
       ORKESTRA_OBOT_API_KEY: "ok1-1-2-mG0pa6vhqmKu7UhoBGYghsjz9fDtQ4sV4Mys-4TaONo"
       ORKESTRA_OBOT_USE_MOCK: "false"
       ORKESTRA_OBOT_FALLBACK_TO_MOCK: "false"
-      ORKESTRA_OLLAMA_HOST: http://host.docker.internal:11434
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      ORKESTRA_OLLAMA_HOST: https://ollama.com
+      ORKESTRA_OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      ORKESTRA_FERNET_KEY: "N2OXby291ViF7uHhX7tz5UmEZ52rC_nFj1ncfO40kww="
     depends_on:
       postgres:
         condition: service_healthy

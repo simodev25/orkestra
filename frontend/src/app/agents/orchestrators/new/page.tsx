@@ -35,7 +35,9 @@ export default function OrchestratorBuilderPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    listAgents().then(setAllAgents).catch(console.error);
+    listAgents({ status: "active" })
+      .then((agents) => setAllAgents(agents.filter((a) => a.family_id !== "orchestration")))
+      .catch(console.error);
   }, []);
 
   const canGenerate =

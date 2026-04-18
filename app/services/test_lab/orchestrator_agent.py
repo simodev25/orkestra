@@ -23,7 +23,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from agentscope.agent import ReActAgent
-from agentscope.formatter import OllamaChatFormatter
 from agentscope.memory import InMemoryMemory
 from agentscope.message import Msg
 from agentscope.tool import Toolkit, ToolResponse
@@ -31,6 +30,8 @@ from agentscope.tool import Toolkit, ToolResponse
 from app.core.config import get_settings
 from app.services.test_lab.execution_engine import (
     _get_config_sync,
+    _make_model,
+    _make_formatter,
     _run_async,
     emit_event,
     update_run,
@@ -51,50 +52,10 @@ def _extract_text(content) -> str:
     return str(content)
 
 
-def _make_model(worker_name: str | None = None):
-    config = _get_config_sync()
-    orch = config.get("orchestrator", {})
-
-    model_name = None
-    if worker_name and worker_name in config.get("workers", {}):
-        model_name = config["workers"][worker_name].get("model")
-    if not model_name:
-        model_name = orch.get("model", "mistral")
-
-    provider = orch.get("provider", "ollama")
-    api_key = orch.get("api_key", "") or ""
-    settings = get_settings()
-
-    if provider == "openai":
-        from agentscope.model import OpenAIChatModel
-        base_url = orch.get("host", "") or getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")
-        key = api_key or getattr(settings, "OPENAI_API_KEY", "")
-        return OpenAIChatModel(model_name=model_name, api_key=key, base_url=base_url)
-    else:
-        from agentscope.model import OllamaChatModel
-        host = orch.get("host", "") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-        kwargs = {
-            "model_name": model_name,
-            "host": host,
-            "stream": False,
-            "enable_thinking": False,
-            "options": {"num_ctx": 32768},
-        }
-        if api_key:
-            kwargs["api_key"] = api_key
-        return OllamaChatModel(**kwargs)
-
-
 def _build_subagent(name: str, sys_prompt: str, worker_key: str) -> ReActAgent:
     """Build a persistent SubAgent (created ONCE, reused across tool calls)."""
     model = _make_model(worker_key)
-    config = _get_config_sync()
-    provider = config.get("orchestrator", {}).get("provider", "ollama")
-    if provider == "openai":
-        from agentscope.formatter import OpenAIChatFormatter
-        formatter = OpenAIChatFormatter()
-    else:
-        formatter = OllamaChatFormatter()
+    formatter = _make_formatter()
     return ReActAgent(
         name=name,
         model=model,
@@ -895,9 +856,10 @@ def build_orchestrator_agent(ctx: RunContext) -> ReActAgent:
     for fn in tools:
         toolkit.register_tool_function(fn)
     model = _make_model()
+    formatter = _make_formatter()
     return ReActAgent(
         name="OrchestratorAgent",
-        model=model, formatter=OllamaChatFormatter(),
+        model=model, formatter=formatter,
         memory=InMemoryMemory(), toolkit=toolkit,
         sys_prompt=ORCHESTRATOR_PROMPT, max_iters=12,
     )
@@ -1101,9 +1063,10 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
 
         # Record orchestrator config from dynamic config
         cfg = _get_config_sync()
-        orch_model = cfg.get("orchestrator", {}).get("model", "mistral")
+        orch_cfg = cfg.get("orchestrator", {})
+        orch_model = orch_cfg.get("model", "minimax-m2.7")
         settings_local = get_settings()
-        host = getattr(settings_local, "OLLAMA_HOST", "http://localhost:11434")
+        host = orch_cfg.get("host") or getattr(settings_local, "OLLAMA_HOST", "http://localhost:11434")
         recorder.set_orchestrator_config(
             model=orch_model, host=host,
             system_prompt=ORCHESTRATOR_PROMPT, max_iters=12,

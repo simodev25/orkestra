@@ -1,12 +1,11 @@
 """Agent factory -- creates AgentScope ReActAgent from Orkestra agent definitions."""
 
 import logging
-import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.registry import AgentDefinition
-from app.llm.provider import get_chat_model, get_formatter, is_agentscope_available
+from app.llm.provider import get_chat_model, get_formatter, is_agentscope_available, make_ollama_model
 
 logger = logging.getLogger(__name__)
 
@@ -28,39 +27,73 @@ def _format_mcp_exception(e: Exception) -> str:
     return f"{type(e).__name__}: {e}"
 
 
-def _docker_safe_host(host: str) -> str:
-    """Replace localhost/127.0.0.1 with host.docker.internal for Docker compat."""
-    if os.path.exists("/.dockerenv") or os.environ.get("ORKESTRA_DATABASE_URL", "").startswith("postgresql"):
-        return host.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
-    return host
 
 
-def _get_agent_specific_model(provider: str, model_name: str):
-    """Create a model instance for a specific provider/model combination."""
+async def _read_platform_llm_config(db: AsyncSession) -> dict:
+    """Read LLM host/api_key from platform_capabilities + platform_secrets tables."""
+    try:
+        from sqlalchemy import select
+        from app.models.platform_capability import PlatformCapability
+        from app.models.secret import PlatformSecret
+        from app.core.encryption import decrypt_value
+
+        _KEYS = ["LLM_PROVIDER", "OLLAMA_HOST", "OLLAMA_MODEL", "OPENAI_MODEL", "OPENAI_BASE_URL"]
+        result = await db.execute(
+            select(PlatformCapability).where(PlatformCapability.key.in_(_KEYS))
+        )
+        rows = {r.key: r.value for r in result.scalars().all()}
+
+        ollama_secret = await db.get(PlatformSecret, "OLLAMA_API_KEY")
+        openai_secret = await db.get(PlatformSecret, "OPENAI_API_KEY")
+
+        def _decrypt(secret) -> str | None:
+            if secret is None:
+                return None
+            try:
+                return decrypt_value(secret.value)
+            except Exception:
+                return None
+
+        return {
+            "provider":        rows.get("LLM_PROVIDER"),
+            "ollama_host":     rows.get("OLLAMA_HOST"),
+            "ollama_model":    rows.get("OLLAMA_MODEL"),
+            "openai_model":    rows.get("OPENAI_MODEL"),
+            "openai_base_url": rows.get("OPENAI_BASE_URL"),
+            "ollama_api_key":  _decrypt(ollama_secret),
+            "openai_api_key":  _decrypt(openai_secret),
+        }
+    except Exception as e:
+        logger.warning(f"Could not read platform LLM config from DB: {e}")
+        return {}
+
+
+def _get_agent_specific_model(provider: str, model_name: str, platform_cfg: dict | None = None):
+    """Create a model instance for a specific provider/model combination.
+
+    ``platform_cfg`` is the dict from _read_platform_llm_config (platform_capabilities + secrets).
+    When provided, its host/api_key take precedence over env vars.
+    """
     if not is_agentscope_available():
         return None
+    cfg = platform_cfg or {}
     try:
         if provider == "ollama":
-            from agentscope.model import OllamaChatModel
             from app.core.config import get_settings
             settings = get_settings()
-            host = _docker_safe_host(settings.OLLAMA_HOST)
-            effective_name = model_name if "-cloud" in model_name else f"{model_name}-cloud"
-            return OllamaChatModel(
-                model_name=effective_name,
-                host=host,
-                stream=False,
-                enable_thinking=False,
-                options={"num_ctx": 32768},
-            )
+            base_url = cfg.get("ollama_host") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
+            api_key = cfg.get("ollama_api_key") or getattr(settings, "OLLAMA_API_KEY", None)
+            return make_ollama_model(base_url, model_name, api_key)
         elif provider == "openai":
             from agentscope.model import OpenAIChatModel
             from app.core.config import get_settings
             settings = get_settings()
+            api_key = cfg.get("openai_api_key") or getattr(settings, "OPENAI_API_KEY", "")
+            base_url = cfg.get("openai_base_url") or getattr(settings, "OPENAI_BASE_URL", None) or "https://api.openai.com/v1"
             return OpenAIChatModel(
                 model_name=model_name,
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_BASE_URL or "https://api.openai.com/v1",
+                api_key=api_key,
+                base_url=base_url,
             )
         return None
     except Exception as e:
@@ -165,12 +198,24 @@ async def create_agentscope_agent(
         logger.info(f"AgentScope not available, cannot create agent {agent_def.id}")
         return None
 
+    # Read platform LLM config (host, api_key) from DB — takes precedence over env vars
+    platform_cfg = await _read_platform_llm_config(db)
+
     if agent_def.llm_provider and agent_def.llm_model:
-        model = _get_agent_specific_model(agent_def.llm_provider, agent_def.llm_model)
+        model = _get_agent_specific_model(agent_def.llm_provider, agent_def.llm_model, platform_cfg)
+        logger.info("[AGENT-MODEL] agent=%s path=agent_specific provider=%s model=%s", agent_def.id, agent_def.llm_provider, agent_def.llm_model)
     elif fallback_model is not None:
         model = fallback_model
+        try:
+            _mname = getattr(model, "model_name", "?")
+            _host = str(model.client._client._base_url) if hasattr(model, "client") else "?"
+        except Exception:
+            _mname = str(type(model))
+            _host = "?"
+        logger.info("[AGENT-MODEL] agent=%s path=fallback model_type=%s host=%s model=%s", agent_def.id, type(model).__name__, _host, _mname)
     else:
-        model = get_chat_model()
+        model = get_chat_model(config=platform_cfg)
+        logger.info("[AGENT-MODEL] agent=%s path=platform_cfg ollama_host=%s ollama_api_key=%s", agent_def.id, platform_cfg.get("ollama_host"), "SET" if platform_cfg.get("ollama_api_key") else "NOT_SET")
     if model is None:
         logger.info(f"LLM not available, cannot create agent {agent_def.id}")
         return None
@@ -303,11 +348,34 @@ async def create_agentscope_agent(
         if connected_mcps:
             logger.info(f"Agent {agent_def.id}: connected {len(connected_mcps)} MCP servers")
 
+        # ── Pipeline tools (orchestration family only) ────────────────────
+        # If this agent is an orchestrator with pipeline_agent_ids, pre-create
+        # each pipeline agent and register one dynamic tool per agent so the
+        # orchestrator LLM can call them in sequence with context propagation.
+        pipeline_agent_ids = getattr(agent_def, "pipeline_agent_ids", None) or []
+        if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
+            try:
+                from app.services.pipeline_executor import build_pipeline_tools
+                pipeline_tools, _pipeline_ctx = await build_pipeline_tools(db, pipeline_agent_ids)
+                for pt in pipeline_tools:
+                    toolkit.register_tool_function(pt)
+                logger.info(
+                    f"Orchestrator {agent_def.id}: registered {len(pipeline_tools)} pipeline tools "
+                    f"for agents {pipeline_agent_ids}"
+                )
+            except Exception as pe:
+                logger.warning(f"Failed to build pipeline tools for {agent_def.id}: {pe}")
+
         # Build multi-layer system prompt.
         # NOTE: do NOT manually append skill_prompt here — ReActAgent.sys_prompt
         # property calls toolkit.get_agent_skill_prompt() automatically on every
         # model call, so adding it here would double the skills content.
         sys_prompt = await build_agent_prompt(db, agent_def)
+
+        # For orchestration agents, bump max_iters to cover the full pipeline
+        effective_max_iters = max_iters
+        if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
+            effective_max_iters = max(max_iters, len(pipeline_agent_ids) * 2 + 2)
 
         agent = ReActAgent(
             name=agent_def.id,
@@ -316,7 +384,7 @@ async def create_agentscope_agent(
             formatter=formatter,
             toolkit=toolkit,
             memory=InMemoryMemory(),
-            max_iters=max_iters,
+            max_iters=effective_max_iters,
         )
 
         # Attach MCP info for tracing

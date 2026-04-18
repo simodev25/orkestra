@@ -7,13 +7,31 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.agent import GeneratedAgentDraft, OrchestratorGenerationRequest
 
 logger = logging.getLogger(__name__)
+
+_TRACE_DIR = Path(os.getenv("ORKESTRA_DEBUG_ORCHESTRATEUR_DIR", "/app/storage/debug-orchestrateur"))
+
+
+def _write_trace(filename: str, data: dict) -> None:
+    """Write a JSON trace file to the debug-orchestrateur directory."""
+    try:
+        _TRACE_DIR.mkdir(parents=True, exist_ok=True)
+        path = _TRACE_DIR / filename
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+        logger.info("[LLM-TRACE] Trace file written: %s", path)
+    except Exception as e:
+        logger.warning("[LLM-TRACE] Could not write trace file: %s", e)
 
 
 # ── Helpers (pure, testable without DB or LLM) ────────────────────────────────
@@ -181,21 +199,72 @@ async def _fetch_all_agents_as_dicts(db: AsyncSession) -> list[dict]:
 
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
-async def _call_llm(system_prompt: str) -> str:
+async def _read_llm_config_from_db(db: AsyncSession) -> dict:
+    """Read LLM config overrides from platform_capabilities + secrets tables."""
+    from sqlalchemy import select
+    from app.models.platform_capability import PlatformCapability
+    from app.models.secret import PlatformSecret
+    from app.core.encryption import decrypt_value
+
+    _KEYS = ["LLM_PROVIDER", "OLLAMA_HOST", "OLLAMA_MODEL", "OPENAI_MODEL", "OPENAI_BASE_URL"]
+    result = await db.execute(
+        select(PlatformCapability).where(PlatformCapability.key.in_(_KEYS))
+    )
+    rows = {r.key: r.value for r in result.scalars().all()}
+    logger.info("[LLM-TRACE] platform_capabilities: %s", rows)
+
+    # Read API keys from secrets (encrypted)
+    ollama_secret = await db.get(PlatformSecret, "OLLAMA_API_KEY")
+    openai_secret = await db.get(PlatformSecret, "OPENAI_API_KEY")
+    logger.info("[LLM-TRACE] OLLAMA_API_KEY in DB: %s", "YES" if ollama_secret else "NO")
+    logger.info("[LLM-TRACE] OPENAI_API_KEY in DB: %s", "YES" if openai_secret else "NO")
+
+    def _decrypt(secret) -> str | None:
+        if secret is None:
+            return None
+        try:
+            val = decrypt_value(secret.value)
+            logger.info("[LLM-TRACE] secret %s decrypted OK, length=%d, prefix=%s",
+                        secret.id, len(val), repr(val[:4]) if val else "''")
+            return val
+        except Exception as e:
+            logger.error("[LLM-TRACE] Failed to decrypt secret %s: %s", secret.id, e)
+            return None
+
+    config = {
+        "provider":        rows.get("LLM_PROVIDER"),
+        "ollama_host":     rows.get("OLLAMA_HOST"),
+        "ollama_model":    rows.get("OLLAMA_MODEL"),
+        "openai_model":    rows.get("OPENAI_MODEL"),
+        "openai_base_url": rows.get("OPENAI_BASE_URL"),
+        "ollama_api_key":  _decrypt(ollama_secret),
+        "openai_api_key":  _decrypt(openai_secret),
+    }
+    logger.info("[LLM-TRACE] effective config (keys masked): provider=%s host=%s model=%s api_key_set=%s",
+                config["provider"], config["ollama_host"], config.get("ollama_model") or config.get("openai_model"),
+                bool(config.get("ollama_api_key") or config.get("openai_api_key")))
+    return config
+
+
+async def _call_llm(system_prompt: str, db: AsyncSession | None = None) -> str:
     """Call the configured LLM with a single system prompt. Returns raw text.
 
-    OllamaChatModel.__call__ is a coroutine — must be awaited.
-    Messages must be plain dicts (list[dict[str, Any]]).
-    Text is extracted from ChatResponse.content (list of TextBlock dicts).
+    If ``db`` is provided, LLM config is read from platform_capabilities (DB
+    overrides env vars). Otherwise falls back to env vars / defaults.
     """
     from app.llm.provider import get_chat_model, is_agentscope_available
+
+    logger.info("[LLM-TRACE] _call_llm start, db=%s", "provided" if db else "None")
 
     if not is_agentscope_available():
         raise ValueError("AgentScope is not available. Cannot generate orchestrator.")
 
-    model = get_chat_model()
+    llm_config = await _read_llm_config_from_db(db) if db is not None else None
+    logger.info("[LLM-TRACE] calling get_chat_model...")
+    model = get_chat_model(config=llm_config)
     if model is None:
         raise ValueError("LLM model could not be created. Check OLLAMA_HOST / LLM_PROVIDER config.")
+    logger.info("[LLM-TRACE] model created: %s", type(model).__name__)
 
     response = await model([
         {"role": "system", "content": system_prompt},
@@ -228,54 +297,113 @@ async def generate_orchestrator(
     Returns (draft, selected_agent_ids).
     selected_agent_ids is populated in auto mode to tell the UI which agents were selected.
     """
-    is_auto_mode = len(req.agent_ids) == 0
+    ts = datetime.now(timezone.utc)
+    ts_str = ts.strftime("%Y-%m-%dT%H-%M-%S")
+    slug = _slugify_name(req.name)
+    trace_filename = f"{ts_str}_{slug}.json"
+    t_start = time.monotonic()
 
-    if is_auto_mode and not req.use_case_description:
-        raise ValueError("In auto mode, use_case_description is required.")
+    trace: dict = {
+        "timestamp": ts.isoformat(),
+        "request": {
+            "name": req.name,
+            "agent_ids": req.agent_ids,
+            "routing_strategy": req.routing_strategy,
+            "use_case_description": req.use_case_description,
+            "user_instructions": req.user_instructions,
+        },
+        "mode": "auto" if len(req.agent_ids) == 0 else "manual",
+        "llm_config": None,
+        "agents_selected": [],
+        "system_prompt": None,
+        "llm_raw_response": None,
+        "llm_parsed_data": None,
+        "draft": None,
+        "error": None,
+        "duration_ms": None,
+    }
 
-    # Fetch agents
-    if is_auto_mode:
-        agents = await _fetch_all_agents_as_dicts(db)
-        selected_ids = [a["id"] for a in agents]
-    else:
-        agents = await _fetch_agents_as_dicts(db, req.agent_ids)
-        selected_ids = req.agent_ids
+    # Write initial trace so file appears immediately on click
+    _write_trace(trace_filename, trace)
 
-    if not agents:
-        raise ValueError("No agents found. Add agents to the registry first.")
-
-    agent_block = _build_agents_block(agents)
-    system_prompt = _build_system_prompt(
-        agent_block=agent_block,
-        orchestrator_name=req.name,
-        routing_strategy=req.routing_strategy,
-        user_instructions=req.user_instructions,
-        use_case_description=req.use_case_description,
-        is_auto_mode=is_auto_mode,
-    )
-
-    # Call LLM
-    raw = await _call_llm(system_prompt)
-    data = _parse_llm_json(raw)
-
-    # Ensure required non-empty fields
-    if not data.get("limitations"):
-        data["limitations"] = ["Performance depends on the reliability of sub-agents in the pipeline"]
-    if not data.get("skills_content"):
-        data["skills_content"] = (
-            "sequential_routing: Execute pipeline agents in strict sequential order, "
-            "passing accumulated context to each step\n"
-            "context_propagation: Merge outputs of each agent into a shared context "
-            "transmitted to subsequent agents"
-        )
-
-    from pydantic import ValidationError
     try:
-        draft = GeneratedAgentDraft.model_validate(data)
-    except ValidationError as exc:
-        raise ValueError(f"LLM response missing required fields: {exc}") from exc
+        is_auto_mode = len(req.agent_ids) == 0
 
-    # Attach pipeline agent IDs to the draft so save_generated_draft persists them
-    draft.pipeline_agent_ids = selected_ids
+        if is_auto_mode and not req.use_case_description:
+            raise ValueError("In auto mode, use_case_description is required.")
 
-    return draft, selected_ids
+        # Read LLM config for trace (api_key masked)
+        try:
+            llm_cfg = await _read_llm_config_from_db(db)
+            trace["llm_config"] = {
+                k: ("***" if "api_key" in k and v else v)
+                for k, v in llm_cfg.items()
+            }
+        except Exception as cfg_err:
+            trace["llm_config"] = {"error": str(cfg_err)}
+
+        # Fetch agents
+        if is_auto_mode:
+            agents = await _fetch_all_agents_as_dicts(db)
+            selected_ids = [a["id"] for a in agents]
+        else:
+            agents = await _fetch_agents_as_dicts(db, req.agent_ids)
+            selected_ids = req.agent_ids
+
+        if not agents:
+            raise ValueError("No agents found. Add agents to the registry first.")
+
+        trace["agents_selected"] = [{"id": a["id"], "name": a["name"]} for a in agents]
+        _write_trace(trace_filename, trace)
+
+        agent_block = _build_agents_block(agents)
+        system_prompt = _build_system_prompt(
+            agent_block=agent_block,
+            orchestrator_name=req.name,
+            routing_strategy=req.routing_strategy,
+            user_instructions=req.user_instructions,
+            use_case_description=req.use_case_description,
+            is_auto_mode=is_auto_mode,
+        )
+        trace["system_prompt"] = system_prompt
+        _write_trace(trace_filename, trace)
+
+        # Call LLM (DB config takes precedence over env vars)
+        raw = await _call_llm(system_prompt, db=db)
+        trace["llm_raw_response"] = raw
+        _write_trace(trace_filename, trace)
+
+        data = _parse_llm_json(raw)
+        trace["llm_parsed_data"] = data
+
+        # Ensure required non-empty fields
+        if not data.get("limitations"):
+            data["limitations"] = ["Performance depends on the reliability of sub-agents in the pipeline"]
+        if not data.get("skills_content"):
+            data["skills_content"] = (
+                "sequential_routing: Execute pipeline agents in strict sequential order, "
+                "passing accumulated context to each step\n"
+                "context_propagation: Merge outputs of each agent into a shared context "
+                "transmitted to subsequent agents"
+            )
+
+        from pydantic import ValidationError
+        try:
+            draft = GeneratedAgentDraft.model_validate(data)
+        except ValidationError as exc:
+            raise ValueError(f"LLM response missing required fields: {exc}") from exc
+
+        # Attach pipeline agent IDs to the draft so save_generated_draft persists them
+        draft.pipeline_agent_ids = selected_ids
+
+        trace["draft"] = data
+        trace["duration_ms"] = round((time.monotonic() - t_start) * 1000)
+        _write_trace(trace_filename, trace)
+
+        return draft, selected_ids
+
+    except Exception as exc:
+        trace["error"] = str(exc)
+        trace["duration_ms"] = round((time.monotonic() - t_start) * 1000)
+        _write_trace(trace_filename, trace)
+        raise

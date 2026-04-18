@@ -212,7 +212,7 @@ def _get_config_sync() -> dict:
         return _config_cache
 
     config: dict = {
-        "orchestrator": {"provider": "ollama", "host": "", "api_key": "", "model": "gpt-oss:20b-cloud", "thinking": False},
+        "orchestrator": {"provider": "ollama", "host": "", "api_key": "", "model": "minimax-m2.7", "thinking": False},
         "workers": {
             "preparation": {
                 "prompt": "You are a test preparation worker. Produce a structured TEST PLAN.",
@@ -271,30 +271,63 @@ def _make_model(worker_name: str | None = None):
     elif "thinking" in orch and orch["thinking"] is not None:
         thinking = bool(orch["thinking"])
 
+    # Read platform_capabilities as fallback when test_lab_config doesn't specify host/key
+    platform_host: str = ""
+    platform_api_key: str = ""
+    try:
+        engine = _get_sync_engine()
+        with engine.connect() as conn:
+            from sqlalchemy import text as _text
+            rows = conn.execute(
+                _text("SELECT key, value FROM platform_capabilities WHERE key IN ('OLLAMA_HOST', 'OPENAI_BASE_URL')")
+            ).fetchall()
+            pc = {r[0]: r[1] for r in rows}
+            platform_host = pc.get("OLLAMA_HOST") or pc.get("OPENAI_BASE_URL") or ""
+
+            # Read API key from secrets (encrypted)
+            secret_key = "OLLAMA_API_KEY" if provider == "ollama" else "OPENAI_API_KEY"
+            secret_row = conn.execute(
+                _text("SELECT value FROM platform_secrets WHERE id = :k"), {"k": secret_key}
+            ).fetchone()
+            if secret_row:
+                try:
+                    from app.core.encryption import decrypt_value as _dv
+                    platform_api_key = _dv(secret_row[0]) or ""
+                except Exception:
+                    pass
+    except Exception as _pc_err:
+        logger.debug("Could not read platform_capabilities for model fallback: %s", _pc_err)
+
     if provider == "openai":
         from agentscope.model import OpenAIChatModel
-        base_url = orch.get("host", "") or getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")
-        key = api_key or getattr(settings, "OPENAI_API_KEY", "")
+        base_url = orch.get("host", "") or platform_host or getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+        key = api_key or platform_api_key or getattr(settings, "OPENAI_API_KEY", "")
         return OpenAIChatModel(model_name=model_name, api_key=key, base_url=base_url)
     else:
-        from agentscope.model import OllamaChatModel
-        host = orch.get("host", "") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-        kwargs: dict = {"model_name": model_name, "host": host, "stream": False}
-        if api_key:
-            kwargs["api_key"] = api_key
-        if thinking is not None:
-            kwargs["enable_thinking"] = thinking
-        return OllamaChatModel(**kwargs)
+        from app.llm.provider import make_ollama_model
+        base_url = orch.get("host", "") or platform_host or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
+        effective_key = api_key or platform_api_key or getattr(settings, "OLLAMA_API_KEY", "")
+        logger.info(
+            "[_make_model] base_url=%s model=%s api_key=%s",
+            base_url, model_name,
+            "SET(len=%d)" % len(effective_key) if effective_key else "NOT_SET",
+        )
+        return make_ollama_model(base_url, model_name, effective_key or None)
 
 
 def _make_formatter():
     config = _get_config_sync()
-    provider = config.get("orchestrator", {}).get("provider", "ollama")
-    if provider == "openai":
-        from agentscope.formatter import OpenAIChatFormatter
-        return OpenAIChatFormatter()
-    from agentscope.formatter import OllamaChatFormatter
-    return OllamaChatFormatter()
+    orch = config.get("orchestrator", {})
+    provider = orch.get("provider", "ollama")
+    if provider == "ollama":
+        from app.llm.provider import is_local_ollama
+        from app.core.config import get_settings as _gs
+        host = orch.get("host", "") or getattr(_gs(), "OLLAMA_HOST", "http://localhost:11434")
+        if is_local_ollama(host):
+            from agentscope.formatter import OllamaChatFormatter
+            return OllamaChatFormatter()
+    from agentscope.formatter import OpenAIChatFormatter
+    return OpenAIChatFormatter()
 
 
 def _load_skills_text(skill_ids: list[str]) -> str:
