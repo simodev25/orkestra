@@ -67,7 +67,7 @@ async def build_pipeline_tools(
 
             local_tools = get_tools_for_agent(agent_def)
             react_agent = await create_agentscope_agent(
-                agent_def, db, tools_to_register=local_tools
+                agent_def, db, tools_to_register=local_tools, max_iters=20
             )
             if react_agent is None:
                 logger.warning("Could not create AgentScope agent for '%s' — skipping", agent_id)
@@ -130,6 +130,24 @@ def _make_tool(entry: dict, ctx: PipelineContext):
                 if hasattr(response, "get_text_content")
                 else str(response)
             )
+            # Fallback: extract JSON from thinking blocks when text content is empty.
+            # Some models (e.g. gpt-oss:20b) put their final answer inside thinking blocks
+            # rather than text blocks.  _openai_formatter strips thinking blocks before
+            # get_text_content() is called, so we check raw content here.
+            if not output and hasattr(response, "content") and isinstance(response.content, list):
+                import re as _re
+                for block in response.content:
+                    if block.get("type") == "thinking":
+                        thinking_text = block.get("thinking", "")
+                        # Look for a JSON object in the thinking block
+                        m = _re.search(r"\{[\s\S]*\}", thinking_text)
+                        if m:
+                            output = m.group(0).strip()
+                            logger.info(
+                                "Pipeline agent '%s': extracted JSON from thinking block (%d chars)",
+                                agent_id, len(output),
+                            )
+                            break
             output = (output or f"[{agent_name}] completed with no text output").strip()
         except Exception as exc:
             logger.warning("Pipeline agent '%s' raised during execution: %s", agent_id, exc)

@@ -9,6 +9,54 @@ from app.llm.provider import get_chat_model, get_formatter, is_agentscope_availa
 
 logger = logging.getLogger(__name__)
 
+# ── MCP schema patches ────────────────────────────────────────────────────────
+
+_WAYPOINT_SCHEMA = {
+    "type": "object",
+    "description": (
+        "A waypoint for routing. Provide exactly ONE of: "
+        "address (plain string), place_id (from search_places), or lat_lng."
+    ),
+    "properties": {
+        "address": {
+            "type": "string",
+            "description": "Street address or place name, e.g. 'Humberto Delgado Airport, Lisbon'",
+        },
+        "place_id": {
+            "type": "string",
+            "description": "Google Maps place ID returned by search_places, e.g. 'ChIJxxx...'",
+        },
+        "lat_lng": {
+            "type": "object",
+            "description": "Geographic coordinates",
+            "properties": {
+                "latitude": {"type": "number"},
+                "longitude": {"type": "number"},
+            },
+            "required": ["latitude", "longitude"],
+        },
+    },
+}
+
+
+def _patch_mcp_tool_schemas(tools: list) -> None:
+    """Fix inputSchema mismatches for known MCP tools.
+
+    Google Maps Grounding Lite declares ``origin``/``destination`` as plain
+    strings, but the API expects Waypoint objects.  Patching the schema here
+    ensures the LLM generates the correct nested object format.
+    """
+    for tool in tools:
+        if tool.name == "compute_routes":
+            props = tool.inputSchema.setdefault("properties", {})
+            props["origin"] = _WAYPOINT_SCHEMA
+            props["destination"] = _WAYPOINT_SCHEMA
+            tool.inputSchema.setdefault("required", ["origin", "destination"])
+            logger.info("Patched compute_routes schema: origin/destination → Waypoint objects")
+
+
+# ── Exception formatting ──────────────────────────────────────────────────────
+
 
 def _format_mcp_exception(e: Exception) -> str:
     """Unwrap BaseExceptionGroup to extract and display the real inner exceptions.
@@ -307,6 +355,10 @@ async def create_agentscope_agent(
                 # List available tools and register them
                 mcp_tools = await mcp_client.list_tools()
                 logger.info(f"MCP {mcp_id} ({srv['url']}): {len(mcp_tools)} tools found")
+                # Patch known schema mismatches — some MCP servers declare
+                # complex object parameters as plain strings in their inputSchema,
+                # causing the LLM to generate strings where objects are required.
+                _patch_mcp_tool_schemas(mcp_tools)
                 if mcp_tools:
                     await toolkit.register_mcp_client(
                         mcp_client=mcp_client,
