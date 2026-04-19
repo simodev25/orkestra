@@ -123,14 +123,6 @@ async def run_target_agent(
         tl_model = None
         tl_formatter = None
 
-    # Register run_id so pipeline tools can emit events into the test-lab graph
-    if run_id:
-        try:
-            from app.services.pipeline_executor import set_pipeline_run_id
-            set_pipeline_run_id(run_id)
-        except Exception as exc:
-            logger.warning(f"Could not set pipeline run_id: {exc}")
-
     try:
         react_agent = await create_agentscope_agent(
             agent_def,
@@ -139,6 +131,7 @@ async def run_target_agent(
             max_iters=max_iterations,
             fallback_model=tl_model,
             fallback_formatter=tl_formatter,
+            test_run_id=run_id,
         )
     except Exception as exc:
         logger.warning(f"Agent creation raised an exception for '{agent_id}': {exc}")

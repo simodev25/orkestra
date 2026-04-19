@@ -55,6 +55,7 @@ def _run_async(coro):
 async def build_pipeline_tools(
     db: AsyncSession,
     pipeline_agent_ids: list[str],
+    test_run_id: str | None = None,
 ) -> tuple[list, PipelineContext]:
     """Pre-create all pipeline agents and return (tools, ctx).
 
@@ -97,8 +98,8 @@ async def build_pipeline_tools(
         except Exception as exc:
             logger.warning("Failed to pre-create pipeline agent '%s': %s", agent_id, exc)
 
-    # Read run_id NOW (in the correct async context) and capture in each tool closure
-    run_id = _run_id_var.get()
+    # Use explicitly-passed run_id (most reliable) or fall back to ContextVar
+    run_id = test_run_id or _run_id_var.get()
 
     # Build one sync tool per pre-created agent
     tools: list = []

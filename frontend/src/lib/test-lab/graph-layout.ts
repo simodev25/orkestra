@@ -125,12 +125,22 @@ export function computePlaybackState(
     }
 
     // Pipeline tool calls (create dynamic phase status entries)
-    if (ev.event_type === 'pipeline_tool_call' && ev.details?.tool_name) {
+    // Support both dedicated pipeline_tool_call events and tool_call_completed in runtime
+    const isPipelineToolCall =
+      (ev.event_type === 'pipeline_tool_call' && ev.details?.tool_name) ||
+      (ev.event_type === 'tool_call_completed' && ev.phase === 'runtime' &&
+       ev.details?.tool_name && (ev.details.tool_name as string).startsWith('run_'));
+
+    if (isPipelineToolCall && ev.details?.tool_name) {
       const toolName = ev.details.tool_name as string;
       pipelineToolCallTimes[toolName] = evTs;
       const pPhase = pipelineToolToPhase(toolName);
       if (!(pPhase in phaseStatuses)) {
         phaseStatuses[pPhase] = 'pending';
+      }
+      // tool_call_completed means agent already finished → mark completed
+      if (ev.event_type === 'tool_call_completed') {
+        phaseStatuses[pPhase] = 'completed';
       }
     }
 
@@ -247,10 +257,51 @@ export function buildGraph(
     }
     phaseEvs.get(phase)!.push(ev);
 
-    // Track pipeline tool call order
+    // Track pipeline tool call order — from backend pipeline_tool_call events
     if (ev.event_type === 'pipeline_tool_call' && ev.details?.tool_name) {
       const toolName = ev.details.tool_name as string;
       const pPhase = pipelineToolToPhase(toolName);
+      if (!orderedPipelineCalls.find((x) => x.phase === pPhase)) {
+        orderedPipelineCalls.push({ toolName, phase: pPhase });
+      }
+    }
+  }
+
+  // Also detect pipeline calls from tool_call_completed events in runtime phase
+  // (These are the reliable source when backend doesn't emit pipeline_tool_call)
+  for (const ev of events) {
+    if (
+      ev.event_type === 'tool_call_completed' &&
+      ev.phase === 'runtime' &&
+      ev.details?.tool_name &&
+      (ev.details.tool_name as string).startsWith('run_')
+    ) {
+      const toolName = ev.details.tool_name as string;
+      const pPhase = pipelineToolToPhase(toolName);
+      // Create the pipeline phase bucket if not yet done
+      if (!phaseEvs.has(pPhase)) {
+        phaseOrder.push(pPhase);
+        phaseEvs.set(pPhase, []);
+      }
+      // Add a synthetic completed event for this pipeline agent
+      if (!phaseEvs.get(pPhase)!.find((e) => e.event_type === 'phase_completed')) {
+        phaseEvs.get(pPhase)!.push({
+          ...ev,
+          phase: pPhase,
+          event_type: 'phase_completed',
+          message: `${toolName} completed`,
+        });
+      }
+      // Add output event if output_preview available
+      if (ev.details.output_preview && !phaseEvs.get(pPhase)!.find((e) => e.event_type === 'pipeline_agent_output')) {
+        phaseEvs.get(pPhase)!.push({
+          ...ev,
+          phase: pPhase,
+          event_type: 'pipeline_agent_output',
+          message: `${toolName} output`,
+          details: { ...ev.details, output: ev.details.output_preview },
+        });
+      }
       if (!orderedPipelineCalls.find((x) => x.phase === pPhase)) {
         orderedPipelineCalls.push({ toolName, phase: pPhase });
       }

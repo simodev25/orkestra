@@ -232,6 +232,7 @@ async def create_agentscope_agent(
     max_iters: int = 5,
     fallback_model=None,
     fallback_formatter=None,
+    test_run_id: str | None = None,
 ):
     """Create an AgentScope ReActAgent from an Orkestra AgentDefinition.
 
@@ -408,7 +409,7 @@ async def create_agentscope_agent(
         if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
             try:
                 from app.services.pipeline_executor import build_pipeline_tools
-                pipeline_tools, _pipeline_ctx = await build_pipeline_tools(db, pipeline_agent_ids)
+                pipeline_tools, _pipeline_ctx = await build_pipeline_tools(db, pipeline_agent_ids, test_run_id=test_run_id)
                 for pt in pipeline_tools:
                     toolkit.register_tool_function(pt)
                 logger.info(
