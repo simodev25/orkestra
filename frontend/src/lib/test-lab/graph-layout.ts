@@ -39,7 +39,7 @@ const EDGE_COLOURS: Record<PhaseKind, string> = {
   report:       '#10b981',
 };
 
-// Map orchestrator tool names → target phase
+// Map orchestrator tool names → target phase (fixed test-lab phases only)
 export const TOOL_TO_PHASE: Record<string, PhaseKind> = {
   prepare_test_scenario:    'preparation',
   execute_target_agent:     'runtime',
@@ -47,6 +47,24 @@ export const TOOL_TO_PHASE: Record<string, PhaseKind> = {
   run_diagnostic_analysis:  'diagnostics',
   compute_final_verdict:    'report',
 };
+
+/** pipeline_tool_call tool_name → phase key (e.g. "run_stay_discovery_agent" → "pipeline_stay_discovery_agent") */
+function pipelineToolToPhase(toolName: string): string {
+  // tool name is "run_{safe_id}", phase key is "pipeline_{safe_id}"
+  return toolName.replace(/^run_/, 'pipeline_');
+}
+
+/** Config for dynamically created pipeline agent nodes */
+function getPipelinePhaseCfg(phase: string): { iconName: string; color: string; label: string; nodeType: string } {
+  // Derive a readable label from the phase key "pipeline_{agent_id}"
+  const agentId = phase.replace(/^pipeline_/, '');
+  const label = agentId
+    .replace(/_agent$/, '')
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+  return { iconName: 'Bot', color: '#38bdf8', label, nodeType: 'agentNode' };
+}
 
 export type PlaybackStatus = 'pending' | 'running' | 'completed' | 'failed';
 
@@ -89,13 +107,14 @@ export function computePlaybackState(
     report:       'pending',
   };
 
-  const toolCallTimes: Record<string, number> = {};
+  const pipelineToolCallTimes: Record<string, number> = {};
 
   for (const ev of events) {
     const evTs = new Date(ev.timestamp).getTime();
     if (evTs > cutoffTs) continue;
 
-    const phase = PHASE_MAP_PB[ev.phase ?? ''];
+    const rawPhase = ev.phase ?? '';
+    const phase = PHASE_MAP_PB[rawPhase] ?? (rawPhase.startsWith('pipeline_') ? rawPhase : null);
 
     // Orchestrator lifecycle
     if (ev.event_type === 'run_created' || ev.event_type === 'orchestrator_started') {
@@ -105,12 +124,17 @@ export function computePlaybackState(
       phaseStatuses['orchestrator'] = 'completed';
     }
 
-    // Tool calls
-    if (ev.event_type === 'orchestrator_tool_call' && ev.details?.tool_name) {
-      toolCallTimes[ev.details.tool_name as string] = evTs;
+    // Pipeline tool calls (create dynamic phase status entries)
+    if (ev.event_type === 'pipeline_tool_call' && ev.details?.tool_name) {
+      const toolName = ev.details.tool_name as string;
+      pipelineToolCallTimes[toolName] = evTs;
+      const pPhase = pipelineToolToPhase(toolName);
+      if (!(pPhase in phaseStatuses)) {
+        phaseStatuses[pPhase] = 'pending';
+      }
     }
 
-    // Phase lifecycle
+    // Phase lifecycle (fixed + dynamic pipeline phases)
     if (phase && phase !== 'orchestrator') {
       if (PHASE_START_EV.has(ev.event_type)) {
         phaseStatuses[phase] = 'running';
@@ -123,10 +147,10 @@ export function computePlaybackState(
     }
   }
 
-  // Active edges: tool call happened but target still pending
+  // Active edges: pipeline tool call happened but target phase still pending
   const activeEdgeTargets = new Set<string>();
-  for (const [toolName] of Object.entries(toolCallTimes)) {
-    const target = TOOL_TO_PHASE[toolName];
+  for (const [toolName, _ts] of Object.entries(pipelineToolCallTimes)) {
+    const target = pipelineToolToPhase(toolName);
     if (target && phaseStatuses[target] === 'pending') {
       activeEdgeTargets.add(target);
     }
@@ -185,7 +209,7 @@ export function buildGraph(
   diagnostics: TestRunDiagnostic[]
 ): { nodes: RunNode[]; edges: RunEdge[] } {
   // 1. Group events by phase (preserve order of first appearance)
-  const PHASE_MAP: Record<string, PhaseKind> = {
+  const PHASE_MAP: Record<string, string> = {
     orchestration: 'orchestrator',
     orchestrator:  'orchestrator',
     preparation:   'preparation',
@@ -197,21 +221,40 @@ export function buildGraph(
     verdict:       'report',
   };
 
-  const phaseOrder: PhaseKind[] = [];
-  const phaseEvs = new Map<PhaseKind, TestRunEvent[]>();
+  function resolvePhase(rawPhase: string | null | undefined): string | null {
+    if (!rawPhase) return null;
+    if (PHASE_MAP[rawPhase]) return PHASE_MAP[rawPhase];
+    if (rawPhase.startsWith('pipeline_')) return rawPhase; // dynamic pipeline phase
+    return null;
+  }
+
+  const phaseOrder: string[] = [];
+  const phaseEvs = new Map<string, TestRunEvent[]>();
 
   // Always include orchestrator first
   phaseOrder.push('orchestrator');
   phaseEvs.set('orchestrator', []);
 
+  // Collect pipeline tool calls in order (for sequential edge building)
+  const orderedPipelineCalls: Array<{ toolName: string; phase: string }> = [];
+
   for (const ev of events) {
-    const phase = PHASE_MAP[ev.phase ?? ''];
+    const phase = resolvePhase(ev.phase);
     if (!phase) continue;
     if (!phaseEvs.has(phase)) {
       phaseOrder.push(phase);
       phaseEvs.set(phase, []);
     }
     phaseEvs.get(phase)!.push(ev);
+
+    // Track pipeline tool call order
+    if (ev.event_type === 'pipeline_tool_call' && ev.details?.tool_name) {
+      const toolName = ev.details.tool_name as string;
+      const pPhase = pipelineToolToPhase(toolName);
+      if (!orderedPipelineCalls.find((x) => x.phase === pPhase)) {
+        orderedPipelineCalls.push({ toolName, phase: pPhase });
+      }
+    }
   }
 
   // Ensure orchestrator bucket gets events with no phase
@@ -230,13 +273,15 @@ export function buildGraph(
   const nodes: RunNode[] = [];
 
   phaseOrder.forEach((phase, index) => {
-    const cfg = PHASE_CFG[phase];
+    const isPipeline = phase.startsWith('pipeline_');
+    const cfg = isPipeline ? getPipelinePhaseCfg(phase) : PHASE_CFG[phase as PhaseKind];
+    if (!cfg) return; // unknown fixed phase — skip
     const evList = phaseEvs.get(phase) ?? [];
 
     let iconName = cfg.iconName;
     let color = cfg.color;
     let label = cfg.label;
-    let subLabel = `${phase}_agent`;
+    let subLabel = isPipeline ? phase.replace(/^pipeline_/, '') : `${phase}_agent`;
 
     if (phase === 'runtime') {
       const agCfg = AGENT_ICONS[run.agent_id];
@@ -247,9 +292,18 @@ export function buildGraph(
       subLabel = 'master pipeline';
     }
 
+    // For pipeline nodes: extract output from pipeline_agent_output event
+    let pipelineOutput: unknown = null;
+    if (isPipeline) {
+      const outEv = evList.find((e) => e.event_type === 'pipeline_agent_output');
+      if (outEv?.details?.output) {
+        pipelineOutput = parseOutput(outEv.details.output as string);
+      }
+    }
+
     const data: AgentNodeData = {
       kind: phase,
-      agentId: phase === 'runtime' ? run.agent_id : `${phase}_agent`,
+      agentId: phase === 'runtime' ? run.agent_id : (isPipeline ? phase.replace(/^pipeline_/, '') : `${phase}_agent`),
       label,
       subLabel,
       iconName,
@@ -259,7 +313,7 @@ export function buildGraph(
       durationMs: phase === 'runtime' ? run.duration_ms ?? null : detectDuration(evList),
       events: evList,
       diagnostics: ['runtime', 'diagnostics'].includes(phase) ? diagnostics : [],
-      output: phase === 'runtime' ? parseOutput(run.final_output) : null,
+      output: phase === 'runtime' ? parseOutput(run.final_output) : pipelineOutput,
       index,
       verdict: phase === 'report' ? (run.verdict ?? null) : undefined,
       score:   phase === 'report' ? (run.score   ?? null) : undefined,
@@ -276,46 +330,53 @@ export function buildGraph(
     });
   });
 
-  // 4. Build edges from orchestrator_tool_call events
-  const toolCalls = events.filter(
-    (e) => e.event_type === 'orchestrator_tool_call' && e.details?.tool_name
-  );
-
+  // 4. Build edges
   const edges: RunEdge[] = [];
   const addedEdgeIds = new Set<string>();
 
+  function addEdge(src: string, tgt: string, toolName: string | null, color: string) {
+    const edgeId = `${src}->${tgt}`;
+    if (addedEdgeIds.has(edgeId)) return;
+    if (!phaseEvs.has(src) || !phaseEvs.has(tgt)) return;
+    addedEdgeIds.add(edgeId);
+    g.setEdge(src, tgt);
+    edges.push({ id: edgeId, source: src, target: tgt, type: 'animatedEdge', data: { toolName, color } });
+  }
+
+  // 4a. Standard test-lab tool call edges (orchestrator → fixed phases)
+  const toolCalls = events.filter(
+    (e) => e.event_type === 'orchestrator_tool_call' && e.details?.tool_name
+  );
   for (const tc of toolCalls) {
     const toolName = tc.details!.tool_name as string;
     const target = TOOL_TO_PHASE[toolName];
     if (!target || !phaseEvs.has(target)) continue;
-
-    const edgeId = `orch->${target}`;
-    if (addedEdgeIds.has(edgeId)) continue;
-    addedEdgeIds.add(edgeId);
-
-    g.setEdge('orchestrator', target);
-    edges.push({
-      id: edgeId,
-      source: 'orchestrator',
-      target,
-      type: 'animatedEdge',
-      data: { toolName, color: EDGE_COLOURS['orchestrator'] },
-    });
+    addEdge('orchestrator', target, toolName, EDGE_COLOURS['orchestrator']);
   }
 
-  // Fallback: connect adjacent phases in order if no tool call edges exist
+  // 4b. Pipeline agent edges: runtime → pipeline_1 → pipeline_2 → … → last_pipeline
+  if (orderedPipelineCalls.length > 0) {
+    const PIPELINE_COLOUR = '#38bdf8';
+    // runtime → first pipeline agent
+    addEdge('runtime', orderedPipelineCalls[0].phase, orderedPipelineCalls[0].toolName, PIPELINE_COLOUR);
+    // sequential pipeline → pipeline edges
+    for (let i = 0; i < orderedPipelineCalls.length - 1; i++) {
+      addEdge(orderedPipelineCalls[i].phase, orderedPipelineCalls[i + 1].phase, orderedPipelineCalls[i + 1].toolName, PIPELINE_COLOUR);
+    }
+    // last pipeline agent → assertions (if assertions node exists)
+    const lastPhase = orderedPipelineCalls[orderedPipelineCalls.length - 1].phase;
+    if (phaseEvs.has('assertions')) {
+      addEdge(lastPhase, 'assertions', null, PIPELINE_COLOUR);
+    }
+  }
+
+  // Fallback: connect adjacent phases in order if no edges were built at all
   if (edges.length === 0) {
     for (let i = 0; i < phaseOrder.length - 1; i++) {
       const src = phaseOrder[i];
       const tgt = phaseOrder[i + 1];
-      g.setEdge(src, tgt);
-      edges.push({
-        id: `${src}->${tgt}`,
-        source: src,
-        target: tgt,
-        type: 'animatedEdge',
-        data: { toolName: null, color: EDGE_COLOURS[src] },
-      });
+      const colour = EDGE_COLOURS[src as PhaseKind] ?? '#38bdf8';
+      addEdge(src, tgt, null, colour);
     }
   }
 

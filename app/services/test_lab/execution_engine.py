@@ -561,6 +561,7 @@ async def execute_test_run(run_id: str, scenario_id: str):
             allowed_tools=scenario.allowed_tools,
             timeout_seconds=scenario.timeout_seconds,
             max_iterations=scenario.max_iterations,
+            run_id=run_id,
         )
 
         duration_ms = int((time.time() - t0) * 1000)

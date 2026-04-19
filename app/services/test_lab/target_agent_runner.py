@@ -65,6 +65,7 @@ async def run_target_agent(
     allowed_tools: list[str] | None = None,
     timeout_seconds: int = 120,
     max_iterations: int = 5,
+    run_id: str | None = None,
 ) -> TargetAgentResult:
     """Execute a real AgentScope ReActAgent and return structured results.
 
@@ -121,6 +122,14 @@ async def run_target_agent(
         logger.warning(f"Could not load test lab model config: {exc}")
         tl_model = None
         tl_formatter = None
+
+    # Register run_id so pipeline tools can emit events into the test-lab graph
+    if run_id:
+        try:
+            from app.services.pipeline_executor import set_pipeline_run_id
+            set_pipeline_run_id(run_id)
+        except Exception as exc:
+            logger.warning(f"Could not set pipeline run_id: {exc}")
 
     try:
         react_agent = await create_agentscope_agent(

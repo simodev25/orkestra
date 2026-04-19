@@ -60,6 +60,14 @@ const PHASE_MAP: Record<string, string> = {
   verdict:       'report',
 };
 
+/** Resolve a raw event phase to a ReactFlow node ID (handles dynamic pipeline_* phases). */
+function resolveNodeId(rawPhase: string | null | undefined): string | null {
+  if (!rawPhase) return null;
+  if (PHASE_MAP[rawPhase]) return PHASE_MAP[rawPhase];
+  if (rawPhase.startsWith('pipeline_')) return rawPhase; // dynamic pipeline node IDs
+  return null;
+}
+
 /** Edge pulses this long before the target node springs in */
 const EDGE_LEAD_MS = 400;
 
@@ -120,14 +128,14 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
             setPhaseStatuses(prev => ({ ...prev, orchestrator: 'running' }));
           }
           if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
-            const nodeId = PHASE_MAP[ev.phase];
+            const nodeId = resolveNodeId(ev.phase);
             if (nodeId && nodeId !== 'orchestrator') {
               setVisiblePhases(prev => new Set([...prev, nodeId]));
               setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
             }
           }
           if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
-            const nodeId = PHASE_MAP[ev.phase];
+            const nodeId = resolveNodeId(ev.phase);
             if (nodeId) {
               setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
               setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
@@ -176,7 +184,7 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
         }
 
         if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
-          const nodeId = PHASE_MAP[ev.phase];
+          const nodeId = resolveNodeId(ev.phase);
           if (nodeId && nodeId !== 'orchestrator') {
             schedule(delay, () =>
               setActiveEdgeTargets(prev => new Set([...prev, nodeId]))
@@ -193,7 +201,7 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
         }
 
         if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
-          const nodeId = PHASE_MAP[ev.phase];
+          const nodeId = resolveNodeId(ev.phase);
           if (nodeId) {
             schedule(delay, () => {
               setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
@@ -263,12 +271,12 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
       }
 
       if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
-        const nodeId = PHASE_MAP[ev.phase];
+        const nodeId = resolveNodeId(ev.phase);
         if (nodeId && nodeId !== 'orchestrator') revealNode(nodeId, EDGE_LEAD_MS);
       }
 
       if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
-        const nodeId = PHASE_MAP[ev.phase];
+        const nodeId = resolveNodeId(ev.phase);
         if (nodeId) {
           setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
           setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));

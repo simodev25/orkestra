@@ -31,6 +31,8 @@ const EVENT_BADGE: Record<string, string> = {
   agent_message:             'rgba(167,139,250,0.12)',
   diagnostic_generated:      'rgba(245,158,11,0.12)',
   orchestrator_tool_call:    'rgba(167,139,250,0.12)',
+  pipeline_tool_call:        'rgba(56,189,248,0.12)',
+  pipeline_agent_output:     'rgba(56,189,248,0.12)',
 };
 const EVENT_TEXT: Record<string, string> = {
   phase_started:             '#00d4ff',
@@ -42,6 +44,8 @@ const EVENT_TEXT: Record<string, string> = {
   agent_message:             '#a78bfa',
   diagnostic_generated:      '#f59e0b',
   orchestrator_tool_call:    '#a78bfa',
+  pipeline_tool_call:        '#38bdf8',
+  pipeline_agent_output:     '#38bdf8',
 };
 
 const PHASE_TAG: Record<string, string> = {
@@ -52,6 +56,12 @@ const PHASE_TAG: Record<string, string> = {
   diagnostics:  'AGENT · DIAG',
   report:       'JUDGE · REPORT',
 };
+
+function getPhaseTag(kind: string): string {
+  if (PHASE_TAG[kind]) return PHASE_TAG[kind];
+  if (kind.startsWith('pipeline_')) return 'PIPELINE · AGENT';
+  return kind.toUpperCase();
+}
 
 export function DetailPanel({ node, onClose }: DetailPanelProps) {
   if (!node) return null;
@@ -97,7 +107,7 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[8px] font-bold tracking-[0.14em] uppercase opacity-45" style={{ color: panelAccent }}>
-              {PHASE_TAG[node.kind] ?? node.kind.toUpperCase()}
+              {getPhaseTag(node.kind)}
             </p>
             <p className="text-[14px] font-bold truncate" style={{ color: panelAccent }}>
               {node.label}
