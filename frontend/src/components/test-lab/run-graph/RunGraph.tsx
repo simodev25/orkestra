@@ -110,6 +110,27 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
   useEffect(() => { setNodes(initNodes); }, [initNodes, setNodes]);
   useEffect(() => { setEdges(initEdges); }, [initEdges, setEdges]);
 
+  // ── Safety net: for completed runs ensure every node is eventually visible ──
+  // If new nodes appear in initNodes (e.g. pipeline agents) after the replay
+  // locked (replayDoneRef = true), this hook reveals them immediately.
+  useEffect(() => {
+    if (isLive) return; // live mode handles visibility via event stream
+    const allIds = new Set(initNodes.map((n) => n.id));
+    setVisiblePhases((prev) => {
+      const missing = [...allIds].filter((id) => !prev.has(id));
+      if (missing.length === 0) return prev;
+      return new Set([...prev, ...missing]);
+    });
+    setPhaseStatuses((prev) => {
+      const updated = { ...prev };
+      let changed = false;
+      for (const id of allIds) {
+        if (!(id in updated)) { updated[id] = 'completed'; changed = true; }
+      }
+      return changed ? updated : prev;
+    });
+  }, [initNodes, isLive]);
+
   // ── Core animation logic ────────────────────────────────────────────────────
   useEffect(() => {
     if (!isLive) {
