@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import type { PolicyProfile, BudgetProfile, PlatformSecret } from "@/lib/types";
+import { request } from "@/lib/api-client";
+import type { PolicyProfile, BudgetProfile, PlatformSecret, LlmConfig } from "@/lib/types";
 
 export default function AdminPage() {
   const [policies, setPolicies] = useState<PolicyProfile[]>([]);
@@ -27,26 +28,50 @@ export default function AdminPage() {
   const [capabilities, setCapabilities] = useState<Record<string, boolean>>({});
   const [savingCap, setSavingCap] = useState<string | null>(null);
 
+  // LLM Config
+  const [llmConfig, setLlmConfig] = useState<LlmConfig>({
+    provider: "ollama",
+    ollama_host: "http://localhost:11434",
+    ollama_model: "mistral",
+    openai_model: "mistral-small-latest",
+    openai_base_url: "https://api.mistral.ai/v1",
+  });
+  const [savingLlm, setSavingLlm] = useState(false);
+  const [llmSaved, setLlmSaved] = useState(false);
+  const [llmModels, setLlmModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [llmApiKeySet, setLlmApiKeySet] = useState(false);
+
+  function loadModels(provider: string) {
+    setLoadingModels(true);
+    request<{ models: any[] }>(`/api/agents/llm-models/${provider}`)
+      .then((data) => setLlmModels((data.models || []).map((m: any) => typeof m === "string" ? m : m.name)))
+      .catch(() => {})
+      .finally(() => setLoadingModels(false));
+  }
+
   // Secrets
   const [secrets, setSecrets] = useState<PlatformSecret[]>([]);
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [ollamaKey, setOllamaKey] = useState("");
-  const [savingSecret, setSavingSecret] = useState(false);
-  const [testingKey, setTestingKey] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; message: string } | null>>({});
 
   const loadAll = useCallback(async () => {
     try {
-      const [p, b, s, caps] = await Promise.all([
+      const [p, b, s, caps, llm] = await Promise.all([
         api.listPolicies(),
         api.listBudgets(),
         api.listSecrets(),
         api.listCapabilities(),
+        api.getLlmConfig(),
       ]);
       setPolicies(p);
       setBudgets(b);
       setSecrets(s);
       setCapabilities(caps);
+      setLlmConfig(llm);
+      loadModels(llm.provider || "ollama");
+      // Check if LLM api key is already saved
+      const secretId = (llm.provider === "openai" || llm.provider === "mistral") ? "OPENAI_API_KEY" : "OLLAMA_API_KEY";
+      setLlmApiKeySet(s.some((sec: any) => sec.id === secretId));
     } catch (err: any) {
       setError(err.message || "Failed to load settings");
     } finally {
@@ -102,57 +127,26 @@ export default function AdminPage() {
     }
   }
 
-  async function handleSaveSecret(id: string, value: string, description: string) {
-    setSavingSecret(true);
+  async function handleSaveLlmConfig() {
+    setSavingLlm(true);
+    setLlmSaved(false);
     try {
-      await api.upsertSecret(id, value, description);
-      setOpenaiKey("");
-      setOllamaKey("");
-      await loadAll();
-    } catch (err: any) {
-      setError(err.message || "Failed to save secret");
-    } finally {
-      setSavingSecret(false);
-    }
-  }
-
-  async function handleTestKey(provider: "openai" | "ollama") {
-    setTestingKey(provider);
-    setTestResult((prev) => ({ ...prev, [provider]: null }));
-    try {
-      if (provider === "openai") {
-        const key = openaiKey.trim() || secrets.find(s => s.id === "OPENAI_API_KEY")?.value;
-        if (!key) {
-          setTestResult((prev) => ({ ...prev, openai: { ok: false, message: "No API key configured or entered" } }));
-          return;
-        }
-        const res = await fetch("https://api.openai.com/v1/models", {
-          headers: { Authorization: `Bearer ${key}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const count = data.data?.length ?? 0;
-          setTestResult((prev) => ({ ...prev, openai: { ok: true, message: `Connected — ${count} models available` } }));
-        } else {
-          const body = await res.json().catch(() => ({}));
-          setTestResult((prev) => ({ ...prev, openai: { ok: false, message: body.error?.message || `HTTP ${res.status}` } }));
-        }
-      } else {
-        // Test Ollama by listing models
-        const ollamaHost = "http://localhost:11434";
-        const res = await fetch(`${ollamaHost}/api/tags`).catch(() => null);
-        if (res && res.ok) {
-          const data = await res.json();
-          const count = data.models?.length ?? 0;
-          setTestResult((prev) => ({ ...prev, ollama: { ok: true, message: `Connected — ${count} models loaded` } }));
-        } else {
-          setTestResult((prev) => ({ ...prev, ollama: { ok: false, message: "Cannot reach Ollama at localhost:11434. Is it running?" } }));
-        }
+      await api.saveLlmConfig(llmConfig);
+      // Also save the API key if provided
+      if (llmApiKey.trim()) {
+        const secretId = (llmConfig.provider === "openai" || llmConfig.provider === "mistral")
+          ? "OPENAI_API_KEY"
+          : "OLLAMA_API_KEY";
+        await api.upsertSecret(secretId, llmApiKey.trim(), `${llmConfig.provider} API key`);
+        setLlmApiKey("");
+        setLlmApiKeySet(true);
       }
+      setLlmSaved(true);
+      setTimeout(() => setLlmSaved(false), 3000);
     } catch (err: any) {
-      setTestResult((prev) => ({ ...prev, [provider]: { ok: false, message: err.message || "Connection failed" } }));
+      setError(err.message || "Failed to save LLM config");
     } finally {
-      setTestingKey(null);
+      setSavingLlm(false);
     }
   }
 
@@ -196,94 +190,138 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* Security — API Keys */}
+      {/* LLM Configuration */}
       <div className="glass-panel p-5 mb-6">
         <h2 className="section-title mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-ork-red" />
-          SECURITY &mdash; API KEYS
+          <span className="w-2 h-2 rounded-full bg-ork-cyan" />
+          LLM CONFIGURATION
         </h2>
         <p className="text-xs text-ork-dim font-mono mb-4">
-          Configure LLM provider API keys. Keys are stored securely in the database.
+          Provider and model used by the Orchestrator Builder. Overrides environment variables.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* OpenAI */}
-          <div className="bg-ork-bg rounded-lg p-4 border border-ork-border/50">
-            <div className="flex items-center justify-between mb-2">
-              <p className="data-label">OPENAI_API_KEY</p>
-              {secrets.find(s => s.id === "OPENAI_API_KEY") ? (
-                <span className="text-[9px] font-mono text-ork-green bg-ork-green/10 border border-ork-green/20 rounded px-1.5 py-0.5">CONFIGURED</span>
-              ) : (
-                <span className="text-[9px] font-mono text-ork-dim bg-ork-dim/10 border border-ork-dim/20 rounded px-1.5 py-0.5">NOT SET</span>
-              )}
-            </div>
-            <input
-              type="password"
-              value={openaiKey}
-              onChange={(e) => setOpenaiKey(e.target.value)}
-              placeholder="sk-..."
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono mb-2 text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
-            />
-            <div className="flex items-center gap-2">
+
+        {/* Provider toggle */}
+        <div className="mb-4">
+          <label className="data-label block mb-2">PROVIDER</label>
+          <div className="flex bg-[#0d1117] border border-[#2d3748] rounded-full p-0.5 w-fit">
+            {(["ollama", "openai", "mistral"] as const).map((p) => (
               <button
-                onClick={() => handleSaveSecret("OPENAI_API_KEY", openaiKey, "OpenAI API key")}
-                disabled={!openaiKey.trim() || savingSecret}
-                className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                key={p}
+                onClick={() => {
+                  setLlmConfig((c) => ({ ...c, provider: p }));
+                  loadModels(p);
+                  const sid = (p === "openai" || p === "mistral") ? "OPENAI_API_KEY" : "OLLAMA_API_KEY";
+                  setLlmApiKeySet(secrets.some((s) => s.id === sid));
+                  setLlmApiKey("");
+                }}
+                className={`text-xs px-4 py-1.5 rounded-full transition-colors font-mono ${
+                  llmConfig.provider === p
+                    ? "bg-ork-cyan text-black font-bold"
+                    : "text-ork-dim hover:text-ork-text"
+                }`}
               >
-                {savingSecret ? "Saving..." : "Save Key"}
+                {p}
               </button>
-              <button
-                onClick={() => handleTestKey("openai")}
-                disabled={testingKey === "openai"}
-                className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-amber/30 text-ork-amber bg-ork-amber/10 hover:bg-ork-amber/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {testingKey === "openai" ? "Testing..." : "Test"}
-              </button>
-            </div>
-            {testResult.openai && (
-              <p className={`mt-2 text-[10px] font-mono ${testResult.openai.ok ? "text-ork-green" : "text-ork-red"}`}>
-                {testResult.openai.ok ? "\u2713" : "\u2717"} {testResult.openai.message}
-              </p>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {llmConfig.provider === "ollama" ? (
+            <>
+              <div>
+                <label className="data-label block mb-1.5">OLLAMA HOST</label>
+                <input
+                  type="text"
+                  value={llmConfig.ollama_host}
+                  onChange={(e) => setLlmConfig((c) => ({ ...c, ollama_host: e.target.value }))}
+                  placeholder="http://localhost:11434"
+                  className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="data-label">OLLAMA MODEL</label>
+                  <button
+                    onClick={() => loadModels(llmConfig.provider)}
+                    disabled={loadingModels}
+                    className="text-[10px] font-mono text-ork-dim hover:text-ork-cyan flex items-center gap-1 transition-colors"
+                  >
+                    <span className={loadingModels ? "inline-block animate-spin" : ""}>↺</span>
+                    {loadingModels ? "Loading..." : "Refresh"}
+                  </button>
+                </div>
+                <ModelSelect
+                  value={llmConfig.ollama_model}
+                  options={llmModels}
+                  onChange={(v) => setLlmConfig((c) => ({ ...c, ollama_model: v }))}
+                  placeholder="Select a model..."
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="data-label block mb-1.5">BASE URL</label>
+                <input
+                  type="text"
+                  value={llmConfig.openai_base_url}
+                  onChange={(e) => setLlmConfig((c) => ({ ...c, openai_base_url: e.target.value }))}
+                  placeholder="https://api.mistral.ai/v1"
+                  className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="data-label">MODEL</label>
+                  <button
+                    onClick={() => loadModels(llmConfig.provider)}
+                    disabled={loadingModels}
+                    className="text-[10px] font-mono text-ork-dim hover:text-ork-cyan flex items-center gap-1 transition-colors"
+                  >
+                    <span className={loadingModels ? "inline-block animate-spin" : ""}>↺</span>
+                    {loadingModels ? "Loading..." : "Refresh"}
+                  </button>
+                </div>
+                <ModelSelect
+                  value={llmConfig.openai_model}
+                  options={llmModels}
+                  onChange={(v) => setLlmConfig((c) => ({ ...c, openai_model: v }))}
+                  placeholder="Select a model..."
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* API Key */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="data-label">API KEY</label>
+            {llmApiKeySet && (
+              <span className="text-[9px] font-mono text-ork-green bg-ork-green/10 border border-ork-green/20 rounded px-1.5 py-0.5">CONFIGURED</span>
             )}
           </div>
-          {/* Ollama */}
-          <div className="bg-ork-bg rounded-lg p-4 border border-ork-border/50">
-            <div className="flex items-center justify-between mb-2">
-              <p className="data-label">OLLAMA_API_KEY</p>
-              {secrets.find(s => s.id === "OLLAMA_API_KEY") ? (
-                <span className="text-[9px] font-mono text-ork-green bg-ork-green/10 border border-ork-green/20 rounded px-1.5 py-0.5">CONFIGURED</span>
-              ) : (
-                <span className="text-[9px] font-mono text-ork-dim bg-ork-dim/10 border border-ork-dim/20 rounded px-1.5 py-0.5">NOT SET</span>
-              )}
-            </div>
-            <input
-              type="password"
-              value={ollamaKey}
-              onChange={(e) => setOllamaKey(e.target.value)}
-              placeholder="ollama-..."
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono mb-2 text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
-            />
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleSaveSecret("OLLAMA_API_KEY", ollamaKey, "Ollama API key")}
-                disabled={!ollamaKey.trim() || savingSecret}
-                className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {savingSecret ? "Saving..." : "Save Key"}
-              </button>
-              <button
-                onClick={() => handleTestKey("ollama")}
-                disabled={testingKey === "ollama"}
-                className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-amber/30 text-ork-amber bg-ork-amber/10 hover:bg-ork-amber/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {testingKey === "ollama" ? "Testing..." : "Test"}
-              </button>
-            </div>
-            {testResult.ollama && (
-              <p className={`mt-2 text-[10px] font-mono ${testResult.ollama.ok ? "text-ork-green" : "text-ork-red"}`}>
-                {testResult.ollama.ok ? "\u2713" : "\u2717"} {testResult.ollama.message}
-              </p>
-            )}
-          </div>
+          <input
+            type="password"
+            value={llmApiKey}
+            onChange={(e) => setLlmApiKey(e.target.value)}
+            placeholder={llmApiKeySet ? "Leave empty to keep current key" : "Enter API key…"}
+            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSaveLlmConfig}
+            disabled={savingLlm}
+            className="px-4 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 hover:bg-ork-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {savingLlm ? "Saving..." : "Save Config"}
+          </button>
+          {llmSaved && (
+            <span className="text-[10px] font-mono text-ork-green">✓ Saved</span>
+          )}
         </div>
       </div>
 
@@ -599,6 +637,54 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ModelSelect({ value, options, onChange, placeholder }: {
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = search
+    ? options.filter((o) => o.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={open ? search : value || ""}
+        onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+      />
+      {open && <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setSearch(""); }} />}
+      {open && (
+        <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto bg-ork-surface border border-ork-border rounded shadow-lg">
+          {filtered.length === 0 && (
+            <p className="px-3 py-2 text-xs font-mono text-ork-dim">
+              {options.length === 0 ? "Click Refresh to load models" : "No models found"}
+            </p>
+          )}
+          {filtered.map((m) => (
+            <button
+              key={m}
+              onClick={() => { onChange(m); setOpen(false); setSearch(""); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-ork-hover transition-colors ${
+                m === value ? "text-ork-cyan bg-ork-cyan/5" : "text-ork-text"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

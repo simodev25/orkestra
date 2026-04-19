@@ -209,3 +209,11 @@ export interface PlatformSecret {
   description: string | null;
   updated_at: string | null;
 }
+
+export interface LlmConfig {
+  provider: string;
+  ollama_host: string;
+  ollama_model: string;
+  openai_model: string;
+  openai_base_url: string;
+}

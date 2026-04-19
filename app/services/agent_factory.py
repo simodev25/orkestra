@@ -1,48 +1,147 @@
 """Agent factory -- creates AgentScope ReActAgent from Orkestra agent definitions."""
 
 import logging
-import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.registry import AgentDefinition
-from app.llm.provider import get_chat_model, get_formatter, is_agentscope_available
+from app.llm.provider import get_chat_model, get_formatter, is_agentscope_available, make_ollama_model
 
 logger = logging.getLogger(__name__)
 
+# ── MCP schema patches ────────────────────────────────────────────────────────
 
-def _docker_safe_host(host: str) -> str:
-    """Replace localhost/127.0.0.1 with host.docker.internal for Docker compat."""
-    if os.path.exists("/.dockerenv") or os.environ.get("ORKESTRA_DATABASE_URL", "").startswith("postgresql"):
-        return host.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
-    return host
+_WAYPOINT_SCHEMA = {
+    "type": "object",
+    "description": (
+        "A waypoint for routing. Provide exactly ONE of: "
+        "address (plain string), place_id (from search_places), or lat_lng."
+    ),
+    "properties": {
+        "address": {
+            "type": "string",
+            "description": "Street address or place name, e.g. 'Humberto Delgado Airport, Lisbon'",
+        },
+        "place_id": {
+            "type": "string",
+            "description": "Google Maps place ID returned by search_places, e.g. 'ChIJxxx...'",
+        },
+        "lat_lng": {
+            "type": "object",
+            "description": "Geographic coordinates",
+            "properties": {
+                "latitude": {"type": "number"},
+                "longitude": {"type": "number"},
+            },
+            "required": ["latitude", "longitude"],
+        },
+    },
+}
 
 
-def _get_agent_specific_model(provider: str, model_name: str):
-    """Create a model instance for a specific provider/model combination."""
+def _patch_mcp_tool_schemas(tools: list) -> None:
+    """Fix inputSchema mismatches for known MCP tools.
+
+    Google Maps Grounding Lite declares ``origin``/``destination`` as plain
+    strings, but the API expects Waypoint objects.  Patching the schema here
+    ensures the LLM generates the correct nested object format.
+    """
+    for tool in tools:
+        if tool.name == "compute_routes":
+            props = tool.inputSchema.setdefault("properties", {})
+            props["origin"] = _WAYPOINT_SCHEMA
+            props["destination"] = _WAYPOINT_SCHEMA
+            tool.inputSchema.setdefault("required", ["origin", "destination"])
+            logger.info("Patched compute_routes schema: origin/destination → Waypoint objects")
+
+
+# ── Exception formatting ──────────────────────────────────────────────────────
+
+
+def _format_mcp_exception(e: Exception) -> str:
+    """Unwrap BaseExceptionGroup to extract and display the real inner exceptions.
+
+    AgentScope's HttpStatelessClient wraps downstream errors (HTTP 403, network
+    failures, JSON-RPC errors) inside an asyncio TaskGroup ExceptionGroup.
+    str(ExceptionGroup) only shows 'unhandled errors in a TaskGroup (N sub-exception)'
+    which is opaque. This helper extracts the inner exceptions for clear logging.
+    """
+    # Python 3.11+ ExceptionGroup / BaseExceptionGroup
+    if hasattr(e, "exceptions"):
+        parts = []
+        for inner in e.exceptions:  # type: ignore[attr-defined]
+            parts.append(_format_mcp_exception(inner))
+        return f"[{type(e).__name__}] " + " | ".join(parts)
+    return f"{type(e).__name__}: {e}"
+
+
+
+
+async def _read_platform_llm_config(db: AsyncSession) -> dict:
+    """Read LLM host/api_key from platform_capabilities + platform_secrets tables."""
+    try:
+        from sqlalchemy import select
+        from app.models.platform_capability import PlatformCapability
+        from app.models.secret import PlatformSecret
+        from app.core.encryption import decrypt_value
+
+        _KEYS = ["LLM_PROVIDER", "OLLAMA_HOST", "OLLAMA_MODEL", "OPENAI_MODEL", "OPENAI_BASE_URL"]
+        result = await db.execute(
+            select(PlatformCapability).where(PlatformCapability.key.in_(_KEYS))
+        )
+        rows = {r.key: r.value for r in result.scalars().all()}
+
+        ollama_secret = await db.get(PlatformSecret, "OLLAMA_API_KEY")
+        openai_secret = await db.get(PlatformSecret, "OPENAI_API_KEY")
+
+        def _decrypt(secret) -> str | None:
+            if secret is None:
+                return None
+            try:
+                return decrypt_value(secret.value)
+            except Exception:
+                return None
+
+        return {
+            "provider":        rows.get("LLM_PROVIDER"),
+            "ollama_host":     rows.get("OLLAMA_HOST"),
+            "ollama_model":    rows.get("OLLAMA_MODEL"),
+            "openai_model":    rows.get("OPENAI_MODEL"),
+            "openai_base_url": rows.get("OPENAI_BASE_URL"),
+            "ollama_api_key":  _decrypt(ollama_secret),
+            "openai_api_key":  _decrypt(openai_secret),
+        }
+    except Exception as e:
+        logger.warning(f"Could not read platform LLM config from DB: {e}")
+        return {}
+
+
+def _get_agent_specific_model(provider: str, model_name: str, platform_cfg: dict | None = None):
+    """Create a model instance for a specific provider/model combination.
+
+    ``platform_cfg`` is the dict from _read_platform_llm_config (platform_capabilities + secrets).
+    When provided, its host/api_key take precedence over env vars.
+    """
     if not is_agentscope_available():
         return None
+    cfg = platform_cfg or {}
     try:
         if provider == "ollama":
-            from agentscope.model import OllamaChatModel
             from app.core.config import get_settings
             settings = get_settings()
-            host = _docker_safe_host(settings.OLLAMA_HOST)
-            effective_name = model_name if "-cloud" in model_name else f"{model_name}-cloud"
-            return OllamaChatModel(
-                model_name=effective_name,
-                host=host,
-                stream=False,
-                enable_thinking=False,
-            )
+            base_url = cfg.get("ollama_host") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
+            api_key = cfg.get("ollama_api_key") or getattr(settings, "OLLAMA_API_KEY", None)
+            return make_ollama_model(base_url, model_name, api_key)
         elif provider == "openai":
             from agentscope.model import OpenAIChatModel
             from app.core.config import get_settings
             settings = get_settings()
+            api_key = cfg.get("openai_api_key") or getattr(settings, "OPENAI_API_KEY", "")
+            base_url = cfg.get("openai_base_url") or getattr(settings, "OPENAI_BASE_URL", None) or "https://api.openai.com/v1"
             return OpenAIChatModel(
                 model_name=model_name,
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_BASE_URL or "https://api.openai.com/v1",
+                api_key=api_key,
+                base_url=base_url,
             )
         return None
     except Exception as e:
@@ -147,12 +246,24 @@ async def create_agentscope_agent(
         logger.info(f"AgentScope not available, cannot create agent {agent_def.id}")
         return None
 
+    # Read platform LLM config (host, api_key) from DB — takes precedence over env vars
+    platform_cfg = await _read_platform_llm_config(db)
+
     if agent_def.llm_provider and agent_def.llm_model:
-        model = _get_agent_specific_model(agent_def.llm_provider, agent_def.llm_model)
+        model = _get_agent_specific_model(agent_def.llm_provider, agent_def.llm_model, platform_cfg)
+        logger.info("[AGENT-MODEL] agent=%s path=agent_specific provider=%s model=%s", agent_def.id, agent_def.llm_provider, agent_def.llm_model)
     elif fallback_model is not None:
         model = fallback_model
+        try:
+            _mname = getattr(model, "model_name", "?")
+            _host = str(model.client._client._base_url) if hasattr(model, "client") else "?"
+        except Exception:
+            _mname = str(type(model))
+            _host = "?"
+        logger.info("[AGENT-MODEL] agent=%s path=fallback model_type=%s host=%s model=%s", agent_def.id, type(model).__name__, _host, _mname)
     else:
-        model = get_chat_model()
+        model = get_chat_model(config=platform_cfg)
+        logger.info("[AGENT-MODEL] agent=%s path=platform_cfg ollama_host=%s ollama_api_key=%s", agent_def.id, platform_cfg.get("ollama_host"), "SET" if platform_cfg.get("ollama_api_key") else "NOT_SET")
     if model is None:
         logger.info(f"LLM not available, cannot create agent {agent_def.id}")
         return None
@@ -229,15 +340,25 @@ async def create_agentscope_agent(
                 continue
             try:
                 from agentscope.mcp import HttpStatelessClient
+                from app.core.config import get_settings as _get_settings
+                _settings = _get_settings()
+                _mcp_headers: dict[str, str] = {}
+                if _settings.OBOT_API_KEY:
+                    _mcp_headers["Authorization"] = f"Bearer {_settings.OBOT_API_KEY}"
                 mcp_client = HttpStatelessClient(
                     name=mcp_id,
                     transport="streamable_http",
                     url=srv["url"],
                     timeout=30,
+                    headers=_mcp_headers,
                 )
                 # List available tools and register them
                 mcp_tools = await mcp_client.list_tools()
                 logger.info(f"MCP {mcp_id} ({srv['url']}): {len(mcp_tools)} tools found")
+                # Patch known schema mismatches — some MCP servers declare
+                # complex object parameters as plain strings in their inputSchema,
+                # causing the LLM to generate strings where objects are required.
+                _patch_mcp_tool_schemas(mcp_tools)
                 if mcp_tools:
                     await toolkit.register_mcp_client(
                         mcp_client=mcp_client,
@@ -249,17 +370,64 @@ async def create_agentscope_agent(
                         "url": srv["url"],
                         "tools": [t.name for t in mcp_tools],
                     })
+                    # Probe: verify that tool execution is actually reachable.
+                    # list_tools() only checks the /tools/list endpoint; the
+                    # downstream API key (e.g. Google Maps X-GOOG-API-KEY) is
+                    # only validated on the first real tool call.  We call the
+                    # first tool with empty arguments — it will fail with
+                    # invalid-argument, but an API-key error appears here too
+                    # and is much easier to diagnose than a silent TaskGroup
+                    # failure inside the agent loop.
+                    try:
+                        probe_fn = await mcp_client.get_callable_function(
+                            mcp_tools[0].name, wrap_tool_result=False
+                        )
+                        await probe_fn()
+                    except BaseException as probe_err:  # noqa: BLE001
+                        real_err = _format_mcp_exception(probe_err)
+                        # A JSON-RPC "invalid params" error is fine (tool works).
+                        # A 403/blocked message means the API key is missing.
+                        if "invalid" in real_err.lower() or "argument" in real_err.lower() or "param" in real_err.lower():
+                            logger.debug(f"MCP {mcp_id} probe OK (expected param error): {real_err}")
+                        else:
+                            logger.warning(
+                                f"MCP {mcp_id} probe FAILED — tools may not work at runtime. "
+                                f"Real error: {real_err}"
+                            )
             except Exception as e:
-                logger.warning(f"Failed to connect MCP {mcp_id} ({srv.get('url')}): {e}")
+                logger.warning(f"Failed to connect MCP {mcp_id} ({srv.get('url')}): {_format_mcp_exception(e)}")
 
         if connected_mcps:
             logger.info(f"Agent {agent_def.id}: connected {len(connected_mcps)} MCP servers")
 
-        # Build multi-layer system prompt + AgentScope skill prompt
+        # ── Pipeline tools (orchestration family only) ────────────────────
+        # If this agent is an orchestrator with pipeline_agent_ids, pre-create
+        # each pipeline agent and register one dynamic tool per agent so the
+        # orchestrator LLM can call them in sequence with context propagation.
+        pipeline_agent_ids = getattr(agent_def, "pipeline_agent_ids", None) or []
+        if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
+            try:
+                from app.services.pipeline_executor import build_pipeline_tools
+                pipeline_tools, _pipeline_ctx = await build_pipeline_tools(db, pipeline_agent_ids)
+                for pt in pipeline_tools:
+                    toolkit.register_tool_function(pt)
+                logger.info(
+                    f"Orchestrator {agent_def.id}: registered {len(pipeline_tools)} pipeline tools "
+                    f"for agents {pipeline_agent_ids}"
+                )
+            except Exception as pe:
+                logger.warning(f"Failed to build pipeline tools for {agent_def.id}: {pe}")
+
+        # Build multi-layer system prompt.
+        # NOTE: do NOT manually append skill_prompt here — ReActAgent.sys_prompt
+        # property calls toolkit.get_agent_skill_prompt() automatically on every
+        # model call, so adding it here would double the skills content.
         sys_prompt = await build_agent_prompt(db, agent_def)
-        skill_prompt = toolkit.get_agent_skill_prompt()
-        if skill_prompt:
-            sys_prompt = f"{sys_prompt}\n\n{skill_prompt}"
+
+        # For orchestration agents, bump max_iters to cover the full pipeline
+        effective_max_iters = max_iters
+        if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
+            effective_max_iters = max(max_iters, len(pipeline_agent_ids) * 2 + 2)
 
         agent = ReActAgent(
             name=agent_def.id,
@@ -268,7 +436,7 @@ async def create_agentscope_agent(
             formatter=formatter,
             toolkit=toolkit,
             memory=InMemoryMemory(),
-            max_iters=max_iters,
+            max_iters=effective_max_iters,
         )
 
         # Attach MCP info for tracing

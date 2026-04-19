@@ -4,6 +4,12 @@ export type OrkestraState = "enabled" | "disabled" | "restricted" | "hidden" | s
 export type McpCriticality = "low" | "medium" | "high" | string;
 export type McpEffectType = "read" | "search" | "compute" | "generate" | "validate" | "write" | "act" | string;
 
+export interface McpToolPreview {
+  name: string;
+  description: string | null;
+  params: Record<string, string>;
+}
+
 export interface ObotServerSummary {
   id: string;
   name: string;
@@ -16,6 +22,7 @@ export interface ObotServerSummary {
   health_status: ObotHealthState | null;
   version: string | null;
   obot_url: string | null;
+  tool_preview: McpToolPreview[];
 }
 
 export interface ObotServerDetails extends ObotServerSummary {

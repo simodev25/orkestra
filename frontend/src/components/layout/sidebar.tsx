@@ -10,6 +10,7 @@ const NAV = [
   { label: "Dashboard", href: "/", icon: Activity },
   { section: "Registries" },
   { label: "Agents", href: "/agents", icon: Bot },
+  { label: "Orchestrateurs", href: "/agents/orchestrators/new", icon: Bot },
   { label: "Families", href: "/agents/families", icon: Bot },
   { label: "Agent Skills", href: "/agents/skills", icon: Bot },
   { label: "Test Lab", href: "/test-lab", icon: FlaskConical },

@@ -23,7 +23,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from agentscope.agent import ReActAgent
-from agentscope.formatter import OllamaChatFormatter
 from agentscope.memory import InMemoryMemory
 from agentscope.message import Msg
 from agentscope.tool import Toolkit, ToolResponse
@@ -31,6 +30,8 @@ from agentscope.tool import Toolkit, ToolResponse
 from app.core.config import get_settings
 from app.services.test_lab.execution_engine import (
     _get_config_sync,
+    _make_model,
+    _make_formatter,
     _run_async,
     emit_event,
     update_run,
@@ -51,44 +52,10 @@ def _extract_text(content) -> str:
     return str(content)
 
 
-def _make_model(worker_name: str | None = None):
-    config = _get_config_sync()
-    orch = config.get("orchestrator", {})
-
-    model_name = None
-    if worker_name and worker_name in config.get("workers", {}):
-        model_name = config["workers"][worker_name].get("model")
-    if not model_name:
-        model_name = orch.get("model", "mistral")
-
-    provider = orch.get("provider", "ollama")
-    api_key = orch.get("api_key", "") or ""
-    settings = get_settings()
-
-    if provider == "openai":
-        from agentscope.model import OpenAIChatModel
-        base_url = orch.get("host", "") or getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")
-        key = api_key or getattr(settings, "OPENAI_API_KEY", "")
-        return OpenAIChatModel(model_name=model_name, api_key=key, base_url=base_url)
-    else:
-        from agentscope.model import OllamaChatModel
-        host = orch.get("host", "") or getattr(settings, "OLLAMA_HOST", "http://localhost:11434")
-        kwargs = {"model_name": model_name, "host": host, "stream": False}
-        if api_key:
-            kwargs["api_key"] = api_key
-        return OllamaChatModel(**kwargs)
-
-
 def _build_subagent(name: str, sys_prompt: str, worker_key: str) -> ReActAgent:
     """Build a persistent SubAgent (created ONCE, reused across tool calls)."""
     model = _make_model(worker_key)
-    config = _get_config_sync()
-    provider = config.get("orchestrator", {}).get("provider", "ollama")
-    if provider == "openai":
-        from agentscope.formatter import OpenAIChatFormatter
-        formatter = OpenAIChatFormatter()
-    else:
-        formatter = OllamaChatFormatter()
+    formatter = _make_formatter()
     return ReActAgent(
         name=name,
         model=model,
@@ -534,7 +501,8 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
             f"Iterations: {ctx.target_iteration_count}\n"
             f"{tool_calls_section}\n\n"
             f"=== OUTPUT COMPLET DE L'AGENT ===\n"
-            f"{(ctx.target_output or 'EMPTY')[:2000]}\n\n"
+            f"{(ctx.target_output or 'EMPTY')[:4000]}"
+            f"{'... [TRUNCATED]' if len(ctx.target_output or '') > 4000 else ''}\n\n"
             f"=== DEMANDE D'ANALYSE ===\n"
             f"{analysis_request}\n\n"
             f"Evalue si l'agent a repondu correctement au scenario.\n"
@@ -888,9 +856,10 @@ def build_orchestrator_agent(ctx: RunContext) -> ReActAgent:
     for fn in tools:
         toolkit.register_tool_function(fn)
     model = _make_model()
+    formatter = _make_formatter()
     return ReActAgent(
         name="OrchestratorAgent",
-        model=model, formatter=OllamaChatFormatter(),
+        model=model, formatter=formatter,
         memory=InMemoryMemory(), toolkit=toolkit,
         sys_prompt=ORCHESTRATOR_PROMPT, max_iters=12,
     )
@@ -1094,9 +1063,10 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
 
         # Record orchestrator config from dynamic config
         cfg = _get_config_sync()
-        orch_model = cfg.get("orchestrator", {}).get("model", "mistral")
+        orch_cfg = cfg.get("orchestrator", {})
+        orch_model = orch_cfg.get("model", "minimax-m2.7")
         settings_local = get_settings()
-        host = getattr(settings_local, "OLLAMA_HOST", "http://localhost:11434")
+        host = orch_cfg.get("host") or getattr(settings_local, "OLLAMA_HOST", "http://localhost:11434")
         recorder.set_orchestrator_config(
             model=orch_model, host=host,
             system_prompt=ORCHESTRATOR_PROMPT, max_iters=12,
@@ -1140,10 +1110,37 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
         user_msg = Msg("user", user_msg_text, "user")
         recorder.record_orchestrator_start(user_msg_text)
 
-        response = await asyncio.wait_for(
-            orchestrator(user_msg),
-            timeout=ctx.timeout_seconds + 180,
-        )
+        # Retry up to 2 times on transient Ollama 5xx errors.
+        # The orchestrator's reasoning step is stateless enough that a retry
+        # after a short backoff usually succeeds once Ollama recovers from OOM.
+        _last_exc: Exception | None = None
+        response = None
+        for _attempt in range(1, 4):  # 3 tries total
+            try:
+                response = await asyncio.wait_for(
+                    orchestrator(user_msg),
+                    timeout=ctx.timeout_seconds + 180,
+                )
+                break  # success
+            except asyncio.TimeoutError:
+                raise  # don't retry on timeout
+            except Exception as _exc:
+                _err = str(_exc)
+                _is_transient = any(
+                    tag in _err for tag in ("500", "502", "503", "504", "Internal Server Error")
+                )
+                if _is_transient and _attempt < 3:
+                    logger.warning(
+                        f"Orchestrator LLM transient error (attempt {_attempt}/3) "
+                        f"for run {run_id}: {_err[:200]} — retrying in {_attempt}s"
+                    )
+                    import asyncio as _asyncio
+                    await _asyncio.sleep(float(_attempt))
+                    _last_exc = _exc
+                    continue
+                raise
+        if response is None and _last_exc is not None:
+            raise _last_exc
 
         final_text = _extract_text(response.content if hasattr(response, "content") else str(response))
 
@@ -1288,6 +1285,10 @@ async def run_orchestrated_test(run_id: str, scenario_id: str) -> None:
         if ctx and ctx.target_output and not ctx.verdict:
             # Try assertion-based auto-evaluation instead of giving a 0 score
             auto_verdict, auto_score, auto_summary = _auto_evaluate(ctx)
+            # Set ctx fields so recorder.finalize() picks up the right values
+            ctx.verdict = auto_verdict
+            ctx.score = auto_score
+            ctx.summary = auto_summary
             update_run(run_id, status="completed",
                        verdict=auto_verdict, score=auto_score,
                        duration_ms=ctx.target_duration_ms,

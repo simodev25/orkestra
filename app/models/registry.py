@@ -35,6 +35,8 @@ class AgentDefinition(BaseModel):
     llm_model: Mapped[str | None] = mapped_column(String(100), nullable=True)     # model name
     allow_code_execution: Mapped[bool] = mapped_column(Boolean, default=False)    # enable execute_python_code tool
     allowed_builtin_tools: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # agentscope built-in tools
+    pipeline_agent_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)  # ordered IDs of sub-agents (orchestration family only)
+    routing_mode: Mapped[str] = mapped_column(String(20), default="sequential")  # "sequential" | "dynamic"
     last_test_status: Mapped[str] = mapped_column(String(30), default="not_tested")
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)

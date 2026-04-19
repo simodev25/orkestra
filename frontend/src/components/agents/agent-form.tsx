@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentCreatePayload,
   AgentDefinition,
@@ -107,6 +107,8 @@ export function AgentForm({
   const [llmModel, setLlmModel] = useState(initial?.llm_model ?? "");
   const [allowCodeExecution, setAllowCodeExecution] = useState(initial?.allow_code_execution ?? false);
   const [allowedBuiltinTools, setAllowedBuiltinTools] = useState<string[]>(initial?.allowed_builtin_tools ?? []);
+  const [pipelineAgentIds, setPipelineAgentIds] = useState<string[]>(initial?.pipeline_agent_ids ?? []);
+  const [routingMode, setRoutingMode] = useState<string>(initial?.routing_mode ?? "sequential");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
 
   useEffect(() => {
@@ -233,6 +235,8 @@ export function AgentForm({
       llm_model: llmModel.trim() || null,
       allow_code_execution: allowCodeExecution,
       allowed_builtin_tools: allowedBuiltinTools.length > 0 ? allowedBuiltinTools : null,
+      pipeline_agent_ids: isOrchestrator ? pipelineAgentIds : [],
+      routing_mode: isOrchestrator ? routingMode : "sequential",
       version: version.trim() || "1.0.0",
       status,
       owner: owner.trim() || null,
@@ -248,6 +252,8 @@ export function AgentForm({
     const { id: _id, ...updatePayload } = payloadBase;
     await onSubmit(updatePayload);
   }
+
+  const isOrchestrator = familyId === "orchestration";
 
   return (
     <form onSubmit={submit} className="space-y-5">
@@ -469,49 +475,92 @@ export function AgentForm({
         </div>
       </section>
 
-      <section className="glass-panel p-4 space-y-3">
-        <h2 className="section-title text-sm">5. MCP permissions</h2>
-        <p className="text-xs font-mono text-ork-dim">
-          Select only MCPs available in catalog. Unknown MCP IDs are blocked at validation.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-52 overflow-y-auto border border-ork-border rounded p-2">
-          {availableMcps.map((mcp) => {
-            const checked = allowedMcps.includes(mcp.id);
-            return (
-              <label key={mcp.id} className="flex items-start gap-2 text-xs font-mono">
-                <input type="checkbox" checked={checked} onChange={() => toggleAllowedMcp(mcp.id)} />
-                <span>
-                  <span className="text-ork-text">{mcp.name}</span>
-                  <span className="text-ork-dim"> ({mcp.id})</span>
-                  <span className="ml-2 text-ork-dim">{mcp.effect_type}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-        <div className="space-y-2">
-          <p className="data-label">forbidden_effects</p>
-          <div className="flex flex-wrap gap-2">
-            {EFFECT_TYPES.map((effect) => {
-              const on = forbiddenEffects.includes(effect);
-              return (
+      {isOrchestrator && (
+        <div className="form-section">
+          <h2 className="section-title text-sm">5. Pipeline d&apos;agents</h2>
+
+          {/* Routing mode toggle */}
+          <div className="mb-4">
+            <p className="data-label">mode de routage</p>
+            <div className="flex gap-2 mt-1">
+              {(["sequential", "dynamic"] as const).map((m) => (
                 <button
-                  key={effect}
+                  key={m}
                   type="button"
-                  onClick={() => toggleForbiddenEffect(effect)}
-                  className={`px-2 py-1 text-xs font-mono rounded border ${
-                    on
-                      ? "border-ork-red/40 text-ork-red bg-ork-red/10"
-                      : "border-ork-border text-ork-muted"
+                  onClick={() => setRoutingMode(m)}
+                  className={`text-xs px-4 py-2 rounded font-mono border transition-colors ${
+                    routingMode === m
+                      ? "bg-ork-cyan text-black border-ork-cyan font-bold"
+                      : "bg-transparent text-ork-dim border-ork-border hover:border-ork-cyan hover:text-ork-text"
                   }`}
                 >
-                  {effect}
+                  {m === "sequential" ? "Séquentiel (ordre fixe)" : "Dynamique (LLM choisit)"}
                 </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-ork-dim mt-1">
+              {routingMode === "sequential"
+                ? "Les agents sont appelés dans l'ordre défini ci-dessous."
+                : "L'orchestrateur décide dynamiquement de l'ordre d'appel des agents."}
+            </p>
+          </div>
+
+          {/* Agent pipeline list */}
+          <div>
+            <p className="data-label mb-2">agents dans le pipeline (glisser pour réordonner)</p>
+            <PipelineAgentEditor
+              agentIds={pipelineAgentIds}
+              onChange={setPipelineAgentIds}
+            />
+          </div>
+        </div>
+      )}
+
+      {!isOrchestrator && (
+        <section className="glass-panel p-4 space-y-3">
+          <h2 className="section-title text-sm">5. MCP permissions</h2>
+          <p className="text-xs font-mono text-ork-dim">
+            Select only MCPs available in catalog. Unknown MCP IDs are blocked at validation.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-52 overflow-y-auto border border-ork-border rounded p-2">
+            {availableMcps.map((mcp) => {
+              const checked = allowedMcps.includes(mcp.id);
+              return (
+                <label key={mcp.id} className="flex items-start gap-2 text-xs font-mono">
+                  <input type="checkbox" checked={checked} onChange={() => toggleAllowedMcp(mcp.id)} />
+                  <span>
+                    <span className="text-ork-text">{mcp.name}</span>
+                    <span className="text-ork-dim"> ({mcp.id})</span>
+                    <span className="ml-2 text-ork-dim">{mcp.effect_type}</span>
+                  </span>
+                </label>
               );
             })}
           </div>
-        </div>
-      </section>
+          <div className="space-y-2">
+            <p className="data-label">forbidden_effects</p>
+            <div className="flex flex-wrap gap-2">
+              {EFFECT_TYPES.map((effect) => {
+                const on = forbiddenEffects.includes(effect);
+                return (
+                  <button
+                    key={effect}
+                    type="button"
+                    onClick={() => toggleForbiddenEffect(effect)}
+                    className={`px-2 py-1 text-xs font-mono rounded border ${
+                      on
+                        ? "border-ork-red/40 text-ork-red bg-ork-red/10"
+                        : "border-ork-border text-ork-muted"
+                    }`}
+                  >
+                    {effect}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="glass-panel p-4 space-y-3">
         <h2 className="section-title text-sm">6. Contracts</h2>
@@ -632,7 +681,7 @@ export function AgentForm({
           Leave empty to use the platform default LLM configuration.
         </p>
         {/* Built-in tool functions — unified toggle list */}
-        <div className="pt-1 border-t border-ork-border/30 space-y-0">
+        {!isOrchestrator && <div className="pt-1 border-t border-ork-border/30 space-y-0">
           <p className="text-xs font-mono text-ork-text mb-2">Built-in tool functions</p>
           {([
             {
@@ -753,7 +802,7 @@ export function AgentForm({
               </button>
             </div>
           ))}
-        </div>
+        </div>}
       </section>
 
       <section className="glass-panel p-4 space-y-3">
@@ -842,5 +891,73 @@ export function AgentForm({
         </button>
       </div>
     </form>
+  );
+}
+
+// ── Inline pipeline editor ────────────────────────────────────────────────────
+
+interface PipelineAgentEditorProps {
+  agentIds: string[];
+  onChange: (ids: string[]) => void;
+}
+
+function PipelineAgentEditor({ agentIds, onChange }: PipelineAgentEditorProps) {
+  const [newId, setNewId] = useState("");
+  const dragIdx = useRef<number | null>(null);
+
+  function handleDragStart(idx: number) { dragIdx.current = idx; }
+  function handleDrop(targetIdx: number) {
+    const from = dragIdx.current;
+    if (from === null || from === targetIdx) return;
+    const next = [...agentIds];
+    const [moved] = next.splice(from, 1);
+    next.splice(targetIdx, 0, moved);
+    onChange(next);
+    dragIdx.current = null;
+  }
+  function removeAgent(id: string) { onChange(agentIds.filter((x) => x !== id)); }
+  function addAgent() {
+    const id = newId.trim();
+    if (id && !agentIds.includes(id)) {
+      onChange([...agentIds, id]);
+      setNewId("");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {agentIds.map((id, idx) => (
+        <div
+          key={id}
+          draggable
+          onDragStart={() => handleDragStart(idx)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => handleDrop(idx)}
+          className="flex items-center gap-2 bg-ork-bg border border-ork-cyan rounded-md px-3 py-2 cursor-grab"
+        >
+          <span className="text-ork-dim text-sm select-none">⠿</span>
+          <span className="bg-ork-cyan text-black text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">{idx + 1}</span>
+          <span className="text-xs text-ork-cyan font-mono flex-1">{id}</span>
+          <button type="button" onClick={() => removeAgent(id)} className="text-ork-dim hover:text-red-400 text-xs">✕</button>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newId}
+          onChange={(e) => setNewId(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAgent(); }}}
+          placeholder="agent_id à ajouter…"
+          className="flex-1 bg-ork-bg border border-ork-border rounded px-3 py-1.5 text-xs font-mono text-ork-text focus:outline-none focus:border-ork-cyan placeholder:text-ork-dim"
+        />
+        <button
+          type="button"
+          onClick={addAgent}
+          className="text-xs px-3 py-1.5 border border-dashed border-ork-border rounded text-ork-dim hover:border-ork-cyan hover:text-ork-cyan transition-colors"
+        >
+          + Ajouter
+        </button>
+      </div>
+    </div>
   );
 }

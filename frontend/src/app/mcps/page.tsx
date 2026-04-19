@@ -293,6 +293,7 @@ export default function McpCatalogPage() {
                 <th className="p-3">Name</th>
                 <th className="p-3">MCP ID / Obot Server ID</th>
                 <th className="p-3">Purpose</th>
+                <th className="p-3">Tools</th>
                 <th className="p-3">Effect type</th>
                 <th className="p-3">Obot state</th>
                 <th className="p-3">Orkestra state</th>
@@ -315,6 +316,23 @@ export default function McpCatalogPage() {
                     <td className="p-3 font-medium text-ork-text">{item.obot_server.name}</td>
                     <td className="p-3 font-mono text-ork-cyan">{item.obot_server.id}</td>
                     <td className="p-3 text-ork-muted max-w-[280px]">{item.obot_server.purpose}</td>
+                    <td className="p-3">
+                      {(item.obot_server.tool_preview ?? []).length === 0 ? (
+                        <span className="text-ork-dim font-mono text-[10px]">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {item.obot_server.tool_preview.map((tool) => (
+                            <span
+                              key={tool.name}
+                              title={tool.description ?? tool.name}
+                              className="text-[10px] font-mono text-ork-cyan bg-ork-cyan/10 border border-ork-cyan/20 px-1.5 py-0.5 rounded cursor-default"
+                            >
+                              {tool.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3 font-mono">{item.obot_server.effect_type}</td>
                     <td className="p-3">
                       <div className="flex items-center gap-1 flex-wrap">

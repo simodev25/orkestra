@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "ollama"
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "mistral"
+    OLLAMA_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "mistral-small-latest"
     OPENAI_BASE_URL: str = "https://api.mistral.ai/v1"

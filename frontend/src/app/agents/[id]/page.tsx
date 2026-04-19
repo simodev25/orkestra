@@ -149,6 +149,7 @@ export default function AgentDetailPage() {
     );
   }
 
+  const isOrchestrator = agent.family_id === "orchestration";
   const skillIds = agent.skill_ids ?? [];
   const allowedMcps = agent.allowed_mcps ?? [];
   const forbiddenEffects = agent.forbidden_effects ?? [];
@@ -409,35 +410,72 @@ export default function AgentDetailPage() {
         </pre>
       </Section>
 
-      <Section title="MCP permissions">
-        {allowedMcps.length === 0 ? (
-          <p className="text-sm text-ork-dim font-mono">No allowed MCPs configured.</p>
-        ) : (
-          <div className="space-y-2">
-            {allowedMcps.map((mcpId) => {
-              const mcp = mcpMap.get(mcpId);
-              return (
-                <div key={mcpId} className="border border-ork-border rounded p-2 text-xs font-mono">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-ork-cyan">{mcpId}</span>
-                    {mcp ? (
-                      <>
-                        <span className="text-ork-text">{mcp.name}</span>
-                        <span className="text-ork-dim">{mcp.effect_type}</span>
-                        <StatusBadge status={mcp.orkestra_state} />
-                        <StatusBadge status={mcp.obot_state} />
-                      </>
-                    ) : (
-                      <span className="text-ork-dim">not present in current catalog snapshot</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+      {isOrchestrator ? (
+        /* Pipeline section replaces MCP permissions for orchestrators */
+        <Section title="Pipeline d'agents">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-[10px] text-ork-dim uppercase tracking-widest">Mode de routage</span>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+              (agent.routing_mode ?? "sequential") === "dynamic"
+                ? "border-purple-500/40 text-purple-400 bg-purple-500/10"
+                : "border-ork-cyan/40 text-ork-cyan bg-ork-cyan/10"
+            }`}>
+              {(agent.routing_mode ?? "sequential") === "dynamic" ? "Dynamique (LLM choisit)" : "Séquentiel (ordre fixe)"}
+            </span>
           </div>
-        )}
-        <KV label="forbidden_effects" value={forbiddenEffects.length > 0 ? forbiddenEffects.join(", ") : "-"} />
-      </Section>
+          {(agent.pipeline_agent_ids ?? []).length === 0 ? (
+            <p className="text-sm text-ork-dim font-mono">Aucun agent configuré dans ce pipeline.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {(agent.pipeline_agent_ids ?? []).map((agentId, idx) => (
+                <div key={agentId} className="flex items-center gap-3 bg-ork-bg border border-ork-border rounded-md px-3 py-2">
+                  <span className="bg-ork-cyan text-black text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">
+                    {idx + 1}
+                  </span>
+                  <span className="text-xs text-ork-cyan font-mono flex-1">{agentId}</span>
+                  <a
+                    href={`/agents/${agentId}`}
+                    className="text-[10px] text-ork-dim hover:text-ork-cyan transition-colors"
+                  >
+                    voir →
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      ) : (
+        /* Normal MCP permissions section for non-orchestrators */
+        <Section title="MCP permissions">
+          {allowedMcps.length === 0 ? (
+            <p className="text-sm text-ork-dim font-mono">No allowed MCPs configured.</p>
+          ) : (
+            <div className="space-y-2">
+              {allowedMcps.map((mcpId) => {
+                const mcp = mcpMap.get(mcpId);
+                return (
+                  <div key={mcpId} className="border border-ork-border rounded p-2 text-xs font-mono">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-ork-cyan">{mcpId}</span>
+                      {mcp ? (
+                        <>
+                          <span className="text-ork-text">{mcp.name}</span>
+                          <span className="text-ork-dim">{mcp.effect_type}</span>
+                          <StatusBadge status={mcp.orkestra_state} />
+                          <StatusBadge status={mcp.obot_state} />
+                        </>
+                      ) : (
+                        <span className="text-ork-dim">not present in current catalog snapshot</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <KV label="forbidden_effects" value={forbiddenEffects.length > 0 ? forbiddenEffects.join(", ") : "-"} />
+        </Section>
+      )}
 
       <Section title="Contracts">
         <KV label="input_contract_ref" value={agent.input_contract_ref || "-"} mono />

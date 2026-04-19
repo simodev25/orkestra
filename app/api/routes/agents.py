@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,11 +19,20 @@ from app.schemas.agent import (
     AgentStatusUpdate,
     AgentUpdate,
     McpCatalogSummary,
+    OrchestratorGenerationRequest,
+    OrchestratorGenerationResponse,
     SaveGeneratedDraftRequest,
 )
-from app.services import agent_generation_service, agent_registry_service, agent_test_run_service
+from app.services import (
+    agent_generation_service,
+    agent_registry_service,
+    agent_test_run_service,
+    orchestrator_builder_service,
+)
 from app.services.test_lab.target_agent_runner import run_target_agent
 from sqlalchemy import select
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -220,6 +231,35 @@ async def save_generated_draft(
         return await agent_registry_service.enrich_agent(db, agent)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/generate-orchestrator", response_model=OrchestratorGenerationResponse)
+async def generate_orchestrator(
+    data: OrchestratorGenerationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate an orchestrator agent draft via LLM.
+
+    Manual mode: provide agent_ids (ordered list of ≥2 agent IDs).
+    Auto mode: provide use_case_description; LLM selects agents from registry.
+    """
+    if not data.agent_ids and not data.use_case_description:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide agent_ids (manual mode) or use_case_description (auto mode)",
+        )
+    try:
+        draft, selected_ids = await orchestrator_builder_service.generate_orchestrator(db, data)
+        return OrchestratorGenerationResponse(
+            draft=draft,
+            source="llm",
+            selected_agent_ids=selected_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Orchestrator generation failed")
+        raise HTTPException(status_code=503, detail=f"LLM generation failed: {exc}")
 
 
 # ── Test Lab ───────────────────────────────────────────────────────────

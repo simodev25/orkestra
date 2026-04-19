@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   FlaskConical, Play, Eye, Plus, Settings, Send, ChevronDown, Loader2,
@@ -115,7 +115,10 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
 
 export default function TestLabPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<"scenarios" | "interactive">("interactive");
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<"scenarios" | "interactive">(
+    searchParams.get("tab") === "scenarios" ? "scenarios" : "interactive"
+  );
 
   // ─── Scenarios state ────────────────────────────────────────────────────
   const [scenarios, setScenarios] = useState<Scenario[]>([]);

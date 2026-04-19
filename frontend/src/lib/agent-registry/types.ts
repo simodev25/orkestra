@@ -43,6 +43,8 @@ export interface AgentDefinition {
   llm_model: string | null;
   allow_code_execution: boolean;
   allowed_builtin_tools: string[] | null;
+  pipeline_agent_ids?: string[];
+  routing_mode?: string;
   version: string;
   status: AgentStatus;
   owner: string | null;
@@ -117,6 +119,8 @@ export interface GeneratedAgentDraft {
   status: AgentStatus;
   suggested_missing_mcps: string[];
   mcp_rationale: Record<string, string>;
+  pipeline_agent_ids?: string[];
+  routing_mode?: string;
 }
 
 export interface AgentGenerationResponse {
@@ -155,6 +159,8 @@ export interface AgentCreatePayload {
   llm_model?: string | null;
   allow_code_execution?: boolean;
   allowed_builtin_tools?: string[] | null;
+  pipeline_agent_ids?: string[] | null;
+  routing_mode?: string;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;
@@ -185,9 +191,25 @@ export interface AgentUpdatePayload {
   llm_model?: string | null;
   allow_code_execution?: boolean;
   allowed_builtin_tools?: string[] | null;
+  pipeline_agent_ids?: string[] | null;
+  routing_mode?: string;
   version?: string;
   status?: AgentStatus;
   owner?: string | null;
   last_test_status?: string;
   usage_count?: number;
+}
+
+export interface OrchestratorGenerationRequest {
+  name: string;
+  agent_ids: string[];               // ordered; empty = auto mode
+  use_case_description?: string;     // auto mode: free-text pipeline description
+  user_instructions?: string;        // always: extra context for LLM
+  routing_strategy?: string;         // default: "sequential"
+}
+
+export interface OrchestratorGenerationResponse {
+  draft: GeneratedAgentDraft;
+  source: string;
+  selected_agent_ids: string[];      // non-empty only in auto mode (always present)
 }

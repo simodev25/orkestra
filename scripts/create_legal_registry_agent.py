@@ -6,13 +6,12 @@ Usage:
 
 Uses ORKESTRA_API_URL env var if set, otherwise defaults to http://localhost:8200.
 
-MCP IDs:
-  ms1rwk5g  — data.gouv.fr MCP (Annuaire des Entreprises + dataservices)
-  Look up INSEE and service-public IDs from GET /api/mcp-catalog or the Obot UI,
-  then update allowed_mcps below before running.
+MCP IDs (confirmed from catalog):
+  ms1rwk5g  — mcp.data.gouv.fr (Annuaire des Entreprises + dataservices Sirene)
+
+Note: INSEE Sirene is accessible via data.gouv.fr dataservices — no separate MCP needed.
 """
 
-import json
 import os
 import sys
 
@@ -21,11 +20,8 @@ import requests
 API_URL = os.environ.get("ORKESTRA_API_URL", "http://localhost:8200")
 API_KEY = os.environ.get("ORKESTRA_API_KEY", "test-orkestra-api-key")
 
-# MCP server IDs — verify against your Obot catalog before running.
-# GET http://localhost:8200/api/mcp-catalog  to list available server IDs.
-MCP_DATAGOUV = "ms1rwk5g"        # data.gouv.fr (Annuaire des Entreprises + dataservices)
-MCP_INSEE = "ms_insee_sirene"     # INSEE Sirene — replace with real ID from catalog
-MCP_SERVICE_PUBLIC = "ms_service_public"  # mcp-service-public — replace with real ID
+# Confirmed MCP server IDs from GET /api/mcp-catalog
+MCP_DATAGOUV = "ms1rwk5g"  # mcp.data.gouv.fr — Annuaire des Entreprises + Sirene dataservices
 
 AGENT = {
     "id": "legal_registry_agent",
@@ -66,7 +62,7 @@ AGENT = {
         "use_case_hint": "legal registry lookup",
         "requires_grounded_evidence": True,
     },
-    "allowed_mcps": [MCP_DATAGOUV, MCP_INSEE, MCP_SERVICE_PUBLIC],
+    "allowed_mcps": [MCP_DATAGOUV],
     "allow_code_execution": True,
     "forbidden_effects": ["publish", "approve", "external_act"],
     "criticality": "high",
@@ -310,10 +306,8 @@ def main():
         print(f"  Scenario: {API_URL}/api/test-lab/scenarios/{scenario_id}")
     print(f"  UI:       http://localhost:3300/agents/{AGENT['id']}")
     print()
-    print("NOTE: Verify MCP IDs in allowed_mcps before running the agent:")
-    print(f"  {MCP_DATAGOUV}         → data.gouv.fr (confirmed)")
-    print(f"  {MCP_INSEE}  → INSEE Sirene (check: GET {API_URL}/api/mcp-catalog)")
-    print(f"  {MCP_SERVICE_PUBLIC}  → mcp-service-public (check: GET {API_URL}/api/mcp-catalog)")
+    print("MCP used:")
+    print(f"  {MCP_DATAGOUV}  → mcp.data.gouv.fr (confirmed — covers Sirene + Annuaire via dataservices)")
 
 
 if __name__ == "__main__":

@@ -561,7 +561,7 @@ export default function TestRunDetailPage() {
                 const agentName = getAgentLabel(event);
 
                 return (
-                  <div key={event.id || i} className={`flex items-start gap-3 ${isActive ? "animate-fade-in" : ""}`}>
+                  <div key={`${event.id || "evt"}_${i}`} className={`flex items-start gap-3 ${isActive ? "animate-fade-in" : ""}`}>
                     {/* Timeline dot + connector */}
                     <div className="flex flex-col items-center pt-1.5">
                       {isActive ? (
