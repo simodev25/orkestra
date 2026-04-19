@@ -97,16 +97,19 @@ async def build_pipeline_tools(
         except Exception as exc:
             logger.warning("Failed to pre-create pipeline agent '%s': %s", agent_id, exc)
 
+    # Read run_id NOW (in the correct async context) and capture in each tool closure
+    run_id = _run_id_var.get()
+
     # Build one sync tool per pre-created agent
     tools: list = []
     for entry in entries:
-        tool = _make_tool(entry, ctx)
+        tool = _make_tool(entry, ctx, run_id=run_id)
         tools.append(tool)
 
     return tools, ctx
 
 
-def _make_tool(entry: dict, ctx: PipelineContext):
+def _make_tool(entry: dict, ctx: PipelineContext, run_id: str | None = None):
     """Factory to avoid late-binding closure issues."""
     from agentscope.message import Msg
     from agentscope.agent._react_agent import ToolResponse
@@ -124,7 +127,7 @@ def _make_tool(entry: dict, ctx: PipelineContext):
         """Executes this pipeline agent with the given task and accumulated context."""
         from app.services.test_lab.execution_engine import emit_event as _emit
 
-        run_id = _run_id_var.get()
+        # run_id is captured at tool-creation time (correct async context)
         safe_tool_name = f"run_{safe_id}"
         phase_key = f"pipeline_{safe_id}"
 
