@@ -344,7 +344,7 @@ export default function TestLabPage() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-[calc(100vh-0px)]">
+    <div className="page animate-fade-in flex flex-col h-[calc(100vh-0px)]">
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-6 pt-6 pb-0">
         <div className="max-w-[1200px] mx-auto">
