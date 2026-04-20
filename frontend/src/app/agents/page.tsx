@@ -67,6 +67,11 @@ function AgentRegistryPageContent() {
   const [agentHistory, setAgentHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
+  const [activeTab, setActiveTab] = useState<"details" | "skills">("details");
+
+  useEffect(() => {
+    setActiveTab("details");
+  }, [selectedAgent?.id]);
 
   async function loadAll(nextFilters: AgentRegistryFilters) {
     setLoading(true);
@@ -266,34 +271,65 @@ function AgentRegistryPageContent() {
                 </div>
               </div>
               <div className="tabs">
-                <button className="tabs__btn tabs__btn--active">Details</button>
-                <button className="tabs__btn">Skills</button>
+                <button
+                  className={`tabs__btn${activeTab === "details" ? " tabs__btn--active" : ""}`}
+                  onClick={() => setActiveTab("details")}
+                >Details</button>
+                <button
+                  className={`tabs__btn${activeTab === "skills" ? " tabs__btn--active" : ""}`}
+                  onClick={() => setActiveTab("skills")}
+                >Skills</button>
               </div>
               <div className="tabpane">
-                <div className="kv">
-                  <span className="k">Agent ID</span><span className="v mono">{selectedAgent.id}</span>
-                  <span className="k">Family</span><span className="v">{selectedAgent.family?.label || selectedAgent.family_id}</span>
-                  <span className="k">Status</span><span className="v"><StatusBadge status={selectedAgent.status} /></span>
-                  <span className="k">Version</span><span className="v mono">{selectedAgent.version || "—"}</span>
-                  <span className="k">Criticality</span><span className="v"><span className={`crit crit--${selectedAgent.criticality || "low"}`}>{selectedAgent.criticality || "low"}</span></span>
-                  <span className="k">Cost Profile</span><span className="v mono">{selectedAgent.cost_profile || "—"}</span>
-                  {selectedAgent.llm_model && <><span className="k">LLM Model</span><span className="v mono">{selectedAgent.llm_model}</span></>}
-                </div>
-                {selectedAgent.skill_ids && selectedAgent.skill_ids.length > 0 && (
-                  <div style={{ marginTop: 16 }}>
-                    <p className="section-title" style={{ marginBottom: 8 }}>Skills</p>
-                    <div className="row flex-wrap">
-                      {selectedAgent.skill_ids.map((s: string) => (
-                        <span key={s} className="chip chip--mini">{s}</span>
-                      ))}
+                {activeTab === "details" && (
+                  <>
+                    <div className="kv">
+                      <span className="k">Agent ID</span><span className="v mono">{selectedAgent.id}</span>
+                      <span className="k">Family</span><span className="v">{selectedAgent.family?.label || selectedAgent.family_id}</span>
+                      <span className="k">Status</span><span className="v"><StatusBadge status={selectedAgent.status} /></span>
+                      <span className="k">Version</span><span className="v mono">{selectedAgent.version || "—"}</span>
+                      <span className="k">Criticality</span><span className="v"><span className={`crit crit--${selectedAgent.criticality || "low"}`}>{selectedAgent.criticality || "low"}</span></span>
+                      <span className="k">Cost Profile</span><span className="v mono">{selectedAgent.cost_profile || "—"}</span>
+                      {selectedAgent.llm_model && <><span className="k">LLM Model</span><span className="v mono">{selectedAgent.llm_model}</span></>}
+                    </div>
+                    {selectedAgent.skill_ids && selectedAgent.skill_ids.length > 0 && (
+                      <div style={{ marginTop: 16 }}>
+                        <p className="section-title" style={{ marginBottom: 8 }}>Skills</p>
+                        <div className="row flex-wrap">
+                          {selectedAgent.skill_ids.map((s: string) => (
+                            <span key={s} className="chip chip--mini">{s}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ marginTop: 16 }}>
+                      <Link href={`/agents/${selectedAgent.id}`} className="btn btn--cyan" style={{ width: "100%", justifyContent: "center" }}>
+                        View Full Details →
+                      </Link>
+                    </div>
+                  </>
+                )}
+                {activeTab === "skills" && (
+                  <div>
+                    {selectedAgent.skill_ids && selectedAgent.skill_ids.length > 0 ? (
+                      <>
+                        <p className="section-title" style={{ marginBottom: 8 }}>Skills</p>
+                        <div className="row flex-wrap">
+                          {selectedAgent.skill_ids.map((s: string) => (
+                            <span key={s} className="chip chip--mini">{s}</span>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="dim" style={{ fontFamily: "var(--font-mono)", fontSize: 11.5 }}>No skills defined</p>
+                    )}
+                    <div style={{ marginTop: 16 }}>
+                      <Link href={`/agents/${selectedAgent.id}`} className="btn btn--cyan" style={{ width: "100%", justifyContent: "center" }}>
+                        View Full Details →
+                      </Link>
                     </div>
                   </div>
                 )}
-                <div style={{ marginTop: 16 }}>
-                  <Link href={`/agents/${selectedAgent.id}`} className="btn btn--cyan" style={{ width: "100%", justifyContent: "center" }}>
-                    View Full Details →
-                  </Link>
-                </div>
               </div>
             </>
           )}
