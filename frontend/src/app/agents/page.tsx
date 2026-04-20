@@ -66,6 +66,7 @@ function AgentRegistryPageContent() {
   const [historyAgent, setHistoryAgent] = useState<AgentDefinition | null>(null);
   const [agentHistory, setAgentHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
 
   async function loadAll(nextFilters: AgentRegistryFilters) {
     setLoading(true);
@@ -133,205 +134,173 @@ function AgentRegistryPageContent() {
   }
 
   return (
-    <div className="p-6 max-w-[1500px] mx-auto space-y-5 animate-fade-in">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div className="page animate-fade-in">
+      {/* Page header */}
+      <div className="pagehead">
         <div>
-          <h1 className="text-xl font-semibold text-ork-text tracking-wide">Agent Registry</h1>
-          <p className="text-xs text-ork-dim font-mono mt-1">
-            Governed registry of specialized agents with mission, MCP permissions, contracts, lifecycle, and
-            reliability metadata.
-          </p>
+          <h1>Agent Registry</h1>
+          <p>Governed registry of specialized agents with mission, MCP permissions, contracts, lifecycle, and reliability metadata.</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            href="/agents/new"
-            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
-          >
-            Add Agent
-          </Link>
-          <button
-            onClick={() => setAiModalOpen(true)}
-            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-purple/30 text-ork-purple bg-ork-purple/10"
-          >
-            Generate Agent with AI
-          </button>
+        <div className="pagehead__actions">
+          <Link href="/agents/new" className="btn btn--cyan">+ Add Agent</Link>
+          <button onClick={() => setAiModalOpen(true)} className="btn btn--purple">✦ Generate</button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Agents actifs" value={stats.active_agents} accent="green" />
-        <StatCard label="Agents testés" value={stats.tested_agents} accent="cyan" />
-        <StatCard label="Agents dépréciés" value={stats.deprecated_agents} accent="amber" />
-        <StatCard
-          label={workflowId ? `Agents workflow ${workflowId}` : "Agents workflow courant"}
-          value={workflowId ? stats.current_workflow_agents : 0}
-          accent="purple"
-        />
+      {/* Stat cards */}
+      <div className="stats">
+        <StatCard label="Active"      value={stats.active_agents}     accent="green"  />
+        <StatCard label="Tested"      value={stats.tested_agents}     accent="cyan"   />
+        <StatCard label="Deprecated"  value={stats.deprecated_agents} accent="amber"  />
+        <StatCard label="In Workflow" value={stats.current_workflow_agents} accent="purple" />
       </div>
 
-      <div className="glass-panel p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      {/* Filters */}
+      <div className="filters" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr auto" }}>
+        <div className="fieldwrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input
+            className="field"
             value={filters.q ?? ""}
             onChange={(e) => updateFilter("q", e.target.value)}
             placeholder="Search name, id, purpose, skill"
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
           />
-          <select
-            value={filters.family ?? "all"}
-            onChange={(e) => updateFilter("family", e.target.value)}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-          >
-            <option value="all">family: all</option>
-            {families.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label} ({f.id})
-              </option>
-            ))}
-          </select>
-          <select
-            value={filters.status ?? "all"}
-            onChange={(e) => updateFilter("status", e.target.value)}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-          >
-            <option value="all">status: all</option>
-            <option value="draft">draft</option>
-            <option value="designed">designed</option>
-            <option value="tested">tested</option>
-            <option value="registered">registered</option>
-            <option value="active">active</option>
-            <option value="deprecated">deprecated</option>
-            <option value="disabled">disabled</option>
-            <option value="archived">archived</option>
-          </select>
-          <select
-            value={filters.criticality ?? "all"}
-            onChange={(e) => updateFilter("criticality", e.target.value)}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-          >
-            <option value="all">criticality: all</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-            <option value="critical">critical</option>
-          </select>
-          <select
-            value={filters.cost_profile ?? "all"}
-            onChange={(e) => updateFilter("cost_profile", e.target.value)}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-          >
-            <option value="all">cost_profile: all</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-            <option value="variable">variable</option>
-          </select>
-          <select
-            value={filters.mcp_id ?? ""}
-            onChange={(e) => updateFilter("mcp_id", e.target.value)}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-          >
-            <option value="">MCP autorisé: all</option>
-            {catalogMcps.map((mcp) => (
-              <option key={mcp.id} value={mcp.id}>
-                {mcp.name} ({mcp.id})
-              </option>
-            ))}
-          </select>
-          <input
-            value={filters.workflow_id ?? ""}
-            onChange={(e) => updateFilter("workflow_id", e.target.value || undefined)}
-            placeholder="workflow id"
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
-          />
-          <label className="flex items-center gap-2 px-3 py-2 border border-ork-border rounded text-xs font-mono">
-            <input
-              type="checkbox"
-              checked={Boolean(filters.used_in_workflow_only)}
-              onChange={(e) => updateFilter("used_in_workflow_only", e.target.checked)}
-            />
-            used in current workflow only
-          </label>
-          <button
-            onClick={applyFilters}
-            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
-          >
-            Apply filters
-          </button>
+        </div>
+        <select className="field" value={filters.family ?? "all"} onChange={(e) => updateFilter("family", e.target.value)}>
+          <option value="all">family: all</option>
+          {families.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+        </select>
+        <select className="field" value={filters.status ?? "all"} onChange={(e) => updateFilter("status", e.target.value)}>
+          <option value="all">status: all</option>
+          {["draft","designed","tested","registered","active","deprecated","disabled","archived"].map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select className="field" value={filters.criticality ?? "all"} onChange={(e) => updateFilter("criticality", e.target.value)}>
+          <option value="all">criticality: all</option>
+          {["low","medium","high","critical"].map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <button className="btn btn--cyan" onClick={applyFilters}>Apply</button>
+      </div>
+
+      {/* Split view */}
+      <div className="split">
+        {/* Table */}
+        <div className="tablewrap">
+          {loading ? (
+            <div style={{ padding: "32px 16px", textAlign: "center" }}>
+              <p className="section-title">Loading agents...</p>
+            </div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Family</th>
+                  <th>Status</th>
+                  <th>Criticality</th>
+                  <th>Version</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {agents.map((agent) => (
+                  <tr
+                    key={agent.id}
+                    className={selectedAgent?.id === agent.id ? "is-selected" : ""}
+                    onClick={() => setSelectedAgent(agent)}
+                  >
+                    <td className="col-name">
+                      {agent.name}
+                      <span className="sub">{agent.id}</span>
+                    </td>
+                    <td className="col-fam">{agent.family?.label || agent.family_id}</td>
+                    <td><StatusBadge status={agent.status} /></td>
+                    <td>
+                      <span className={`crit crit--${agent.criticality || "low"}`}>
+                        {agent.criticality || "low"}
+                      </span>
+                    </td>
+                    <td className="col-fam">{agent.version}</td>
+                    <td>
+                      <div className="row" onClick={(e) => e.stopPropagation()}>
+                        <Link href={`/agents/${agent.id}`} className="btn btn--ghost" style={{ height: 22, fontSize: 11, padding: "0 7px" }}>view</Link>
+                        <button
+                          onClick={() => setAgentPendingDelete(agent)}
+                          className="btn btn--ghost"
+                          style={{ height: 22, fontSize: 11, padding: "0 7px", color: "var(--ork-red)" }}
+                        >del</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {agents.length === 0 && (
+                  <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--ork-muted-2)", fontFamily: "var(--font-mono)", fontSize: 11.5, padding: "24px 0" }}>No agents found</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Detail pane */}
+        <div className="detail">
+          {!selectedAgent ? (
+            <div className="detail__empty">
+              <span>Select an agent<br/>to see details</span>
+            </div>
+          ) : (
+            <>
+              <div className="detail__head">
+                <div className="detail__idrow">
+                  <span className="detail__id">{selectedAgent.id}</span>
+                  <StatusBadge status={selectedAgent.status} />
+                </div>
+                <div className="detail__name">{selectedAgent.name}</div>
+                {selectedAgent.purpose && (
+                  <p className="detail__purpose">{selectedAgent.purpose}</p>
+                )}
+                <div className="detail__meta">
+                  <span className={`crit crit--${selectedAgent.criticality || "low"}`}>{selectedAgent.criticality || "low"}</span>
+                  <span className="chip chip--mini">{selectedAgent.family?.label || selectedAgent.family_id}</span>
+                  {selectedAgent.version && <span className="chip chip--mini">v{selectedAgent.version}</span>}
+                </div>
+              </div>
+              <div className="tabs">
+                <button className="tabs__btn tabs__btn--active">Details</button>
+                <button className="tabs__btn">Skills</button>
+              </div>
+              <div className="tabpane">
+                <div className="kv">
+                  <span className="k">Agent ID</span><span className="v mono">{selectedAgent.id}</span>
+                  <span className="k">Family</span><span className="v">{selectedAgent.family?.label || selectedAgent.family_id}</span>
+                  <span className="k">Status</span><span className="v"><StatusBadge status={selectedAgent.status} /></span>
+                  <span className="k">Version</span><span className="v mono">{selectedAgent.version || "—"}</span>
+                  <span className="k">Criticality</span><span className="v"><span className={`crit crit--${selectedAgent.criticality || "low"}`}>{selectedAgent.criticality || "low"}</span></span>
+                  <span className="k">Cost Profile</span><span className="v mono">{selectedAgent.cost_profile || "—"}</span>
+                  {selectedAgent.llm_model && <><span className="k">LLM Model</span><span className="v mono">{selectedAgent.llm_model}</span></>}
+                </div>
+                {selectedAgent.skill_ids && selectedAgent.skill_ids.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <p className="section-title" style={{ marginBottom: 8 }}>Skills</p>
+                    <div className="row flex-wrap">
+                      {selectedAgent.skill_ids.map((s: string) => (
+                        <span key={s} className="chip chip--mini">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div style={{ marginTop: 16 }}>
+                  <Link href={`/agents/${selectedAgent.id}`} className="btn btn--cyan" style={{ width: "100%", justifyContent: "center" }}>
+                    View Full Details →
+                  </Link>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {loading ? (
-        <div className="glass-panel p-16 text-center text-sm font-mono text-ork-cyan">Loading Agent Registry...</div>
-      ) : error ? (
-        <div className="glass-panel p-6 text-sm font-mono text-ork-red">{error}</div>
-      ) : agents.length === 0 ? (
-        <div className="glass-panel p-16 text-center text-sm font-mono text-ork-dim">No agents found.</div>
-      ) : (
-        <div className="glass-panel overflow-x-auto">
-          <table className="w-full text-xs font-mono">
-            <thead className="border-b border-ork-border/60 text-ork-dim bg-ork-panel/60">
-              <tr>
-                <th className="p-3 text-left">name</th>
-                <th className="p-3 text-left">agent_id</th>
-                <th className="p-3 text-left">family</th>
-                <th className="p-3 text-left">purpose</th>
-                <th className="p-3 text-left">skills</th>
-                <th className="p-3 text-left">allowed_mcps</th>
-                <th className="p-3 text-left">criticality</th>
-                <th className="p-3 text-left">cost_profile</th>
-                <th className="p-3 text-left">version</th>
-                <th className="p-3 text-left">status</th>
-                <th className="p-3 text-left">last test</th>
-                <th className="p-3 text-left">actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {agents.map((agent) => (
-                <tr key={agent.id} className="border-b border-ork-border/40 align-top">
-                  <td className="p-3 text-ork-text font-semibold">{agent.name}</td>
-                  <td className="p-3 text-ork-cyan">{agent.id}</td>
-                  <td className="p-3">{agent.family?.label || agent.family_id}</td>
-                  <td className="p-3 max-w-[280px] text-ork-muted">{agent.purpose}</td>
-                  <td className="p-3">{(agent.skill_ids ?? []).slice(0, 3).join(", ") || "-"}</td>
-                  <td className="p-3">{agent.allowed_mcps?.length ?? 0}</td>
-                  <td className="p-3">{agent.criticality}</td>
-                  <td className="p-3">{agent.cost_profile}</td>
-                  <td className="p-3">{agent.version}</td>
-                  <td className="p-3">
-                    <StatusBadge status={agent.status} />
-                  </td>
-                  <td className="p-3">
-                    <StatusBadge status={agent.last_test_status || "not_tested"} />
-                  </td>
-                  <td className="p-3 space-y-1">
-                    <Link href={`/agents/${agent.id}`} className="text-ork-cyan hover:underline block">
-                      View details
-                    </Link>
-                    <Link href={`/agents/${agent.id}/edit`} className="text-ork-purple hover:underline block">
-                      Edit
-                    </Link>
-                    <button
-                      onClick={() => void openAgentHistory(agent)}
-                      className="text-ork-cyan hover:underline block"
-                    >
-                      History
-                    </button>
-                    <button
-                      onClick={() => setAgentPendingDelete(agent)}
-                      disabled={deletingAgentId === agent.id}
-                      className="text-ork-red hover:underline block disabled:opacity-50"
-                    >
-                      {deletingAgentId === agent.id ? "Deleting..." : "Delete"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
+      {/* Modals (logique inchangée) */}
       <GenerateAgentModal
         open={aiModalOpen}
         onClose={() => setAiModalOpen(false)}
