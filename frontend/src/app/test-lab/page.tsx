@@ -422,12 +422,17 @@ function TestLabContent() {
                         <button
                           key={a.id}
                           onClick={() => void handleSelectAgent(a)}
-                          className={`w-full text-left px-3 py-2 text-xs font-mono hover:bg-ork-hover/40 transition-colors ${
-                            a.id === selectedAgentId ? "text-ork-cyan" : "text-ork-muted"
+                          className={`w-full text-left px-3 border-b border-ork-border/40 last:border-0 hover:bg-ork-hover/40 transition-colors ${
+                            a.id === selectedAgentId ? "bg-ork-cyan/5" : ""
                           }`}
+                          style={{ paddingTop: "7px", paddingBottom: "7px" }}
                         >
-                          <span className="block text-ork-text">{a.name}</span>
-                          <span className="block text-[10px] text-ork-dim">{a.id}</span>
+                          <div style={{ fontSize: "12px", lineHeight: "16px", color: a.id === selectedAgentId ? "var(--ork-cyan)" : "var(--ork-text)", fontFamily: "var(--font-sans)", fontWeight: 500 }}>
+                            {a.name}
+                          </div>
+                          <div style={{ fontSize: "10px", lineHeight: "14px", color: "var(--ork-muted-2)", fontFamily: "var(--font-mono)", marginTop: "1px" }}>
+                            {a.id}
+                          </div>
                         </button>
                       ))
                     )}
@@ -661,7 +666,7 @@ function TestLabContent() {
                 <span className="section-title" style={{ color: "var(--ork-cyan)" }}>Loading scenarios...</span>
               </div>
             ) : (
-              <div className="tablewrap">
+              <div className="tablewrap" style={{ overflowX: "auto" }}>
                 {scenarios.length === 0 ? (
                   <p className="text-ork-muted font-mono text-xs text-center py-12">
                     No scenarios yet. Create one to get started.
@@ -694,9 +699,9 @@ function TestLabContent() {
                           <td>{s.assertions?.length ?? 0}</td>
                           <td>{s.timeout_seconds}s</td>
                           <td>
-                            <div className="flex gap-1 flex-wrap">
+                            <div className="flex gap-1 flex-nowrap overflow-hidden">
                               {s.tags?.map((tag) => (
-                                <span key={tag} className="chip chip--mini" style={{ color: "var(--ork-purple)", background: "var(--ork-purple-bg)", borderColor: "color-mix(in oklch, var(--ork-purple) 25%, transparent)" }}>
+                                <span key={tag} className="chip chip--mini shrink-0" style={{ color: "var(--ork-purple)", background: "var(--ork-purple-bg)", borderColor: "color-mix(in oklch, var(--ork-purple) 25%, transparent)" }}>
                                   {tag}
                                 </span>
                               ))}

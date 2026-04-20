@@ -154,7 +154,7 @@ export default function TestLabConfigPage() {
                 setConfig({ ...config, orchestrator: { ...(config?.orchestrator ?? {}), provider: e.target.value } });
                 loadModels(e.target.value);
               }}
-              className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40">
+              className="field w-full">
               <option value="ollama">Ollama Cloud</option>
               <option value="openai">OpenAI / Mistral</option>
             </select>
@@ -288,7 +288,7 @@ export default function TestLabConfigPage() {
                             updateWorker(agent.key, "skills", [...current, e.target.value]);
                           }
                         }}
-                        className="w-full px-3 py-1.5 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text focus:outline-none focus:border-ork-cyan/40"
+                        className="field w-full"
                       >
                         <option value="">+ Add a skill...</option>
                         {availableSkills
@@ -374,7 +374,8 @@ function ModelSelect({ value, options, onChange, placeholder, allowEmpty }: {
         onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+        className="field w-full"
+        style={{ height: "28px" }}
       />
       {/* Backdrop must be BEFORE dropdown so dropdown buttons receive clicks */}
       {open && <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setSearch(""); }} />}

@@ -448,6 +448,31 @@ export function buildGraph(
     }
   }
 
+  // 4c. Structural layout edges: ensure fixed phases are connected in dagre
+  // for a proper left-to-right rank progression. These are dagre-only edges
+  // (no ReactFlow visual arrow) — they fix node rank assignment when
+  // orchestrator_tool_call events are absent from the event stream.
+  {
+    // Head chain: orchestrator → preparation → runtime
+    const headChain = ['orchestrator', 'preparation', 'runtime'];
+    for (let i = 0; i < headChain.length - 1; i++) {
+      const src = headChain[i];
+      const tgt = headChain[i + 1];
+      if (phaseEvs.has(src) && phaseEvs.has(tgt) && !g.hasEdge(src, tgt)) {
+        g.setEdge(src, tgt); // dagre layout only — no ReactFlow display edge
+      }
+    }
+    // Tail chain: assertions → diagnostics → report
+    const tailChain = ['assertions', 'diagnostics', 'report'];
+    for (let i = 0; i < tailChain.length - 1; i++) {
+      const src = tailChain[i];
+      const tgt = tailChain[i + 1];
+      if (phaseEvs.has(src) && phaseEvs.has(tgt) && !g.hasEdge(src, tgt)) {
+        g.setEdge(src, tgt); // dagre layout only — no ReactFlow display edge
+      }
+    }
+  }
+
   // 5. Apply dagre layout
   dagre.layout(g);
 

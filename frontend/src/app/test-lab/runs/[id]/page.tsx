@@ -431,7 +431,7 @@ export default function TestRunDetailPage() {
   // ── Graph view ──────────────────────────────────────────────────────
   if (view === 'graph' && run) {
     return (
-      <div className="flex flex-col" style={{ height: '100vh', overflow: 'hidden' }}>
+      <div className="flex flex-col h-full overflow-hidden">
         <RunTopbar
           run={run}
           view={view}

@@ -275,11 +275,11 @@ textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
 .kv .v.mono { font-family: var(--font-mono); font-size: 12px; color: var(--ork-text-1); }
 .kv .v.cyan { color: var(--accent); font-family: var(--font-mono); font-size: 12px; }
 
-/* ── Block (section dans detail pane) ────────────────────────── */
-.block { padding: 16px 0; border-top: 1px solid var(--ork-border); }
-.block:first-child { border-top: 0; padding-top: 0; }
-.block__title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.block__title .section-title { margin: 0; }
+/* ── Detail-block (section dans detail pane) ─────────────────── */
+.detail-block { padding: 16px 0; border-top: 1px solid var(--ork-border); }
+.detail-block:first-child { border-top: 0; padding-top: 0; }
+.detail-block__title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.detail-block__title .section-title { margin: 0; }
 
 /* ── Lifecycle / Promotion path ───────────────────────────────── */
 .promotion { padding: 16px 6px 6px; background: radial-gradient(circle at 20% 0%, oklch(0.23 0.02 145) 0%, transparent 40%), radial-gradient(circle at 80% 100%, oklch(0.22 0.02 75) 0%, transparent 50%), var(--ork-surface); border: 1px solid var(--ork-border); border-radius: var(--radius-lg); }
@@ -363,7 +363,7 @@ textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
 /* ── Density variants ─────────────────────────────────────────── */
 .density-compact .table tbody td { height: 32px; }
 .density-compact .kv .k, .density-compact .kv .v { padding: 6px 0; }
-.density-compact .block { padding: 10px 0; }
+.density-compact .detail-block { padding: 10px 0; }
 .density-roomy .table tbody td { height: 48px; }
 .density-roomy .kv .k, .density-roomy .kv .v { padding: 12px 0; }
 
