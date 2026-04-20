@@ -35,8 +35,8 @@ export default function DashboardPage() {
         setMetrics(m);
         setAgents(a.items || []);
         setMcps(mc.items || []);
-      } catch (err: any) {
-        setError(err.message || "Failed to load metrics");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "API offline");
         setMetrics(MOCK_METRICS);
       } finally {
         setLoading(false);
@@ -45,156 +45,104 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const isDemo = !!error;
-  const activeAgents = isDemo ? 6 : agents.filter((a) => a.status === "active").length;
-  const activeMcps = isDemo ? 4 : mcps.filter((m) => m.status === "active").length;
   const m = metrics || MOCK_METRICS;
-
+  const activeAgents = error ? 6 : agents.filter((a) => a.status === "active").length;
+  const activeMcps = error ? 4 : mcps.filter((mc) => mc.status === "active").length;
   const maxStatusCount = Math.max(...Object.values(m.runs_by_status), 1);
 
   const statusBarColor: Record<string, string> = {
-    completed: "bg-ork-green",
-    running: "bg-ork-cyan",
-    failed: "bg-ork-red",
-    planned: "bg-ork-purple",
-    pending: "bg-ork-amber",
-    cancelled: "bg-ork-dim",
-    blocked: "bg-ork-red/60",
+    completed: "var(--ork-green)", running: "var(--ork-cyan)",
+    failed: "var(--ork-red)", planned: "var(--ork-purple)",
+    pending: "var(--ork-amber)", cancelled: "var(--ork-muted-2)",
+    blocked: "var(--ork-red)",
   };
 
   const decisionColor: Record<string, string> = {
-    allow: "text-ork-green",
-    deny: "text-ork-red",
-    review_required: "text-ork-amber",
-    adjust: "text-ork-purple",
+    allow: "var(--ork-green)", deny: "var(--ork-red)",
+    review_required: "var(--ork-amber)", adjust: "var(--ork-purple)",
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[60vh]">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-2 border-ork-cyan/30 border-t-ork-cyan rounded-full animate-spin mx-auto" />
-          <p className="data-label">LOADING PLATFORM METRICS...</p>
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 24, height: 24, border: "2px solid var(--ork-border)", borderTopColor: "var(--ork-cyan)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          <p className="section-title">Loading platform metrics...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="page animate-fade-in">
+      {/* Page header */}
+      <div className="pagehead">
         <div>
-          <h1 className="section-title text-sm mb-1">ORKESTRA &mdash; COMMAND CENTER</h1>
-          <p className="text-ork-dim text-xs font-mono">
-            Governed Multi-Agent Orchestration Platform
-          </p>
+          <h1>Command Center</h1>
+          <p>Governed Multi-Agent Orchestration Platform</p>
         </div>
         {error && (
-          <span className="text-[10px] font-mono text-ork-amber bg-ork-amber/10 border border-ork-amber/20 rounded px-2 py-1">
-            DEMO MODE &mdash; API OFFLINE
-          </span>
+          <span className="badge badge--pending">demo mode · api offline</span>
         )}
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="TOTAL RUNS"
-          value={m.total_runs}
-          sub={`${m.runs_by_status.running || 0} active`}
-          accent="cyan"
-        />
-        <StatCard
-          label="ACTIVE AGENTS"
-          value={activeAgents}
-          sub={`${agents.length || 8} registered`}
-          accent="green"
-        />
-        <StatCard
-          label="ACTIVE MCPs"
-          value={activeMcps}
-          sub={`${mcps.length || 6} registered`}
-          accent="purple"
-        />
-        <StatCard
-          label="TOTAL COST"
-          value={`$${m.total_cost.toFixed(2)}`}
-          sub={`agents $${m.total_agent_cost.toFixed(2)} / mcps $${m.total_mcp_cost.toFixed(2)}`}
-          accent="amber"
-        />
+      {/* Stat cards */}
+      <div className="stats">
+        <StatCard label="Total Runs"     value={m.total_runs}                          accent="cyan"   barPercent={75} sub={`${m.runs_by_status.running || 0} active`} />
+        <StatCard label="Active Agents"  value={activeAgents}                          accent="green"  barPercent={Math.round((activeAgents / (agents.length || 8)) * 100)} sub={`${agents.length || 8} registered`} />
+        <StatCard label="Active MCPs"    value={activeMcps}                            accent="purple" barPercent={Math.round((activeMcps / (mcps.length || 6)) * 100)} sub={`${mcps.length || 6} registered`} />
+        <StatCard label="Total Cost"     value={`$${m.total_cost.toFixed(2)}`}         accent="amber"  sub={`agents $${m.total_agent_cost.toFixed(2)}`} />
       </div>
 
       {/* Middle row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         {/* Runs by Status */}
-        <div className="glass-panel p-5">
-          <h2 className="section-title mb-4">RUNS BY STATUS</h2>
-          <div className="space-y-3">
+        <div className="glass-panel" style={{ padding: "14px 16px" }}>
+          <p className="section-title" style={{ marginBottom: 12 }}>Runs by Status</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {Object.entries(m.runs_by_status).map(([status, count]) => (
-              <div key={status} className="flex items-center gap-3">
-                <div className="w-24 shrink-0">
+              <div key={status} className="row">
+                <div style={{ width: 90, flexShrink: 0 }}>
                   <StatusBadge status={status} />
                 </div>
-                <div className="flex-1 h-5 bg-ork-bg rounded overflow-hidden">
-                  <div
-                    className={`h-full rounded transition-all duration-500 ${statusBarColor[status] || "bg-ork-dim"}`}
-                    style={{ width: `${(count / maxStatusCount) * 100}%`, minWidth: count > 0 ? "8px" : "0" }}
-                  />
+                <div style={{ flex: 1, height: 4, background: "var(--ork-border)", borderRadius: 999, overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 999, background: statusBarColor[status] || "var(--ork-muted-2)", width: `${(count / maxStatusCount) * 100}%`, minWidth: count > 0 ? 4 : 0 }} />
                 </div>
-                <span className="font-mono text-sm text-ork-text w-8 text-right">{count}</span>
+                <span className="mono dim" style={{ fontSize: 12, width: 28, textAlign: "right" }}>{count}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Control Decisions */}
-        <div className="glass-panel p-5">
-          <h2 className="section-title mb-4">CONTROL DECISIONS</h2>
-          <div className="grid grid-cols-2 gap-4">
+        <div className="glass-panel" style={{ padding: "14px 16px" }}>
+          <p className="section-title" style={{ marginBottom: 12 }}>Control Decisions</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {Object.entries(m.control_decisions_by_type).map(([type, count]) => (
-              <div key={type} className="bg-ork-bg rounded-lg p-3 border border-ork-border/50">
-                <p className="data-label mb-1">{type.replace(/_/g, " ").toUpperCase()}</p>
-                <p className={`text-xl font-mono font-semibold ${decisionColor[type] || "text-ork-text"}`}>
-                  {count}
-                </p>
+              <div key={type} style={{ background: "var(--ork-bg)", borderRadius: "var(--radius-lg)", padding: "10px 12px", border: "1px solid var(--ork-border)" }}>
+                <p className="section-title" style={{ marginBottom: 6 }}>{type.replace(/_/g, " ")}</p>
+                <p className="stat-value" style={{ color: decisionColor[type] || "var(--ork-text)" }}>{count}</p>
               </div>
             ))}
-          </div>
-          <div className="mt-4 pt-3 border-t border-ork-border/50 flex items-center justify-between">
-            <span className="data-label">TOTAL DECISIONS</span>
-            <span className="font-mono text-sm text-ork-text">
-              {Object.values(m.control_decisions_by_type).reduce((a, b) => a + b, 0)}
-            </span>
           </div>
         </div>
       </div>
 
-      {/* Audit Events + Quick Links */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="glass-panel p-5">
-          <h2 className="section-title mb-3">AUDIT TRAIL</h2>
-          <p className="stat-value text-ork-cyan">{m.audit_events_total}</p>
-          <p className="text-xs text-ork-dim mt-1 font-mono">total recorded events</p>
+      {/* Bottom row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12 }}>
+        <div className="glass-panel" style={{ padding: "14px 16px" }}>
+          <p className="section-title" style={{ marginBottom: 8 }}>Audit Trail</p>
+          <p className="stat-value" style={{ color: "var(--ork-cyan)" }}>{m.audit_events_total}</p>
+          <p className="dim" style={{ fontFamily: "var(--font-mono)", fontSize: 11, marginTop: 4 }}>total recorded events</p>
         </div>
-
-        <div className="glass-panel p-5 lg:col-span-2">
-          <h2 className="section-title mb-3">QUICK ACTIONS</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {[
-              { href: "/requests/new", label: "NEW REQUEST", color: "border-ork-cyan/30 hover:border-ork-cyan/60 text-ork-cyan" },
-              { href: "/requests", label: "REQUESTS", color: "border-ork-green/30 hover:border-ork-green/60 text-ork-green" },
-              { href: "/cases", label: "CASES", color: "border-ork-purple/30 hover:border-ork-purple/60 text-ork-purple" },
-              { href: "/runs", label: "RUNS", color: "border-ork-amber/30 hover:border-ork-amber/60 text-ork-amber" },
-            ].map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`block text-center py-3 px-2 rounded-lg border bg-ork-bg transition-colors duration-200 font-mono text-[11px] tracking-wider ${link.color}`}
-              >
-                {link.label}
-              </Link>
-            ))}
+        <div className="glass-panel" style={{ padding: "14px 16px" }}>
+          <p className="section-title" style={{ marginBottom: 10 }}>Quick Actions</p>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Link href="/requests/new" className="btn btn--cyan">New Request</Link>
+            <Link href="/agents/new"   className="btn">New Agent</Link>
+            <Link href="/approvals"    className="btn">Approvals</Link>
+            <Link href="/requests"     className="btn">Requests</Link>
+            <Link href="/runs"         className="btn">Runs</Link>
           </div>
         </div>
       </div>
