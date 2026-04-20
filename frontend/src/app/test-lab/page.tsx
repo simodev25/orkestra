@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -113,7 +113,7 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
 // Main Page
 // ═════════════════════════════════════════════════════════════════════════════
 
-export default function TestLabPage() {
+function TestLabContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<"scenarios" | "interactive">(
@@ -344,7 +344,7 @@ export default function TestLabPage() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="page animate-fade-in flex flex-col h-[calc(100vh-0px)]">
+    <div className="animate-fade-in flex flex-col h-full">
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-6 pt-6 pb-0">
         <div className="max-w-[1200px] mx-auto">
@@ -756,5 +756,13 @@ export default function TestLabPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function TestLabPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-ork-dim font-mono text-xs">Loading...</div>}>
+      <TestLabContent />
+    </Suspense>
   );
 }

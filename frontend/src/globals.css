@@ -47,7 +47,7 @@
 
 /* ── Reset & base ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; height: 100%; }
 html { background: var(--ork-bg); }
 body {
   background: var(--ork-bg);
@@ -130,7 +130,7 @@ code, .mono { font-family: var(--font-mono); font-feature-settings: normal; }
 .navlink__badge { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--ork-muted-2); }
 
 /* ── Topbar ──────────────────────────────────────────────────── */
-.main { min-height: 100vh; overflow: hidden; }
+.main { height: 100vh; overflow: hidden; }
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 44px; border-bottom: 1px solid var(--ork-border); background: var(--ork-bg); position: sticky; top: 0; z-index: 5; }
 .topbar__crumbs { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12px; color: var(--ork-muted); }
 .topbar__crumbs strong { color: var(--ork-text); font-weight: 500; }
