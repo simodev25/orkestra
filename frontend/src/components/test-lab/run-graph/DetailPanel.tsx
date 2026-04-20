@@ -21,31 +21,18 @@ function fmtTime(iso: string): string {
   });
 }
 
-const EVENT_BADGE: Record<string, string> = {
-  phase_started:             'rgba(0,212,255,0.12)',
-  assertion_phase_started:   'rgba(0,212,255,0.12)',
-  diagnostic_phase_started:  'rgba(0,212,255,0.12)',
-  report_phase_started:      'rgba(0,212,255,0.12)',
-  phase_completed:           'rgba(16,185,129,0.12)',
-  iteration:                 'rgba(167,139,250,0.12)',
-  agent_message:             'rgba(167,139,250,0.12)',
-  diagnostic_generated:      'rgba(245,158,11,0.12)',
-  orchestrator_tool_call:    'rgba(167,139,250,0.12)',
-  pipeline_tool_call:        'rgba(56,189,248,0.12)',
-  pipeline_agent_output:     'rgba(56,189,248,0.12)',
-};
 const EVENT_TEXT: Record<string, string> = {
-  phase_started:             '#00d4ff',
-  assertion_phase_started:   '#00d4ff',
-  diagnostic_phase_started:  '#00d4ff',
-  report_phase_started:      '#00d4ff',
-  phase_completed:           '#10b981',
-  iteration:                 '#a78bfa',
-  agent_message:             '#a78bfa',
-  diagnostic_generated:      '#f59e0b',
-  orchestrator_tool_call:    '#a78bfa',
-  pipeline_tool_call:        '#38bdf8',
-  pipeline_agent_output:     '#38bdf8',
+  phase_started:             'var(--ork-cyan)',
+  assertion_phase_started:   'var(--ork-cyan)',
+  diagnostic_phase_started:  'var(--ork-cyan)',
+  report_phase_started:      'var(--ork-cyan)',
+  phase_completed:           'var(--ork-green)',
+  iteration:                 'var(--ork-purple)',
+  agent_message:             'var(--ork-purple)',
+  diagnostic_generated:      'var(--ork-amber)',
+  orchestrator_tool_call:    'var(--ork-purple)',
+  pipeline_tool_call:        'var(--ork-cyan)',
+  pipeline_agent_output:     'var(--ork-cyan)',
 };
 
 const PHASE_TAG: Record<string, string> = {
@@ -68,14 +55,20 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
 
   const isReport = node.kind === 'report';
   const verdictColor =
-    node.verdict === 'passed'               ? '#10b981' :
-    node.verdict === 'passed_with_warnings' ? '#f59e0b' :
-    node.verdict === 'failed'               ? '#ef4444' :
+    node.verdict === 'passed'               ? 'var(--ork-green)' :
+    node.verdict === 'passed_with_warnings' ? 'var(--ork-amber)' :
+    node.verdict === 'failed'               ? 'var(--ork-red)' :
     node.color;
   const panelAccent = isReport && node.verdict ? verdictColor : node.color;
 
   // iteration count from events
   const iterCount = node.events.filter(e => e.event_type === 'iteration' || e.event_type === 'agent_message').length;
+
+  // Status color via CSS vars
+  const statusColor =
+    node.status === 'completed' ? 'var(--ork-green)' :
+    node.status === 'failed'    ? 'var(--ork-red)' :
+    'var(--ork-amber)';
 
   return (
     <AnimatePresence>
@@ -85,38 +78,51 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 40, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-        className="flex flex-col border-l"
+        className="detail flex flex-col"
         style={{
           width: 320,
           flexShrink: 0,
-          background: 'rgba(9,9,18,0.98)',
-          borderColor: 'rgba(255,255,255,0.06)',
+          borderRadius: 0,
+          borderTop: 'none',
+          borderBottom: 'none',
+          borderRight: 'none',
+          maxHeight: '100%',
+          position: 'relative',
+          top: 'unset',
         }}
       >
         {/* ── Panel header ─────────────────────────────────────────────── */}
-        <div className="flex items-start gap-3 p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div
+          className="flex items-start gap-3 p-4"
+          style={{ borderBottom: '1px solid var(--ork-border)' }}
+        >
           <div
-            className="flex items-center justify-center rounded-xl flex-shrink-0"
+            className="flex items-center justify-center flex-shrink-0"
             style={{
               width: 46, height: 46,
-              background: `rgba(0,0,0,0.3)`,
-              border: `1px solid ${panelAccent}33`,
+              background: 'var(--ork-surface)',
+              border: `1px solid color-mix(in oklch, ${panelAccent} 20%, transparent)`,
+              borderRadius: 'var(--radius-lg)',
             }}
           >
             <NodeIcon name={node.iconName} size={22} color={panelAccent} strokeWidth={1.6} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[8px] font-bold tracking-[0.14em] uppercase opacity-45" style={{ color: panelAccent }}>
+            <p
+              className="section-title"
+              style={{ color: panelAccent, marginBottom: 2 }}
+            >
               {getPhaseTag(node.kind)}
             </p>
-            <p className="text-[14px] font-bold truncate" style={{ color: panelAccent }}>
+            <p className="detail__name" style={{ color: panelAccent, fontSize: 14, margin: 0 }}>
               {node.label}
             </p>
-            <p className="text-[10px] font-mono opacity-35 truncate">{node.subLabel}</p>
+            <p className="detail__id">{node.subLabel}</p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 transition-colors hover:bg-white/5 text-ork-muted hover:text-ork-text flex-shrink-0"
+            className="btn btn--ghost"
+            style={{ padding: '4px 6px', height: 'auto' }}
           >
             <X size={14} />
           </button>
@@ -125,22 +131,38 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
         {/* ── Verdict banner (report node) ─────────────────────────────── */}
         {isReport && node.verdict && (
           <div
-            className="flex items-center gap-2.5 px-4 py-3 border-b"
+            className="flex items-center gap-2 px-4 py-3"
             style={{
-              borderColor: `${verdictColor}22`,
-              background: `${verdictColor}0d`,
+              borderBottom: `1px solid color-mix(in oklch, ${verdictColor} 15%, transparent)`,
+              background: `color-mix(in oklch, ${verdictColor} 6%, transparent)`,
             }}
           >
             {node.verdict === 'failed'
-              ? <XCircle size={18} color={verdictColor} />
-              : <CheckCircle size={18} color={verdictColor} />
+              ? <XCircle size={18} style={{ color: verdictColor }} />
+              : <CheckCircle size={18} style={{ color: verdictColor }} />
             }
             <div>
-              <p className="text-[13px] font-bold font-mono" style={{ color: verdictColor }}>
+              <p
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: verdictColor,
+                  margin: 0,
+                }}
+              >
                 {node.verdict === 'passed_with_warnings' ? 'PASSED WITH WARNINGS' : node.verdict?.toUpperCase()}
               </p>
               {node.score != null && (
-                <p className="text-[10px] font-mono opacity-60" style={{ color: verdictColor }}>
+                <p
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    color: verdictColor,
+                    opacity: 0.6,
+                    margin: 0,
+                  }}
+                >
                   Score : {node.score.toFixed(0)}/100
                 </p>
               )}
@@ -149,32 +171,49 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
         )}
 
         {/* ── Stats ────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-3 gap-2 p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div
+          className="grid grid-cols-3 gap-2 p-4"
+          style={{ borderBottom: '1px solid var(--ork-border)' }}
+        >
           {[
             { label: 'DURÉE',  value: fmt(node.durationMs),        color: panelAccent },
-            { label: 'STATUS', value: node.status,                  color: node.status === 'completed' ? '#10b981' : node.status === 'failed' ? '#ef4444' : '#f59e0b' },
-            { label: node.kind === 'runtime' ? 'ITERS' : 'EVENTS', value: node.kind === 'runtime' ? String(iterCount || node.events.length) : String(node.events.length), color: '#71717a' },
+            { label: 'STATUS', value: node.status,                  color: statusColor },
+            {
+              label: node.kind === 'runtime' ? 'ITERS' : 'EVENTS',
+              value: node.kind === 'runtime' ? String(iterCount || node.events.length) : String(node.events.length),
+              color: 'var(--ork-muted)',
+            },
           ].map(({ label, value, color }) => (
-            <div key={label} className="rounded-xl p-2.5" style={{ background: '#0d0d18', border: '1px solid #1a1a28' }}>
-              <p className="text-[7px] font-bold tracking-[0.1em] mb-1.5" style={{ color: '#3f3f5a' }}>{label}</p>
-              <p className="text-[13px] font-bold font-mono truncate" style={{ color }}>{value}</p>
+            <div key={label} className="glass-panel p-2" style={{ borderRadius: 'var(--radius)' }}>
+              <p className="section-title" style={{ marginBottom: 4 }}>{label}</p>
+              <p
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color,
+                  margin: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {value}
+              </p>
             </div>
           ))}
         </div>
 
         {/* ── Scrollable body ──────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e1e2e transparent' }}>
+        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
 
           {/* SORTIE FINALE */}
           {node.output != null && (
-            <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-              <p className="text-[8px] font-bold tracking-[0.12em] uppercase mb-2" style={{ color: panelAccent }}>
+            <div className="p-4" style={{ borderBottom: '1px solid var(--ork-border)' }}>
+              <p className="section-title" style={{ color: panelAccent, marginBottom: 6 }}>
                 SORTIE FINALE
               </p>
-              <pre
-                className="rounded-xl p-3 text-[10px] font-mono leading-relaxed overflow-x-auto max-h-[260px] overflow-y-auto"
-                style={{ background: '#080812', border: '1px solid #1a1a26', color: '#71717a' }}
-              >
+              <pre className="codebox" style={{ fontSize: 10, maxHeight: 260 }}>
                 {typeof node.output === 'string' ? node.output : JSON.stringify(node.output, null, 2)}
               </pre>
             </div>
@@ -182,31 +221,54 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
 
           {/* Diagnostics */}
           {node.diagnostics.length > 0 && (
-            <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-              <div className="flex items-center gap-1.5 mb-2">
-                <AlertTriangle size={9} color="#f59e0b" />
-                <p className="text-[8px] font-bold tracking-[0.12em] uppercase" style={{ color: '#f59e0b' }}>
-                  Diagnostics <span style={{ color: '#3f3f5a' }}>({node.diagnostics.length})</span>
+            <div className="p-4" style={{ borderBottom: '1px solid var(--ork-border)' }}>
+              <div className="flex items-center gap-1" style={{ marginBottom: 8 }}>
+                <AlertTriangle size={9} style={{ color: 'var(--ork-amber)' }} />
+                <p className="section-title" style={{ color: 'var(--ork-amber)', margin: 0 }}>
+                  Diagnostics <span style={{ color: 'var(--ork-muted-2)' }}>({node.diagnostics.length})</span>
                 </p>
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 {node.diagnostics.map((d) => {
                   const sevColor =
-                    d.severity === 'critical' || d.severity === 'error' ? '#ef4444' :
-                    d.severity === 'warning' ? '#f59e0b' : '#10b981';
+                    d.severity === 'critical' || d.severity === 'error' ? 'var(--ork-red)' :
+                    d.severity === 'warning' ? 'var(--ork-amber)' : 'var(--ork-green)';
                   return (
                     <div
                       key={d.id}
-                      className="rounded-lg p-3"
-                      style={{ background: `${sevColor}08`, border: `1px solid ${sevColor}22` }}
+                      style={{
+                        background: `color-mix(in oklch, ${sevColor} 6%, transparent)`,
+                        border: `1px solid color-mix(in oklch, ${sevColor} 20%, transparent)`,
+                        borderRadius: 'var(--radius)',
+                        padding: '8px 10px',
+                      }}
                     >
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: sevColor, flexShrink: 0, boxShadow: `0 0 5px ${sevColor}` }} />
-                        <span className="text-[10px] font-bold font-mono" style={{ color: sevColor }}>{d.code}</span>
+                      <div className="flex items-center gap-1" style={{ marginBottom: 4 }}>
+                        <div className="glow-dot" style={{ color: sevColor, width: 5, height: 5 }} />
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: sevColor,
+                          }}
+                        >
+                          {d.code}
+                        </span>
                       </div>
-                      <p className="text-[9px] leading-relaxed" style={{ color: '#71717a' }}>{d.message}</p>
+                      <p style={{ fontSize: 9, color: 'var(--ork-muted)', margin: 0, lineHeight: 1.5 }}>
+                        {d.message}
+                      </p>
                       {d.recommendation && (
-                        <p className="text-[9px] mt-1.5 font-mono" style={{ color: '#52525b' }}>
+                        <p
+                          style={{
+                            fontSize: 9,
+                            fontFamily: 'var(--font-mono)',
+                            color: 'var(--ork-muted-2)',
+                            marginTop: 4,
+                            marginBottom: 0,
+                          }}
+                        >
                           → {d.recommendation}
                         </p>
                       )}
@@ -220,36 +282,67 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
           {/* Events — compact single-line rows */}
           {node.events.length > 0 && (
             <div className="p-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Clock size={9} color="#52525b" />
-                <p className="text-[8px] font-bold tracking-[0.12em] uppercase" style={{ color: '#52525b' }}>
-                  Log <span style={{ color: '#3f3f5a' }}>({node.events.length})</span>
+              <div className="flex items-center gap-1" style={{ marginBottom: 8 }}>
+                <Clock size={9} style={{ color: 'var(--ork-muted-2)' }} />
+                <p className="section-title" style={{ margin: 0 }}>
+                  Log <span style={{ color: 'var(--ork-muted-2)' }}>({node.events.length})</span>
                 </p>
               </div>
               <div className="flex flex-col gap-0">
                 {node.events.slice(0, 14).map((ev, i) => {
-                  const dotColor = EVENT_TEXT[ev.event_type] ?? '#3f3f5a';
+                  const dotColor = EVENT_TEXT[ev.event_type] ?? 'var(--ork-muted-2)';
                   return (
                     <div
                       key={`${ev.id}-${i}`}
-                      className="flex items-start gap-2 py-1.5"
-                      style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}
+                      className="flex items-start gap-2 py-1"
+                      style={{ borderTop: i > 0 ? '1px solid var(--ork-border)' : 'none' }}
                     >
                       {/* colored dot */}
-                      <div className="flex-shrink-0 mt-[5px]"
-                        style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, boxShadow: `0 0 4px ${dotColor}88` }}
+                      <div
+                        className="flex-shrink-0"
+                        style={{
+                          width: 5, height: 5,
+                          borderRadius: '50%',
+                          background: dotColor,
+                          boxShadow: `0 0 4px color-mix(in oklch, ${dotColor} 60%, transparent)`,
+                          marginTop: 5,
+                        }}
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-[9px] font-bold capitalize flex-shrink-0" style={{ color: dotColor }}>
+                        <div className="flex items-baseline gap-1">
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              color: dotColor,
+                              textTransform: 'capitalize',
+                              flexShrink: 0,
+                            }}
+                          >
                             {ev.event_type.replace(/_/g, ' ')}
                           </span>
-                          <span className="text-[9px] font-mono flex-shrink-0" style={{ color: '#2d2d40' }}>
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--ork-border-2)',
+                              flexShrink: 0,
+                            }}
+                          >
                             {fmtTime(ev.timestamp)}
                           </span>
                         </div>
                         {ev.message && (
-                          <p className="text-[9px] leading-snug truncate" style={{ color: '#52525b' }}>
+                          <p
+                            style={{
+                              fontSize: 9,
+                              color: 'var(--ork-muted-2)',
+                              margin: 0,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
                             {ev.message.slice(0, 80)}
                           </p>
                         )}
@@ -258,7 +351,14 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
                   );
                 })}
                 {node.events.length > 14 && (
-                  <p className="text-[9px] font-mono mt-1" style={{ color: '#2d2d40' }}>
+                  <p
+                    style={{
+                      fontSize: 9,
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--ork-border-2)',
+                      marginTop: 4,
+                    }}
+                  >
                     +{node.events.length - 14} more
                   </p>
                 )}

@@ -35,11 +35,12 @@ export const AgentNode = memo(function AgentNode({
   const isReport   = kind === 'report';
   const accentColor = isFailed ? '#ef4444' : color;
 
+  // Status color using CSS vars where possible, fallback to hex for dynamic checks
   const statusColor =
-    status === 'completed' ? '#10b981' :
-    status === 'failed'    ? '#ef4444' :
-    status === 'warning'   ? '#f59e0b' :
-    '#a78bfa';
+    status === 'completed' ? 'var(--ork-green)' :
+    status === 'failed'    ? 'var(--ork-red)' :
+    status === 'warning'   ? 'var(--ork-amber)' :
+    'var(--ork-purple)';
 
   const durationLabel =
     durationMs != null
@@ -50,11 +51,14 @@ export const AgentNode = memo(function AgentNode({
 
   // ── Verdict display (report node) ───────────────────────────────────────────
   const verdictPassed = verdict === 'passed' || verdict === 'passed_with_warnings';
-  const verdictColor  =
+  // verdictColor stays as hex since it feeds into hexToRgba()
+  const verdictColorHex  =
     verdict === 'passed'               ? '#10b981' :
     verdict === 'passed_with_warnings' ? '#f59e0b' :
     verdict === 'failed'               ? '#ef4444' :
     color;
+
+  const effectiveAccent = isReport && verdict ? verdictColorHex : accentColor;
 
   return (
     <motion.div
@@ -68,32 +72,35 @@ export const AgentNode = memo(function AgentNode({
       {/* Running pulse ring */}
       {isRunning && visible && (
         <div
-          className="absolute inset-0 rounded-2xl pointer-events-none"
+          className="absolute inset-0 pointer-events-none"
           style={{
             border: `1px solid ${color}`,
             boxShadow: `0 0 14px ${color}55`,
+            borderRadius: 'var(--radius-lg)',
             animation: 'nodeRingPulse 1.4s ease-in-out infinite',
           }}
         />
       )}
 
       <div
-        className="relative rounded-2xl border overflow-hidden"
+        className="relative overflow-hidden"
         style={{
           width: 210,
-          background: isReport && verdict
-            ? hexToRgba(verdictColor, 0.07)
-            : hexToRgba(accentColor, 0.05),
-          borderColor: selected
-            ? '#00d4ff'
-            : isRunning  ? `${color}99`
-            : isReport && verdict ? `${verdictColor}55`
-            : hexToRgba(accentColor, 0.25),
+          background: hexToRgba(effectiveAccent, isReport && verdict ? 0.07 : 0.05),
+          border: `1px solid ${
+            selected
+              ? 'var(--ork-cyan)'
+              : isRunning ? `${color}99`
+              : hexToRgba(effectiveAccent, 0.25)
+          }`,
+          borderRadius: 'var(--radius-lg)',
           boxShadow: selected
-            ? '0 0 0 2px #00d4ff, 0 16px 48px rgba(0,212,255,0.18)'
-            : isRunning ? `0 8px 32px ${color}22`
-            : isReport && verdict ? `0 8px 32px ${verdictColor}22`
-            : '0 8px 32px rgba(0,0,0,0.4)',
+            ? '0 0 0 2px var(--ork-cyan), 0 16px 48px color-mix(in oklch, var(--ork-cyan) 18%, transparent)'
+            : isReport && verdict
+              ? `0 8px 32px ${verdictColorHex}22`
+              : isRunning
+                ? `0 8px 32px ${color}22`
+                : '0 8px 32px rgba(0,0,0,0.4)',
         }}
       >
         {/* Top shimmer */}
@@ -103,42 +110,80 @@ export const AgentNode = memo(function AgentNode({
         />
 
         {/* Header */}
-        <div className="flex items-center gap-2.5 px-3.5 pt-3 pb-2.5">
+        <div className="flex items-center gap-2 px-3 pt-3 pb-2">
           <div
-            className="flex items-center justify-center rounded-xl flex-shrink-0"
+            className="flex items-center justify-center flex-shrink-0"
             style={{
-              width: 38, height: 38,
-              background: hexToRgba(isReport && verdict ? verdictColor : accentColor, 0.12),
+              width: 36, height: 36,
+              background: hexToRgba(effectiveAccent, 0.12),
+              borderRadius: 'var(--radius)',
             }}
           >
             <NodeIcon
               name={iconName}
               size={18}
-              color={isReport && verdict ? verdictColor : accentColor}
+              color={effectiveAccent}
               strokeWidth={1.8}
             />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[8px] font-bold tracking-[0.14em] uppercase opacity-55" style={{ color: isReport && verdict ? verdictColor : accentColor }}>
+            <p
+              className="chip chip--mini"
+              style={{
+                background: hexToRgba(effectiveAccent, 0.08),
+                borderColor: hexToRgba(effectiveAccent, 0.2),
+                color: effectiveAccent,
+                marginBottom: 2,
+                display: 'inline-flex',
+              }}
+            >
               {phaseTag}
             </p>
-            <p className="text-[12px] font-bold leading-tight truncate" style={{ color: isReport && verdict ? verdictColor : accentColor }}>
+            <p
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: effectiveAccent,
+                lineHeight: 1.3,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                margin: 0,
+              }}
+            >
               {label}
             </p>
-            <p className="text-[9px] font-mono opacity-40 truncate">{subLabel}</p>
+            <p
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 9,
+                color: 'var(--ork-muted-2)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                margin: 0,
+              }}
+            >
+              {subLabel}
+            </p>
           </div>
         </div>
 
         {/* Report verdict row */}
         {isReport && verdict && (
-          <div
-            className="flex items-center gap-2 px-3.5 pb-2.5"
-          >
+          <div className="flex items-center gap-2 px-3 pb-2">
             {verdictPassed
-              ? <CheckCircle size={13} color={verdictColor} />
-              : <XCircle    size={13} color={verdictColor} />
+              ? <CheckCircle size={13} color={verdictColorHex} />
+              : <XCircle    size={13} color={verdictColorHex} />
             }
-            <span className="text-[11px] font-bold font-mono" style={{ color: verdictColor }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                fontFamily: 'var(--font-mono)',
+                color: verdictColorHex,
+              }}
+            >
               {verdict === 'passed_with_warnings' ? 'PASSED ⚠' : verdict?.toUpperCase()}
               {score != null && ` · ${score.toFixed(0)}/100`}
             </span>
@@ -147,37 +192,59 @@ export const AgentNode = memo(function AgentNode({
 
         {/* Footer */}
         <div
-          className="flex items-center gap-1.5 px-3.5 py-2"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
+          className="flex items-center gap-1"
+          style={{
+            padding: '5px 12px',
+            borderTop: '1px solid var(--ork-border)',
+          }}
         >
           {isRunning ? (
             <div
               className="rounded-full flex-shrink-0"
-              style={{ width: 5, height: 5, background: '#a78bfa', animation: 'dotBlink 0.8s ease-in-out infinite' }}
+              style={{ width: 5, height: 5, background: 'var(--ork-purple)', animation: 'dotBlink 0.8s ease-in-out infinite' }}
             />
           ) : (
             <div
               className="rounded-full flex-shrink-0"
-              style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 5px ${statusColor}` }}
+              style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 5px currentColor` }}
             />
           )}
-          <span className="text-[9px] font-semibold" style={{ color: statusColor }}>
+          <span style={{ fontSize: 9, fontWeight: 600, color: statusColor }}>
             {status}
           </span>
           {durationLabel && (
-            <span className="ml-auto text-[9px] font-mono opacity-35">{durationLabel}</span>
+            <span
+              style={{
+                marginLeft: 'auto',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 9,
+                color: 'var(--ork-muted-2)',
+              }}
+            >
+              {durationLabel}
+            </span>
           )}
         </div>
 
         <Handle
           type="target"
           position={Position.Left}
-          style={{ background: '#07070f', borderColor: hexToRgba(accentColor, 0.5), width: 10, height: 10 }}
+          style={{
+            background: 'var(--ork-bg)',
+            borderColor: hexToRgba(accentColor, 0.5),
+            width: 10,
+            height: 10,
+          }}
         />
         <Handle
           type="source"
           position={Position.Right}
-          style={{ background: '#07070f', borderColor: hexToRgba(accentColor, 0.5), width: 10, height: 10 }}
+          style={{
+            background: 'var(--ork-bg)',
+            borderColor: hexToRgba(accentColor, 0.5),
+            width: 10,
+            height: 10,
+          }}
         />
       </div>
     </motion.div>
