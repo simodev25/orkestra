@@ -1,62 +1,61 @@
-const STATUS_COLORS: Record<string, string> = {
-  // Run/node statuses
-  running: "bg-ork-cyan/15 text-ork-cyan border-ork-cyan/30",
-  completed: "bg-ork-green/15 text-ork-green border-ork-green/30",
-  failed: "bg-ork-red/15 text-ork-red border-ork-red/30",
-  blocked: "bg-ork-red/15 text-ork-red border-ork-red/30",
-  cancelled: "bg-ork-dim/20 text-ork-muted border-ork-dim/30",
-  planned: "bg-ork-purple/15 text-ork-purple border-ork-purple/30",
-  pending: "bg-ork-amber/10 text-ork-amber border-ork-amber/20",
-  ready: "bg-ork-cyan/10 text-ork-cyan border-ork-cyan/20",
-  hold: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
-  waiting_review: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
-  // Request/case
-  draft: "bg-ork-dim/20 text-ork-muted border-ork-dim/30",
-  designed: "bg-ork-purple/10 text-ork-purple border-ork-purple/20",
-  submitted: "bg-ork-cyan/10 text-ork-cyan border-ork-cyan/20",
-  ready_for_planning: "bg-ork-purple/15 text-ork-purple border-ork-purple/30",
-  planning: "bg-ork-purple/15 text-ork-purple border-ork-purple/30",
+// Mapping statut → variante badge du template
+const STATUS_VARIANT: Record<string, string> = {
+  // Runs
+  running:       "running",
+  completed:     "completed",
+  failed:        "failed",
+  blocked:       "blocked",
+  cancelled:     "cancelled",
+  planned:       "planned",
+  pending:       "pending",
+  ready:         "tested",
+  hold:          "pending",
+  waiting_review:"pending",
+  // Requests/cases
+  draft:         "draft",
+  designed:      "designed",
+  submitted:     "tested",
+  ready_for_planning: "designed",
+  planning:      "designed",
   // Agent/MCP lifecycle
-  active: "bg-ork-green/15 text-ork-green border-ork-green/30",
-  deprecated: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
-  disabled: "bg-ork-red/10 text-ork-red border-ork-red/20",
-  degraded: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
-  tested: "bg-ork-cyan/10 text-ork-cyan border-ork-cyan/20",
-  registered: "bg-ork-purple/10 text-ork-purple border-ork-purple/20",
-  archived: "bg-ork-dim/20 text-ork-muted border-ork-dim/30",
-  restricted: "bg-ork-amber/10 text-ork-amber border-ork-amber/20",
-  hidden: "bg-ork-dim/20 text-ork-muted border-ork-dim/30",
-  healthy: "bg-ork-green/15 text-ork-green border-ork-green/30",
-  warning: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
-  failing: "bg-ork-red/15 text-ork-red border-ork-red/30",
-  published: "bg-ork-green/15 text-ork-green border-ork-green/30",
+  active:        "active",
+  deprecated:    "deprecated",
+  disabled:      "disabled",
+  degraded:      "degraded",
+  tested:        "tested",
+  registered:    "registered",
+  archived:      "archived",
+  restricted:    "pending",
+  hidden:        "archived",
+  healthy:       "healthy",
+  warning:       "warning",
+  failing:       "failed",
+  published:     "active",
   // Control
-  allow: "bg-ork-green/15 text-ork-green border-ork-green/30",
-  deny: "bg-ork-red/15 text-ork-red border-ork-red/30",
-  review_required: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
-  adjust: "bg-ork-purple/15 text-ork-purple border-ork-purple/30",
-  // Approval
-  requested: "bg-ork-amber/10 text-ork-amber border-ork-amber/20",
-  assigned: "bg-ork-cyan/10 text-ork-cyan border-ork-cyan/20",
-  approved: "bg-ork-green/15 text-ork-green border-ork-green/30",
-  rejected: "bg-ork-red/15 text-ork-red border-ork-red/30",
-  refine_required: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
-  validated: "bg-ork-green/15 text-ork-green border-ork-green/30",
-  not_tested: "bg-ork-dim/20 text-ork-muted border-ork-dim/30",
-  passed: "bg-ork-green/15 text-ork-green border-ork-green/30",
-  passed_with_warnings: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
-  partial: "bg-ork-amber/15 text-ork-amber border-ork-amber/30",
+  allow:         "allow",
+  deny:          "deny",
+  review_required: "pending",
+  adjust:        "planned",
+  // Approvals
+  requested:     "pending",
+  assigned:      "tested",
+  approved:      "approved",
+  rejected:      "rejected",
+  refine_required: "pending",
+  validated:     "active",
+  not_tested:    "not_tested",
+  passed:        "passed",
+  passed_with_warnings: "passed_with_warnings",
+  partial:       "pending",
 };
 
-const DEFAULT = "bg-ork-dim/20 text-ork-muted border-ork-dim/30";
-
 export function StatusBadge({ status }: { status: string }) {
-  const colors = STATUS_COLORS[status] || DEFAULT;
+  const variant = STATUS_VARIANT[status] || "draft";
   return (
     <span
       role="status"
       aria-label={`Status: ${status.replace(/_/g, " ")}`}
-      className={`inline-flex items-center px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border rounded ${colors}`}
+      className={`badge badge--${variant}`}
     >
       {status.replace(/_/g, " ")}
     </span>
