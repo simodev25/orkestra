@@ -45,6 +45,34 @@
   --font-mono: var(--font-geist-mono), "JetBrains Mono", ui-monospace, monospace;
 }
 
+[data-theme="light"] {
+  /* Fonds & surfaces — miroir OKLCH du dark (lightness inversée) */
+  --ork-bg:       oklch(0.97 0.004 80);
+  --ork-surface:  oklch(0.945 0.004 80);
+  --ork-panel:    oklch(0.92 0.005 80);
+  --ork-panel-2:  oklch(0.89 0.005 80);
+  --ork-hover:    oklch(0.905 0.005 80);
+
+  /* Bordures */
+  --ork-border:   oklch(0.82 0.006 80);
+  --ork-border-2: oklch(0.76 0.007 80);
+
+  /* Textes — sombres sur fond clair */
+  --ork-text:     oklch(0.15 0.006 265);
+  --ork-text-1:   oklch(0.30 0.006 265);
+  --ork-muted:    oklch(0.50 0.006 265);
+  --ork-muted-2:  oklch(0.44 0.006 265);
+  --ork-dim:      oklch(0.65 0.006 265);
+
+  /* Variantes -bg des accents — passent en clair */
+  --ork-green-bg:  oklch(0.92 0.04 145);
+  --ork-green-dim: oklch(0.40 0.14 145);
+  --ork-cyan-bg:   oklch(0.92 0.04 200);
+  --ork-amber-bg:  oklch(0.93 0.04 75);
+  --ork-red-bg:    oklch(0.92 0.05 25);
+  --ork-purple-bg: oklch(0.92 0.04 305);
+}
+
 /* ── Reset & base ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
