@@ -152,8 +152,8 @@ def _make_tool(entry: dict, ctx: PipelineContext, run_id: str | None = None):
                     details={"tool_name": safe_tool_name, "agent_id": agent_id, "agent_name": agent_name},
                 )
                 _emit(run_id, "phase_started", phase_key, f"{agent_name} started")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to emit pipeline_tool_call for %s: %s", agent_id, exc)
 
         msg = Msg("user", full_input, "user")
         t0 = time.time()

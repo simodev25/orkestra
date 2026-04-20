@@ -431,6 +431,23 @@ export function buildGraph(
     }
   }
 
+  // Ensure report node is connected: if 'report' exists but has no incoming edge,
+  // connect from the last non-report phase that has an edge, or simply assertions/last pipeline
+  if (phaseEvs.has('report')) {
+    const hasIncoming = edges.some((e) => e.target === 'report');
+    if (!hasIncoming) {
+      // Preferred: assertions → report
+      if (phaseEvs.has('assertions')) {
+        addEdge('assertions', 'report', null, EDGE_COLOURS['assertions']);
+      } else if (orderedPipelineCalls.length > 0) {
+        // Last pipeline → report
+        addEdge(orderedPipelineCalls[orderedPipelineCalls.length - 1].phase, 'report', null, '#38bdf8');
+      } else if (phaseEvs.has('runtime')) {
+        addEdge('runtime', 'report', null, EDGE_COLOURS['runtime']);
+      }
+    }
+  }
+
   // 5. Apply dagre layout
   dagre.layout(g);
 

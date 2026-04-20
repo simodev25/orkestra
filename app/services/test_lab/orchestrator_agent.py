@@ -342,6 +342,7 @@ def _build_tools_and_subagents(ctx: RunContext) -> list:
                         db=db, agent_id=ctx.agent_id, agent_version=ctx.agent_version,
                         input_prompt=real_input, timeout_seconds=ctx.timeout_seconds,
                         max_iterations=ctx.max_iterations,
+                        run_id=ctx.run_id,
                     )
             finally:
                 await engine.dispose()
