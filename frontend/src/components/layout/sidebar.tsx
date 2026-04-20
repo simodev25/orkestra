@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bot, Wrench, Activity, FlaskConical, Settings, SlidersHorizontal,
-  FileText, CheckSquare, Shield, List, BarChart2,
+  FileText, CheckSquare, Shield, List, BarChart2, Network, Layers, Zap,
 } from "lucide-react";
 
 type NavItem =
@@ -15,6 +15,9 @@ const NAV: NavItem[] = [
   { label: "Dashboard",      href: "/",                       icon: Activity },
   { section: "Registries" },
   { label: "Agents",         href: "/agents",                 icon: Bot },
+  { label: "Orchestrateurs", href: "/agents/orchestrators/new", icon: Network },
+  { label: "Families",       href: "/agents/families",        icon: Layers },
+  { label: "Agent Skills",   href: "/agents/skills",          icon: Zap },
   { label: "Test Lab",       href: "/test-lab",               icon: FlaskConical },
   { label: "MCP Catalog",    href: "/mcps",                   icon: Wrench },
   { section: "Monitoring" },
