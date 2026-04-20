@@ -274,7 +274,7 @@ export function AgentForm({
               onChange={(e) => setAgentId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "_"))}
               placeholder="company_legal_lookup_agent"
               disabled={mode === "edit"}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono disabled:opacity-60"
+              className="field w-full disabled:opacity-60"
             />
           </div>
           <div>
@@ -289,7 +289,7 @@ export function AgentForm({
                 }
               }}
               placeholder="Company Legal Lookup Agent"
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm"
+              className="field w-full"
             />
           </div>
           <div>
@@ -298,7 +298,7 @@ export function AgentForm({
               id="agent-family"
               value={familyId}
               onChange={(e) => setFamilyId(e.target.value)}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             >
               <option value="">Select a family...</option>
               {availableFamilies.map((f) => (
@@ -313,7 +313,7 @@ export function AgentForm({
             <input
               value={version}
               onChange={(e) => setVersion(e.target.value)}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             />
           </div>
           <div>
@@ -321,7 +321,7 @@ export function AgentForm({
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             >
               {STATUS_OPTIONS.map((option) => (
                 <option key={option} value={option}>
@@ -336,7 +336,7 @@ export function AgentForm({
               value={owner}
               onChange={(e) => setOwner(e.target.value)}
               placeholder="team-risk-ops"
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             />
           </div>
         </div>
@@ -351,7 +351,7 @@ export function AgentForm({
             value={purpose}
             onChange={(e) => setPurpose(e.target.value)}
             placeholder="Find all legal and regulatory data about a company."
-            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm"
+            className="field w-full"
           />
           <label htmlFor="agent-description" className="data-label">description</label>
           <textarea
@@ -359,7 +359,7 @@ export function AgentForm({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
-            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm"
+            className="field w-full"
           />
         </div>
       </section>
@@ -372,9 +372,9 @@ export function AgentForm({
           </div>
         )}
         {!familyId ? (
-          <p className="text-xs font-mono text-ork-dim">Select a family first to see available skills.</p>
+          <p className="dim text-xs font-mono">Select a family first to see available skills.</p>
         ) : familySkills.length === 0 ? (
-          <p className="text-xs font-mono text-ork-dim">No skills available for this family.</p>
+          <p className="dim text-xs font-mono">No skills available for this family.</p>
         ) : (
           <>
             <p className="data-label">available skills for {familyId}</p>
@@ -382,7 +382,7 @@ export function AgentForm({
               value={skillsInput}
               onChange={(e) => setSkillsInput(e.target.value)}
               placeholder="Filter skills…"
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 max-h-52 overflow-y-auto border border-ork-border rounded p-2">
               {familySkills
@@ -427,7 +427,7 @@ export function AgentForm({
                   );
                 })}
             </div>
-            <p className="text-[10px] font-mono text-ork-dim">
+            <p className="dim text-[10px] font-mono">
               {skillIds.length} skill{skillIds.length !== 1 ? "s" : ""} selected
             </p>
           </>
@@ -443,7 +443,7 @@ export function AgentForm({
               value={routingKeywords}
               onChange={(e) => setRoutingKeywords(e.target.value)}
               placeholder="company, legal, registry, compliance"
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             />
           </div>
           <div>
@@ -452,7 +452,7 @@ export function AgentForm({
               value={preferredWorkflows}
               onChange={(e) => setPreferredWorkflows(e.target.value)}
               placeholder="credit_review_default, due_diligence_v1"
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             />
           </div>
           <div>
@@ -461,7 +461,7 @@ export function AgentForm({
               value={selectionUseCaseHint}
               onChange={(e) => setSelectionUseCaseHint(e.target.value)}
               placeholder="company intelligence"
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm"
+              className="field w-full"
             />
           </div>
           <label className="flex items-center gap-2 mt-6 text-sm font-mono">
@@ -488,17 +488,13 @@ export function AgentForm({
                   key={m}
                   type="button"
                   onClick={() => setRoutingMode(m)}
-                  className={`text-xs px-4 py-2 rounded font-mono border transition-colors ${
-                    routingMode === m
-                      ? "bg-ork-cyan text-black border-ork-cyan font-bold"
-                      : "bg-transparent text-ork-dim border-ork-border hover:border-ork-cyan hover:text-ork-text"
-                  }`}
+                  className={routingMode === m ? "btn btn--cyan" : "btn btn--ghost"}
                 >
                   {m === "sequential" ? "Séquentiel (ordre fixe)" : "Dynamique (LLM choisit)"}
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-ork-dim mt-1">
+            <p className="dim text-[10px] mt-1">
               {routingMode === "sequential"
                 ? "Les agents sont appelés dans l'ordre défini ci-dessous."
                 : "L'orchestrateur décide dynamiquement de l'ordre d'appel des agents."}
@@ -519,7 +515,7 @@ export function AgentForm({
       {!isOrchestrator && (
         <section className="glass-panel p-4 space-y-3">
           <h2 className="section-title text-sm">5. MCP permissions</h2>
-          <p className="text-xs font-mono text-ork-dim">
+          <p className="dim text-xs font-mono">
             Select only MCPs available in catalog. Unknown MCP IDs are blocked at validation.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-52 overflow-y-auto border border-ork-border rounded p-2">
@@ -547,11 +543,7 @@ export function AgentForm({
                     key={effect}
                     type="button"
                     onClick={() => toggleForbiddenEffect(effect)}
-                    className={`px-2 py-1 text-xs font-mono rounded border ${
-                      on
-                        ? "border-ork-red/40 text-ork-red bg-ork-red/10"
-                        : "border-ork-border text-ork-muted"
-                    }`}
+                    className={on ? "btn btn--red" : "btn btn--ghost"}
                   >
                     {effect}
                   </button>
@@ -570,7 +562,7 @@ export function AgentForm({
             <input
               value={inputContractRef}
               onChange={(e) => setInputContractRef(e.target.value)}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             />
           </div>
           <div>
@@ -578,7 +570,7 @@ export function AgentForm({
             <input
               value={outputContractRef}
               onChange={(e) => setOutputContractRef(e.target.value)}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             />
           </div>
         </div>
@@ -588,12 +580,12 @@ export function AgentForm({
         <h2 className="section-title text-sm">7. Agent Prompt</h2>
         <div>
           <p className="data-label">prompt_content</p>
-          <p className="text-[10px] font-mono text-ork-dim mb-1">Agent-specific mission prompt (Layer 4 of the prompt builder)</p>
+          <p className="dim text-[10px] font-mono mb-1">Agent-specific mission prompt (Layer 4 of the prompt builder)</p>
           <textarea
             value={promptContent}
             onChange={(e) => setPromptContent(e.target.value)}
             rows={8}
-            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+            className="field w-full"
           />
         </div>
       </section>
@@ -602,19 +594,19 @@ export function AgentForm({
         <h2 className="section-title text-sm">8. Skills Content</h2>
         <div>
           <p className="data-label">skills_content</p>
-          <p className="text-[10px] font-mono text-ork-dim mb-1">Auto-generated from selected skills. Edit only if needed.</p>
+          <p className="dim text-[10px] font-mono mb-1">Auto-generated from selected skills. Edit only if needed.</p>
           <textarea
             value={skillsContent}
             onChange={(e) => setSkillsContent(e.target.value)}
             rows={6}
-            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+            className="field w-full"
           />
         </div>
       </section>
 
       <section className="glass-panel p-4 space-y-3">
         <h2 className="section-title text-sm">9. Soul</h2>
-        <p className="text-xs font-mono text-ork-dim">
+        <p className="dim text-xs font-mono">
           Optional soul content — overarching character, values and behavioural identity injected into this agent.
         </p>
         <div>
@@ -624,7 +616,7 @@ export function AgentForm({
             onChange={(e) => setSoulContent(e.target.value)}
             rows={6}
             placeholder="You are a disciplined analyst who values accuracy above speed…"
-            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+            className="field w-full"
           />
         </div>
       </section>
@@ -646,7 +638,7 @@ export function AgentForm({
                     .catch(() => setAvailableModels([]));
                 }
               }}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             >
               <option value="">Default (platform config)</option>
               <option value="ollama">Ollama</option>
@@ -659,7 +651,7 @@ export function AgentForm({
               <select
                 value={llmModel}
                 onChange={(e) => setLlmModel(e.target.value)}
-                className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+                className="field w-full"
               >
                 <option value="">Select a model...</option>
                 {availableModels.map((m) => (
@@ -672,12 +664,12 @@ export function AgentForm({
                 onChange={(e) => setLlmModel(e.target.value)}
                 placeholder={llmProvider ? "Loading models..." : "Select a provider first"}
                 disabled={!llmProvider}
-                className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono disabled:opacity-60"
+                className="field w-full disabled:opacity-60"
               />
             )}
           </div>
         </div>
-        <p className="text-[10px] font-mono text-ork-dim">
+        <p className="dim text-[10px] font-mono">
           Leave empty to use the platform default LLM configuration.
         </p>
         {/* Built-in tool functions — unified toggle list */}
@@ -785,7 +777,7 @@ export function AgentForm({
           ] as { name: string; desc: React.ReactNode; color: string; checked: boolean; onToggle: () => void }[]).map(({ name, desc, color, checked, onToggle }) => (
             <div key={name} className="flex items-center justify-between py-1.5 border-b border-ork-border/20 last:border-0">
               <div className="flex-1 min-w-0 pr-4">
-                <p className="text-[10px] font-mono text-ork-dim leading-snug">{desc}</p>
+                <p className="dim text-[10px] font-mono leading-snug">{desc}</p>
               </div>
               <button
                 type="button"
@@ -813,7 +805,7 @@ export function AgentForm({
             <select
               value={criticality}
               onChange={(e) => setCriticality(e.target.value)}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             >
               <option value="low">low</option>
               <option value="medium">medium</option>
@@ -826,7 +818,7 @@ export function AgentForm({
             <select
               value={costProfile}
               onChange={(e) => setCostProfile(e.target.value)}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             >
               <option value="low">low</option>
               <option value="medium">medium</option>
@@ -839,7 +831,7 @@ export function AgentForm({
             <select
               value={lastTestStatus}
               onChange={(e) => setLastTestStatus(e.target.value)}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             >
               <option value="not_tested">not_tested</option>
               <option value="passed">passed</option>
@@ -854,7 +846,7 @@ export function AgentForm({
             value={limitations}
             onChange={(e) => setLimitations(e.target.value)}
             placeholder="no direct write actions, escalate low-confidence outputs"
-            className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+            className="field w-full"
           />
         </div>
       </section>
@@ -875,7 +867,7 @@ export function AgentForm({
               min={0}
               value={usageCount}
               onChange={(e) => setUsageCount(Number(e.target.value))}
-              className="w-full bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono"
+              className="field w-full"
             />
           </div>
         </div>
@@ -885,7 +877,7 @@ export function AgentForm({
         <button
           type="submit"
           disabled={saving}
-          className="px-4 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10 disabled:opacity-50"
+          className="btn btn--cyan disabled:opacity-50"
         >
           {saving ? "Saving..." : submitLabel}
         </button>
@@ -948,12 +940,12 @@ function PipelineAgentEditor({ agentIds, onChange }: PipelineAgentEditorProps) {
           onChange={(e) => setNewId(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAgent(); }}}
           placeholder="agent_id à ajouter…"
-          className="flex-1 bg-ork-bg border border-ork-border rounded px-3 py-1.5 text-xs font-mono text-ork-text focus:outline-none focus:border-ork-cyan placeholder:text-ork-dim"
+          className="field flex-1"
         />
         <button
           type="button"
           onClick={addAgent}
-          className="text-xs px-3 py-1.5 border border-dashed border-ork-border rounded text-ork-dim hover:border-ork-cyan hover:text-ork-cyan transition-colors"
+          className="btn btn--ghost"
         >
           + Ajouter
         </button>
