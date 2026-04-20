@@ -1,12 +1,16 @@
 "use client";
 
 import { Sidebar } from "./sidebar";
+import { Topbar } from "./topbar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen">
+    <div className="app">
       <Sidebar />
-      <main className="flex-1 overflow-hidden min-h-0">{children}</main>
+      <div className="main flex flex-col">
+        <Topbar />
+        <main className="flex-1 overflow-hidden min-h-0">{children}</main>
+      </div>
     </div>
   );
 }
