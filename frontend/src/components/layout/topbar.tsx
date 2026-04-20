@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "./ThemeToggle";
 
 const BREADCRUMB_LABELS: Record<string, string> = {
   agents: "agents",
@@ -38,6 +39,7 @@ export function Topbar() {
         )}
       </div>
       <div className="topbar__right">
+        <ThemeToggle />
         <div className="topbar__health">
           <span className="glow-dot" style={{ color: "var(--ork-green)" }} />
           api · nominal
