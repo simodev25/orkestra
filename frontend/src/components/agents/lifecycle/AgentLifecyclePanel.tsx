@@ -60,10 +60,10 @@ export function AgentLifecyclePanel({
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="glass-panel p-5">
+      <div className="glass-panel" style={{ padding: "14px 16px" }}>
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="section-title mb-2">Agent lifecycle</h3>
+            <h3 className="section-title" style={{ marginBottom: 8 }}>Agent lifecycle</h3>
             <div className="flex items-center gap-3">
               <span className="text-xs text-ork-dim">Current status</span>
               <StatusBadge status={agent.status} />
@@ -89,7 +89,7 @@ export function AgentLifecyclePanel({
       </div>
 
       {error && (
-        <div className="glass-panel p-3 border-ork-red/30">
+        <div className="glass-panel" style={{ padding: "10px 14px", borderColor: "color-mix(in oklch, var(--ork-red) 30%, transparent)" }}>
           <p className="text-xs font-mono text-ork-red">{error}</p>
         </div>
       )}

@@ -23,15 +23,19 @@ export function TransitionGate({
   if (!transition) {
     const isActive = currentStatus === "active";
     return (
-      <div className="glass-panel p-5">
-        <h3 className="section-title mb-3">Current transition gate</h3>
-        <div className="flex items-center gap-2 text-sm text-ork-muted">
-          <CheckCircle2 size={16} className="text-ork-green" />
-          <span>
-            {isActive
-              ? "Agent is active. No further promotion available."
-              : "No promotion transition available from this state."}
-          </span>
+      <div className="gate">
+        <div className="gate__head">
+          <h3 className="gate__title">Current transition gate</h3>
+        </div>
+        <div className="gate__blockers">
+          <div className="blocker blocker--ok">
+            <CheckCircle2 size={14} />
+            <span>
+              {isActive
+                ? "Agent is active. No further promotion available."
+                : "No promotion transition available from this state."}
+            </span>
+          </div>
         </div>
       </div>
     );
@@ -41,69 +45,64 @@ export function TransitionGate({
   const warnings = transition.blockers.filter((b) => b.severity === "warning");
 
   return (
-    <div className="glass-panel p-5">
-      <h3 className="section-title mb-4">Current transition gate</h3>
-
-      {/* From → To */}
-      <div className="flex items-center gap-3 mb-4">
-        <span className="px-2.5 py-1 text-xs font-mono uppercase tracking-wider rounded bg-ork-cyan/10 text-ork-cyan border border-ork-cyan/20">
-          {getStatusLabel(transition.from as any)}
-        </span>
-        <ArrowRight size={16} className="text-ork-dim" />
-        <span className="px-2.5 py-1 text-xs font-mono uppercase tracking-wider rounded bg-ork-purple/10 text-ork-purple border border-ork-purple/20">
-          {getStatusLabel(transition.to as any)}
-        </span>
+    <div className="gate">
+      <div className="gate__head">
+        <h3 className="gate__title">Current transition gate</h3>
+        <div className="gate__flow">
+          <span>{getStatusLabel(transition.from as any)}</span>
+          <ArrowRight size={12} />
+          <span className="to">{getStatusLabel(transition.to as any)}</span>
+        </div>
       </div>
 
       {/* Gate info */}
-      <div className="mb-4 p-3 rounded bg-ork-bg border border-ork-border">
-        <div className="flex items-center gap-2 mb-1">
-          <ShieldAlert size={14} className="text-ork-amber" />
-          <span className="text-xs font-mono font-semibold text-ork-text">
-            {transition.gate.title}
-          </span>
-        </div>
-        <p className="text-xs text-ork-muted ml-5">{transition.gate.description}</p>
-      </div>
+      <p className="gate__desc">
+        <ShieldAlert size={13} style={{ display: "inline", marginRight: 4, verticalAlign: "middle" }} />
+        <strong>{transition.gate.title}</strong>
+        {" — "}
+        {transition.gate.description}
+      </p>
 
       {/* Blockers */}
       {transition.blockers.length > 0 && (
-        <div className="space-y-1.5 mb-4">
+        <div className="gate__blockers">
           {errors.map((b) => (
-            <div key={b.key} className="flex items-start gap-2 text-xs">
-              <XCircle size={14} className="text-ork-red mt-0.5 shrink-0" />
-              <span className="text-ork-red">{b.label}</span>
+            <div key={b.key} className="blocker blocker--error">
+              <XCircle size={14} />
+              <span>{b.label}</span>
             </div>
           ))}
           {warnings.map((b) => (
-            <div key={b.key} className="flex items-start gap-2 text-xs">
-              <AlertTriangle size={14} className="text-ork-amber mt-0.5 shrink-0" />
-              <span className="text-ork-amber">{b.label}</span>
+            <div key={b.key} className="blocker blocker--warning">
+              <AlertTriangle size={14} />
+              <span>{b.label}</span>
             </div>
           ))}
         </div>
       )}
 
       {transition.blockers.length === 0 && (
-        <div className="flex items-center gap-2 text-xs text-ork-green mb-4">
-          <CheckCircle2 size={14} />
-          <span>All gate conditions met</span>
+        <div className="gate__blockers">
+          <div className="blocker blocker--ok">
+            <CheckCircle2 size={14} />
+            <span>All gate conditions met</span>
+          </div>
         </div>
       )}
 
       {/* Test Lab actions (when gate is designed → tested) */}
       {transition.from === "designed" && transition.to === "tested" && agentId && (
-        <div className="flex items-center gap-2 mb-4">
+        <div className="gate__foot" style={{ justifyContent: "flex-start" }}>
           <Link
             href={`/test-lab/scenarios/new?agent_id=${agentId}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider bg-ork-purple/15 text-ork-purple border border-ork-purple/30 rounded hover:bg-ork-purple/25 transition-colors"
+            className="btn"
           >
             <Plus size={11} />
             Create Test Scenario
           </Link>
           <Link
             href="/test-lab"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider bg-ork-cyan/10 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/20 transition-colors"
+            className="btn btn--cyan"
           >
             <FlaskConical size={11} />
             Open Test Lab
@@ -113,22 +112,21 @@ export function TransitionGate({
 
       {/* Promote button */}
       {onPromote && (
-        <button
-          type="button"
-          disabled={!transition.eligible || promoting}
-          onClick={() => onPromote(transition.to)}
-          className={`w-full py-2 text-xs font-mono uppercase tracking-wider rounded border transition-colors ${
-            transition.eligible
-              ? "bg-ork-cyan/10 text-ork-cyan border-ork-cyan/30 hover:bg-ork-cyan/20"
-              : "bg-ork-border/30 text-ork-dim border-ork-border cursor-not-allowed"
-          }`}
-        >
-          {promoting
-            ? "Promoting..."
-            : transition.eligible
-              ? `Promote to ${getStatusLabel(transition.to as any)}`
-              : "Blocked — resolve errors first"}
-        </button>
+        <div className="gate__foot">
+          <button
+            type="button"
+            disabled={!transition.eligible || promoting}
+            onClick={() => onPromote(transition.to)}
+            className={transition.eligible ? "btn btn--cyan" : "btn"}
+            style={{ width: "100%" }}
+          >
+            {promoting
+              ? "Promoting..."
+              : transition.eligible
+                ? `Promote to ${getStatusLabel(transition.to as any)}`
+                : "Blocked — resolve errors first"}
+          </button>
+        </div>
       )}
     </div>
   );
