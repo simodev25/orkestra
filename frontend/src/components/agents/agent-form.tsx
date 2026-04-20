@@ -267,7 +267,7 @@ export function AgentForm({
         <h2 className="section-title text-sm">1. Identity</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label htmlFor="agent-id" className="data-label">agent_id</label>
+            <label htmlFor="agent-id" className="field-label">agent_id</label>
             <input
               id="agent-id"
               value={agentId}
@@ -278,7 +278,7 @@ export function AgentForm({
             />
           </div>
           <div>
-            <label htmlFor="agent-name" className="data-label">name</label>
+            <label htmlFor="agent-name" className="field-label">name</label>
             <input
               id="agent-name"
               value={name}
@@ -293,7 +293,7 @@ export function AgentForm({
             />
           </div>
           <div>
-            <label htmlFor="agent-family" className="data-label">family</label>
+            <label htmlFor="agent-family" className="field-label">family</label>
             <select
               id="agent-family"
               value={familyId}
@@ -309,7 +309,7 @@ export function AgentForm({
             </select>
           </div>
           <div>
-            <p className="data-label">version</p>
+            <p className="field-label">version</p>
             <input
               value={version}
               onChange={(e) => setVersion(e.target.value)}
@@ -317,7 +317,7 @@ export function AgentForm({
             />
           </div>
           <div>
-            <p className="data-label">status</p>
+            <p className="field-label">status</p>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
@@ -331,7 +331,7 @@ export function AgentForm({
             </select>
           </div>
           <div>
-            <p className="data-label">owner</p>
+            <p className="field-label">owner</p>
             <input
               value={owner}
               onChange={(e) => setOwner(e.target.value)}
@@ -345,7 +345,7 @@ export function AgentForm({
       <section className="glass-panel p-4 space-y-3">
         <h2 className="section-title text-sm">2. Mission</h2>
         <div className="space-y-2">
-          <label htmlFor="agent-purpose" className="data-label">purpose</label>
+          <label htmlFor="agent-purpose" className="field-label">purpose</label>
           <input
             id="agent-purpose"
             value={purpose}
@@ -353,7 +353,7 @@ export function AgentForm({
             placeholder="Find all legal and regulatory data about a company."
             className="field w-full"
           />
-          <label htmlFor="agent-description" className="data-label">description</label>
+          <label htmlFor="agent-description" className="field-label">description</label>
           <textarea
             id="agent-description"
             value={description}
@@ -377,7 +377,7 @@ export function AgentForm({
           <p className="dim text-xs font-mono">No skills available for this family.</p>
         ) : (
           <>
-            <p className="data-label">available skills for {familyId}</p>
+            <p className="field-label">available skills for {familyId}</p>
             <input
               value={skillsInput}
               onChange={(e) => setSkillsInput(e.target.value)}
@@ -438,7 +438,7 @@ export function AgentForm({
         <h2 className="section-title text-sm">4. Selection logic</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <p className="data-label">selection_hints.routing_keywords</p>
+            <p className="field-label">selection_hints.routing_keywords</p>
             <input
               value={routingKeywords}
               onChange={(e) => setRoutingKeywords(e.target.value)}
@@ -447,7 +447,7 @@ export function AgentForm({
             />
           </div>
           <div>
-            <p className="data-label">selection_hints.workflow_ids</p>
+            <p className="field-label">selection_hints.workflow_ids</p>
             <input
               value={preferredWorkflows}
               onChange={(e) => setPreferredWorkflows(e.target.value)}
@@ -456,7 +456,7 @@ export function AgentForm({
             />
           </div>
           <div>
-            <p className="data-label">selection_hints.use_case_hint</p>
+            <p className="field-label">selection_hints.use_case_hint</p>
             <input
               value={selectionUseCaseHint}
               onChange={(e) => setSelectionUseCaseHint(e.target.value)}
@@ -481,7 +481,7 @@ export function AgentForm({
 
           {/* Routing mode toggle */}
           <div className="mb-4">
-            <p className="data-label">mode de routage</p>
+            <p className="field-label">mode de routage</p>
             <div className="flex gap-2 mt-1">
               {(["sequential", "dynamic"] as const).map((m) => (
                 <button
@@ -503,7 +503,7 @@ export function AgentForm({
 
           {/* Agent pipeline list */}
           <div>
-            <p className="data-label mb-2">agents dans le pipeline (glisser pour réordonner)</p>
+            <p className="field-label mb-2">agents dans le pipeline (glisser pour réordonner)</p>
             <PipelineAgentEditor
               agentIds={pipelineAgentIds}
               onChange={setPipelineAgentIds}
@@ -534,7 +534,7 @@ export function AgentForm({
             })}
           </div>
           <div className="space-y-2">
-            <p className="data-label">forbidden_effects</p>
+            <p className="field-label">forbidden_effects</p>
             <div className="flex flex-wrap gap-2">
               {EFFECT_TYPES.map((effect) => {
                 const on = forbiddenEffects.includes(effect);
@@ -558,7 +558,7 @@ export function AgentForm({
         <h2 className="section-title text-sm">6. Contracts</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <p className="data-label">input_contract_ref</p>
+            <p className="field-label">input_contract_ref</p>
             <input
               value={inputContractRef}
               onChange={(e) => setInputContractRef(e.target.value)}
@@ -566,7 +566,7 @@ export function AgentForm({
             />
           </div>
           <div>
-            <p className="data-label">output_contract_ref</p>
+            <p className="field-label">output_contract_ref</p>
             <input
               value={outputContractRef}
               onChange={(e) => setOutputContractRef(e.target.value)}
@@ -579,7 +579,7 @@ export function AgentForm({
       <section className="glass-panel p-4 space-y-3">
         <h2 className="section-title text-sm">7. Agent Prompt</h2>
         <div>
-          <p className="data-label">prompt_content</p>
+          <p className="field-label">prompt_content</p>
           <p className="dim text-[10px] font-mono mb-1">Agent-specific mission prompt (Layer 4 of the prompt builder)</p>
           <textarea
             value={promptContent}
@@ -593,7 +593,7 @@ export function AgentForm({
       <section className="glass-panel p-4 space-y-3">
         <h2 className="section-title text-sm">8. Skills Content</h2>
         <div>
-          <p className="data-label">skills_content</p>
+          <p className="field-label">skills_content</p>
           <p className="dim text-[10px] font-mono mb-1">Auto-generated from selected skills. Edit only if needed.</p>
           <textarea
             value={skillsContent}
@@ -610,7 +610,7 @@ export function AgentForm({
           Optional soul content — overarching character, values and behavioural identity injected into this agent.
         </p>
         <div>
-          <p className="data-label">soul_content</p>
+          <p className="field-label">soul_content</p>
           <textarea
             value={soulContent}
             onChange={(e) => setSoulContent(e.target.value)}
@@ -625,7 +625,7 @@ export function AgentForm({
         <h2 className="section-title text-sm">10. LLM Configuration</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <p className="data-label">provider</p>
+            <p className="field-label">provider</p>
             <select
               value={llmProvider}
               onChange={(e) => {
@@ -646,7 +646,7 @@ export function AgentForm({
             </select>
           </div>
           <div>
-            <p className="data-label">model</p>
+            <p className="field-label">model</p>
             {availableModels.length > 0 ? (
               <select
                 value={llmModel}
@@ -801,7 +801,7 @@ export function AgentForm({
         <h2 className="section-title text-sm">11. Limits & governance</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <p className="data-label">criticality</p>
+            <p className="field-label">criticality</p>
             <select
               value={criticality}
               onChange={(e) => setCriticality(e.target.value)}
@@ -814,7 +814,7 @@ export function AgentForm({
             </select>
           </div>
           <div>
-            <p className="data-label">cost_profile</p>
+            <p className="field-label">cost_profile</p>
             <select
               value={costProfile}
               onChange={(e) => setCostProfile(e.target.value)}
@@ -827,7 +827,7 @@ export function AgentForm({
             </select>
           </div>
           <div>
-            <p className="data-label">last_test_status</p>
+            <p className="field-label">last_test_status</p>
             <select
               value={lastTestStatus}
               onChange={(e) => setLastTestStatus(e.target.value)}
@@ -841,7 +841,7 @@ export function AgentForm({
           </div>
         </div>
         <div>
-          <p className="data-label">limitations (comma separated)</p>
+          <p className="field-label">limitations (comma separated)</p>
           <input
             value={limitations}
             onChange={(e) => setLimitations(e.target.value)}
@@ -855,13 +855,13 @@ export function AgentForm({
         <h2 className="section-title text-sm">12. Lifecycle / ownership</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <p className="data-label">status preview</p>
+            <p className="field-label">status preview</p>
             <div className="mt-1">
               <StatusBadge status={status} />
             </div>
           </div>
           <div>
-            <p className="data-label">usage_count</p>
+            <p className="field-label">usage_count</p>
             <input
               type="number"
               min={0}
