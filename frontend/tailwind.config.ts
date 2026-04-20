@@ -2,7 +2,7 @@ import type { Config } from "tailwindcss";
 
 export default {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
-  darkMode: "class",
+  darkMode: ["selector", '[data-theme="dark"]'],
   corePlugins: {
     preflight: false, // Désactivé — le reset vient de globals.css
   },
