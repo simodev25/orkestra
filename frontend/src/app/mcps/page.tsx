@@ -37,6 +37,7 @@ export default function McpCatalogPage() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [selectedMcp, setSelectedMcp] = useState<CatalogMcpViewModel | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,273 +141,312 @@ export default function McpCatalogPage() {
   );
 
   return (
-    <div className="p-6 max-w-[1500px] mx-auto space-y-5 animate-fade-in">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div className="page animate-fade-in">
+      {/* Page header */}
+      <div className="pagehead">
         <div>
-          <h1 className="text-xl font-semibold text-ork-text tracking-wide">MCP Catalog</h1>
-          <p className="text-xs text-ork-dim font-mono mt-1">
-            MCP capabilities are sourced from Obot. Orkestra governs visibility, eligibility, and binding.
-          </p>
+          <h1>MCP Catalog</h1>
+          <p>MCP capabilities are sourced from Obot. Orkestra governs visibility, eligibility, and binding.</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="pagehead__actions">
           <button
             onClick={handleSyncCatalog}
             disabled={busyKey === "sync"}
-            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/40 text-ork-cyan bg-ork-cyan/10 disabled:opacity-50"
+            className="btn btn--cyan"
           >
             {busyKey === "sync" ? "Syncing..." : "Sync Catalog"}
           </button>
           <button
             onClick={handleImportCatalog}
             disabled={busyKey === "import"}
-            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-purple/40 text-ork-purple bg-ork-purple/10 disabled:opacity-50"
+            className="btn btn--purple"
           >
             {busyKey === "import" ? "Importing..." : "Import from Obot"}
           </button>
         </div>
       </div>
 
+      {/* Message banner */}
       {message && (
         <div className="glass-panel p-3">
           <p className="text-xs font-mono text-ork-muted">{message}</p>
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      {/* Stat cards */}
+      <div className="stats">
         <StatCard label="Obot MCPs" value={summary.total} accent="cyan" />
-        <StatCard label="Enabled in Orkestra" value={summary.enabled} accent="green" />
+        <StatCard label="Enabled" value={summary.enabled} accent="green" />
         <StatCard label="Restricted" value={summary.restricted} accent="amber" />
         <StatCard label="Critical" value={summary.critical} accent="red" />
         <StatCard label="Approval Required" value={summary.approval} accent="purple" />
         <StatCard label="Hidden from AI Gen" value={summary.aiHidden} />
       </div>
 
-      <div className="glass-panel p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* Filters */}
+      <div className="filters" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr" }}>
+        <div className="fieldwrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input
+            className="field"
             value={filters.search ?? ""}
             onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
             placeholder="Search name / id / purpose"
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
-          />
-          <select
-            value={filters.obot_status}
-            onChange={(e) => setFilters((prev) => ({ ...prev, obot_status: e.target.value }))}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
-          >
-            <option value="all">Obot status: all</option>
-            <option value="active">Obot status: active</option>
-            <option value="degraded">Obot status: degraded</option>
-            <option value="disabled">Obot status: disabled</option>
-          </select>
-          <select
-            value={filters.orkestra_status}
-            onChange={(e) => setFilters((prev) => ({ ...prev, orkestra_status: e.target.value }))}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
-          >
-            <option value="all">Orkestra status: all</option>
-            <option value="enabled">enabled</option>
-            <option value="disabled">disabled</option>
-            <option value="restricted">restricted</option>
-            <option value="hidden">hidden</option>
-          </select>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <select
-            value={filters.criticality}
-            onChange={(e) => setFilters((prev) => ({ ...prev, criticality: e.target.value }))}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
-          >
-            <option value="all">Criticality: all</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-          </select>
-          <select
-            value={filters.effect_type}
-            onChange={(e) => setFilters((prev) => ({ ...prev, effect_type: e.target.value }))}
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
-          >
-            <option value="all">Effect type: all</option>
-            <option value="read">read</option>
-            <option value="search">search</option>
-            <option value="compute">compute</option>
-            <option value="generate">generate</option>
-            <option value="validate">validate</option>
-            <option value="write">write</option>
-            <option value="act">act</option>
-          </select>
-          <select
-            value={filters.approval_required}
-            onChange={(e) =>
-              setFilters((prev) => ({
-                ...prev,
-                approval_required: e.target.value as "all" | "true" | "false",
-              }))
-            }
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
-          >
-            <option value="all">Approval required: all</option>
-            <option value="true">true</option>
-            <option value="false">false</option>
-          </select>
-          <select
-            value={filters.hidden_from_ai_generator}
-            onChange={(e) =>
-              setFilters((prev) => ({
-                ...prev,
-                hidden_from_ai_generator: e.target.value as "all" | "true" | "false",
-              }))
-            }
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
-          >
-            <option value="all">Hidden from AI generator: all</option>
-            <option value="true">true</option>
-            <option value="false">false</option>
-          </select>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <input
-            value={filters.allowed_workflow ?? ""}
-            onChange={(e) => setFilters((prev) => ({ ...prev, allowed_workflow: e.target.value }))}
-            placeholder="Filter by allowed workflow"
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
-          />
-          <input
-            value={filters.allowed_agent_family ?? ""}
-            onChange={(e) => setFilters((prev) => ({ ...prev, allowed_agent_family: e.target.value }))}
-            placeholder="Filter by allowed agent family"
-            className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text"
           />
         </div>
+        <select
+          className="field"
+          value={filters.obot_status}
+          onChange={(e) => setFilters((prev) => ({ ...prev, obot_status: e.target.value }))}
+        >
+          <option value="all">Obot status: all</option>
+          <option value="active">active</option>
+          <option value="degraded">degraded</option>
+          <option value="disabled">disabled</option>
+        </select>
+        <select
+          className="field"
+          value={filters.orkestra_status}
+          onChange={(e) => setFilters((prev) => ({ ...prev, orkestra_status: e.target.value }))}
+        >
+          <option value="all">Orkestra status: all</option>
+          <option value="enabled">enabled</option>
+          <option value="disabled">disabled</option>
+          <option value="restricted">restricted</option>
+          <option value="hidden">hidden</option>
+        </select>
+        <select
+          className="field"
+          value={filters.criticality}
+          onChange={(e) => setFilters((prev) => ({ ...prev, criticality: e.target.value }))}
+        >
+          <option value="all">criticality: all</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+        </select>
+        <select
+          className="field"
+          value={filters.effect_type}
+          onChange={(e) => setFilters((prev) => ({ ...prev, effect_type: e.target.value }))}
+        >
+          <option value="all">effect type: all</option>
+          <option value="read">read</option>
+          <option value="search">search</option>
+          <option value="compute">compute</option>
+          <option value="generate">generate</option>
+          <option value="validate">validate</option>
+          <option value="write">write</option>
+          <option value="act">act</option>
+        </select>
+        <select
+          className="field"
+          value={filters.approval_required}
+          onChange={(e) =>
+            setFilters((prev) => ({
+              ...prev,
+              approval_required: e.target.value as "all" | "true" | "false",
+            }))
+          }
+        >
+          <option value="all">approval: all</option>
+          <option value="true">required</option>
+          <option value="false">not required</option>
+        </select>
       </div>
 
-      {loading ? (
-        <div className="glass-panel p-16 text-center text-sm font-mono text-ork-cyan">Loading MCP Catalog...</div>
-      ) : (
-        <div className="glass-panel overflow-x-auto">
-          <table className="w-full min-w-[1400px] text-xs">
-            <thead className="bg-ork-surface border-b border-ork-border">
-              <tr className="text-left font-mono uppercase tracking-wider text-ork-dim">
-                <th className="p-3">Name</th>
-                <th className="p-3">MCP ID / Obot Server ID</th>
-                <th className="p-3">Purpose</th>
-                <th className="p-3">Tools</th>
-                <th className="p-3">Effect type</th>
-                <th className="p-3">Obot state</th>
-                <th className="p-3">Orkestra state</th>
-                <th className="p-3">Criticality</th>
-                <th className="p-3">Approval required</th>
-                <th className="p-3">Allowed workflows</th>
-                <th className="p-3">Allowed agent families</th>
-                <th className="p-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => {
-                const busy =
-                  busyKey === `enable:${item.obot_server.id}` ||
-                  busyKey === `disable:${item.obot_server.id}` ||
-                  busyKey === `bind:wf:${item.obot_server.id}` ||
-                  busyKey === `bind:family:${item.obot_server.id}`;
-                return (
-                  <tr key={item.obot_server.id} className="border-b border-ork-border/50 align-top">
-                    <td className="p-3 font-medium text-ork-text">{item.obot_server.name}</td>
-                    <td className="p-3 font-mono text-ork-cyan">{item.obot_server.id}</td>
-                    <td className="p-3 text-ork-muted max-w-[280px]">{item.obot_server.purpose}</td>
-                    <td className="p-3">
-                      {(item.obot_server.tool_preview ?? []).length === 0 ? (
-                        <span className="text-ork-dim font-mono text-[10px]">—</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {item.obot_server.tool_preview.map((tool) => (
-                            <span
-                              key={tool.name}
-                              title={tool.description ?? tool.name}
-                              className="text-[10px] font-mono text-ork-cyan bg-ork-cyan/10 border border-ork-cyan/20 px-1.5 py-0.5 rounded cursor-default"
-                            >
-                              {tool.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+      {/* Split view */}
+      <div className="split">
+        {/* Table gauche */}
+        <div className="tablewrap">
+          {loading ? (
+            <div style={{ padding: "32px 16px", textAlign: "center" }}>
+              <p className="section-title">Loading MCP Catalog...</p>
+            </div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Effect Type</th>
+                  <th>Obot State</th>
+                  <th>Orkestra State</th>
+                  <th>Criticality</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr
+                    key={item.obot_server.id}
+                    className={selectedMcp?.obot_server.id === item.obot_server.id ? "is-selected" : ""}
+                    onClick={() => setSelectedMcp(item)}
+                  >
+                    <td className="col-name">
+                      {item.obot_server.name}
+                      <span className="sub">{item.obot_server.id}</span>
                     </td>
-                    <td className="p-3 font-mono">{item.obot_server.effect_type}</td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <StatusBadge status={item.obot_state} />
-                        {item.obot_server.health_status && <StatusBadge status={item.obot_server.health_status} />}
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      <StatusBadge status={item.orkestra_state} />
-                    </td>
-                    <td className="p-3 font-mono">{item.obot_server.criticality}</td>
-                    <td className="p-3 font-mono">{item.obot_server.approval_required ? "yes" : "no"}</td>
-                    <td className="p-3 font-mono">{item.orkestra_binding.allowed_workflows.length}</td>
-                    <td className="p-3 font-mono">{item.orkestra_binding.allowed_agent_families.length}</td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Link
-                          href={`/mcps/${item.obot_server.id}`}
-                          className="px-2 py-1 border border-ork-border rounded text-[10px] font-mono uppercase tracking-wider text-ork-muted hover:text-ork-text"
-                        >
-                          View details
-                        </Link>
-                        <a
-                          href={item.obot_server.obot_url ?? "#"}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`px-2 py-1 border rounded text-[10px] font-mono uppercase tracking-wider ${
-                            item.obot_server.obot_url
-                              ? "border-ork-purple/30 text-ork-purple"
-                              : "border-ork-border text-ork-dim pointer-events-none"
-                          }`}
-                        >
-                          View in Obot
-                        </a>
-                        <button
-                          onClick={() =>
-                            item.orkestra_binding.enabled_in_orkestra
-                              ? handleDisable(item.obot_server.id)
-                              : handleEnable(item.obot_server.id)
-                          }
-                          disabled={busy}
-                          className="px-2 py-1 border border-ork-cyan/30 rounded text-[10px] font-mono uppercase tracking-wider text-ork-cyan disabled:opacity-50"
-                        >
-                          {item.orkestra_binding.enabled_in_orkestra ? "Disable in Orkestra" : "Enable in Orkestra"}
-                        </button>
-                        <button
-                          onClick={() => handleBindWorkflow(item.obot_server.id)}
-                          disabled={busy}
-                          className="px-2 py-1 border border-ork-amber/30 rounded text-[10px] font-mono uppercase tracking-wider text-ork-amber disabled:opacity-50"
-                        >
-                          Bind to workflow
-                        </button>
-                        <button
-                          onClick={() => handleBindAgentFamily(item.obot_server.id)}
-                          disabled={busy}
-                          className="px-2 py-1 border border-ork-green/30 rounded text-[10px] font-mono uppercase tracking-wider text-ork-green disabled:opacity-50"
-                        >
-                          Bind to agent family
-                        </button>
-                        <Link
-                          href={`/mcps/${item.obot_server.id}/edit`}
-                          className="px-2 py-1 border border-ork-border rounded text-[10px] font-mono uppercase tracking-wider text-ork-muted hover:text-ork-text"
-                        >
-                          Edit Orkestra settings
-                        </Link>
-                      </div>
+                    <td className="col-fam">{item.obot_server.effect_type || "—"}</td>
+                    <td><StatusBadge status={item.obot_state} /></td>
+                    <td><StatusBadge status={item.orkestra_state} /></td>
+                    <td>
+                      <span className={`crit crit--${item.obot_server.criticality || "low"}`}>
+                        {item.obot_server.criticality || "low"}
+                      </span>
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+                {items.length === 0 && (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: "center", color: "var(--ork-muted-2)", fontFamily: "var(--font-mono)", fontSize: 11.5, padding: "24px 0" }}>
+                      No MCPs found
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
-      )}
+
+        {/* Detail pane droite */}
+        <div className="detail">
+          {!selectedMcp ? (
+            <div className="detail__empty">
+              <span>Select an MCP<br/>to see details</span>
+            </div>
+          ) : (
+            <>
+              <div className="detail__head">
+                <div className="detail__idrow">
+                  <span className="detail__id">{selectedMcp.obot_server.id}</span>
+                  <StatusBadge status={selectedMcp.orkestra_state} />
+                </div>
+                <div className="detail__name">{selectedMcp.obot_server.name}</div>
+                {selectedMcp.obot_server.purpose && (
+                  <p className="detail__purpose">{selectedMcp.obot_server.purpose}</p>
+                )}
+                <div className="detail__meta">
+                  <span className={`crit crit--${selectedMcp.obot_server.criticality || "low"}`}>
+                    {selectedMcp.obot_server.criticality || "low"}
+                  </span>
+                  {selectedMcp.obot_server.effect_type && (
+                    <span className="chip chip--mini">{selectedMcp.obot_server.effect_type}</span>
+                  )}
+                </div>
+              </div>
+              <div className="tabpane">
+                <div className="kv">
+                  <span className="k">MCP ID</span>
+                  <span className="v mono">{selectedMcp.obot_server.id}</span>
+                  <span className="k">Obot State</span>
+                  <span className="v"><StatusBadge status={selectedMcp.obot_state} /></span>
+                  <span className="k">Orkestra State</span>
+                  <span className="v"><StatusBadge status={selectedMcp.orkestra_state} /></span>
+                  <span className="k">Effect Type</span>
+                  <span className="v mono">{selectedMcp.obot_server.effect_type || "—"}</span>
+                  <span className="k">Criticality</span>
+                  <span className="v">
+                    <span className={`crit crit--${selectedMcp.obot_server.criticality || "low"}`}>
+                      {selectedMcp.obot_server.criticality || "low"}
+                    </span>
+                  </span>
+                  <span className="k">Approval Required</span>
+                  <span className="v mono">{selectedMcp.obot_server.approval_required ? "yes" : "no"}</span>
+                  <span className="k">Allowed Workflows</span>
+                  <span className="v mono">{selectedMcp.orkestra_binding.allowed_workflows.length}</span>
+                  <span className="k">Allowed Agent Families</span>
+                  <span className="v mono">{selectedMcp.orkestra_binding.allowed_agent_families.length}</span>
+                </div>
+
+                {/* Tools preview */}
+                {selectedMcp.obot_server.tool_preview && selectedMcp.obot_server.tool_preview.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <p className="section-title" style={{ marginBottom: 8 }}>Tools</p>
+                    <div className="row flex-wrap">
+                      {selectedMcp.obot_server.tool_preview.map((tool) => (
+                        <span
+                          key={tool.name}
+                          title={tool.description ?? tool.name}
+                          className="chip chip--mini"
+                        >
+                          {tool.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {(() => {
+                    const busy =
+                      busyKey === `enable:${selectedMcp.obot_server.id}` ||
+                      busyKey === `disable:${selectedMcp.obot_server.id}` ||
+                      busyKey === `bind:wf:${selectedMcp.obot_server.id}` ||
+                      busyKey === `bind:family:${selectedMcp.obot_server.id}`;
+                    return (
+                      <>
+                        <button
+                          onClick={() =>
+                            selectedMcp.orkestra_binding.enabled_in_orkestra
+                              ? handleDisable(selectedMcp.obot_server.id)
+                              : handleEnable(selectedMcp.obot_server.id)
+                          }
+                          disabled={busy}
+                          className="btn btn--cyan"
+                          style={{ width: "100%", justifyContent: "center" }}
+                        >
+                          {selectedMcp.orkestra_binding.enabled_in_orkestra ? "Disable in Orkestra" : "Enable in Orkestra"}
+                        </button>
+                        <button
+                          onClick={() => handleBindWorkflow(selectedMcp.obot_server.id)}
+                          disabled={busy}
+                          className="btn btn--ghost"
+                          style={{ width: "100%", justifyContent: "center" }}
+                        >
+                          Bind to Workflow
+                        </button>
+                        <button
+                          onClick={() => handleBindAgentFamily(selectedMcp.obot_server.id)}
+                          disabled={busy}
+                          className="btn btn--ghost"
+                          style={{ width: "100%", justifyContent: "center" }}
+                        >
+                          Bind to Agent Family
+                        </button>
+                      </>
+                    );
+                  })()}
+                  <Link
+                    href={`/mcps/${selectedMcp.obot_server.id}`}
+                    className="btn btn--ghost"
+                    style={{ width: "100%", justifyContent: "center" }}
+                  >
+                    View Full Details →
+                  </Link>
+                  {selectedMcp.obot_server.obot_url && (
+                    <a
+                      href={selectedMcp.obot_server.obot_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn--ghost"
+                      style={{ width: "100%", justifyContent: "center" }}
+                    >
+                      View in Obot ↗
+                    </a>
+                  )}
+                  <Link
+                    href={`/mcps/${selectedMcp.obot_server.id}/edit`}
+                    className="btn btn--ghost"
+                    style={{ width: "100%", justifyContent: "center" }}
+                  >
+                    Edit Orkestra Settings
+                  </Link>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
