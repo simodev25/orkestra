@@ -171,37 +171,17 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
         )}
 
         {/* ── Stats ────────────────────────────────────────────────────── */}
-        <div
-          className="grid grid-cols-3 gap-2 p-4"
-          style={{ borderBottom: '1px solid var(--ork-border)' }}
-        >
-          {[
-            { label: 'DURÉE',  value: fmt(node.durationMs),        color: panelAccent },
-            { label: 'STATUS', value: node.status,                  color: statusColor },
-            {
-              label: node.kind === 'runtime' ? 'ITERS' : 'EVENTS',
-              value: node.kind === 'runtime' ? String(iterCount || node.events.length) : String(node.events.length),
-              color: 'var(--ork-muted)',
-            },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="glass-panel p-2" style={{ borderRadius: 'var(--radius)' }}>
-              <p className="section-title" style={{ marginBottom: 4 }}>{label}</p>
-              <p
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color,
-                  margin: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {value}
-              </p>
-            </div>
-          ))}
+        <div className="p-4" style={{ borderBottom: '1px solid var(--ork-border)' }}>
+          <div className="kv">
+            <span className="k">DURÉE</span>
+            <span className="v mono" style={{ color: panelAccent }}>{fmt(node.durationMs)}</span>
+            <span className="k">STATUS</span>
+            <span className="v mono" style={{ color: statusColor }}>{node.status}</span>
+            <span className="k">{node.kind === 'runtime' ? 'ITERS' : 'EVENTS'}</span>
+            <span className="v mono">
+              {node.kind === 'runtime' ? String(iterCount || node.events.length) : String(node.events.length)}
+            </span>
+          </div>
         </div>
 
         {/* ── Scrollable body ──────────────────────────────────────────── */}
