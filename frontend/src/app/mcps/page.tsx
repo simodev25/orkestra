@@ -418,7 +418,7 @@ export default function McpCatalogPage() {
                   })()}
                   <Link
                     href={`/mcps/${selectedMcp.obot_server.id}`}
-                    className="btn btn--ghost"
+                    className="btn btn--cyan"
                     style={{ width: "100%", justifyContent: "center" }}
                   >
                     View Full Details →
