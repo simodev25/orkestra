@@ -31,6 +31,7 @@ interface RunGraphProps {
   run: TestRun;
   events: TestRunEvent[];
   diagnostics: TestRunDiagnostic[];
+  effectDenials?: Array<{ id: string; mcp_id: string; calling_agent_id: string | null; effects: string[]; blocked_at: string | null }>;
 }
 
 /** Replay duration for completed runs */
@@ -78,7 +79,7 @@ function statusFromEvent(ev: TestRunEvent): string {
   return 'completed';
 }
 
-export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
+export function RunGraph({ run, events, diagnostics, effectDenials = [] }: RunGraphProps) {
   const { nodes: initNodes, edges: initEdges } = useMemo(
     () => buildGraph(events, run, diagnostics),
     [events, run, diagnostics]
@@ -391,6 +392,36 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
 
   return (
     <div className="flex flex-col" style={{ height: '100%' }}>
+      {/* Effect denial banner */}
+      {effectDenials.length > 0 && (
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 flex-wrap"
+          style={{
+            background: 'color-mix(in oklch, var(--ork-red) 8%, transparent)',
+            borderBottom: '1px solid color-mix(in oklch, var(--ork-red) 25%, transparent)',
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ color: 'var(--ork-red)', fontSize: 11, fontWeight: 700 }}>⛔ BLOCKED EFFECTS</span>
+          {effectDenials.map((d) => (
+            <span
+              key={d.id}
+              title={`effects [${d.effects.join(', ')}] are forbidden for this agent`}
+              style={{
+                fontSize: 10,
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--ork-red)',
+                background: 'color-mix(in oklch, var(--ork-red) 12%, transparent)',
+                border: '1px solid color-mix(in oklch, var(--ork-red) 30%, transparent)',
+                borderRadius: 4,
+                padding: '1px 6px',
+              }}
+            >
+              {d.mcp_id}: {d.effects.join(', ')}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1" style={{ background: '#07070f' }}>
           <ReactFlow

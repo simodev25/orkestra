@@ -294,6 +294,7 @@ export default function TestRunDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [assertions, setAssertions] = useState<any[]>([]);
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
+  const [effectDenials, setEffectDenials] = useState<any[]>([]);
 
   // Chat with OrchestratorAgent
   const [chatMessages, setChatMessages] = useState<Array<{role: string; content: string}>>([]);
@@ -301,6 +302,11 @@ export default function TestRunDetailPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
+
+  // Effect overrides admin section
+  const [effectOverrides, setEffectOverrides] = useState<string[]>([]);
+  const [overrideSaving, setOverrideSaving] = useState(false);
+  const [overrideSaved, setOverrideSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -309,15 +315,20 @@ export default function TestRunDetailPage() {
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
-      const [runData, eventsData, assertionsData, diagnosticsData] = await Promise.all([
+      const [runData, eventsData, assertionsData, diagnosticsData, denialsData] = await Promise.all([
         request<any>(`/api/test-lab/runs/${id}`).catch(() => null),
         request<any>(`/api/test-lab/runs/${id}/events`).catch(() => []),
         request<any>(`/api/test-lab/runs/${id}/assertions`).catch(() => []),
         request<any>(`/api/test-lab/runs/${id}/diagnostics`).catch(() => []),
+        request<any>(`/api/runs/${id}/effect-denials`).catch(() => []),
       ]);
       if (runData) {
         setRun(runData);
         statusRef.current = runData.status;
+        // Initialize effectOverrides from run.config
+        if (runData?.config?.effect_overrides) {
+          setEffectOverrides(runData.config.effect_overrides);
+        }
       }
       const newEvents = Array.isArray(eventsData) ? eventsData : eventsData?.items ?? [];
       setEvents(prev => {
@@ -331,6 +342,7 @@ export default function TestRunDetailPage() {
       });
       setAssertions(Array.isArray(assertionsData) ? assertionsData : assertionsData?.items ?? []);
       setDiagnostics(Array.isArray(diagnosticsData) ? diagnosticsData : diagnosticsData?.items ?? []);
+      setEffectDenials(Array.isArray(denialsData) ? denialsData : []);
       setError(null);
     } catch (e: any) {
       setError(e.message || "Failed to load run data");
@@ -440,7 +452,7 @@ export default function TestRunDetailPage() {
           rerunning={rerunning}
         />
         <div className="flex-1 overflow-hidden">
-          <RunGraph run={run} events={events} diagnostics={diagnostics} />
+          <RunGraph run={run} events={events} diagnostics={diagnostics} effectDenials={effectDenials} />
         </div>
       </div>
     );

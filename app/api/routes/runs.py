@@ -78,3 +78,33 @@ async def update_run_config(
     await db.flush()
     await db.commit()
     return {"run_id": run_id, "config": run.config}
+
+
+@router.get("/runs/{run_id}/effect-denials")
+async def get_run_effect_denials(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get MCPInvocations denied due to forbidden effects for this run."""
+    from app.models.invocation import MCPInvocation
+    from sqlalchemy import select
+    result = await db.execute(
+        select(MCPInvocation)
+        .where(
+            MCPInvocation.run_id == run_id,
+            MCPInvocation.status == "denied",
+            MCPInvocation.effect_type.isnot(None),
+        )
+        .order_by(MCPInvocation.started_at.desc())
+    )
+    denials = result.scalars().all()
+    return [
+        {
+            "id": d.id,
+            "mcp_id": d.mcp_id,
+            "calling_agent_id": d.calling_agent_id,
+            "effects": [e.strip() for e in (d.effect_type or "").split(",") if e.strip()],
+            "blocked_at": d.started_at.isoformat() if d.started_at else None,
+        }
+        for d in denials
+    ]
