@@ -1,6 +1,7 @@
 """Run API routes."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -8,6 +9,10 @@ from app.schemas.run import RunCreate, RunOut, RunNodeOut
 from app.services import execution_service
 
 router = APIRouter()
+
+
+class RunConfigUpdate(BaseModel):
+    effect_overrides: list[str] = []
 
 
 @router.post("/cases/{case_id}/runs", response_model=RunOut, status_code=201)
@@ -54,3 +59,24 @@ async def cancel_run(run_id: str, db: AsyncSession = Depends(get_db)):
         return await execution_service.cancel_run(db, run_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/runs/{run_id}/config")
+async def update_run_config(
+    run_id: str,
+    data: RunConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update run configuration (admin: effect_overrides for forbidden effects bypass)."""
+    from app.models.run import Run
+    run = await db.get(Run, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    # Merge into existing config (preserve other keys)
+    current_config = run.config or {}
+    current_config["effect_overrides"] = data.effect_overrides
+    run.config = current_config
+    await db.flush()
+    await db.commit()
+    return {"run_id": run_id, "config": run.config}
