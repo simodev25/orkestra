@@ -358,7 +358,7 @@ async def create_agentscope_agent(
                 logger.info(f"MCP {mcp_id} ({srv['url']}): {len(mcp_tools)} tools found")
 
                 # Pre-flight effect enforcement: classify each tool and record
-                # denied invocations for tools whose ALL effects are forbidden.
+                # denied invocations for tools whose ANY effect is forbidden.
                 # Only runs when the agent has forbidden_effects AND a run_id exists.
                 if agent_def.forbidden_effects and test_run_id and db:
                     from app.services.effect_classifier import get_classifier
@@ -371,8 +371,8 @@ async def create_agentscope_agent(
                     for _tool in mcp_tools:
                         _effects = await _eff_classifier.classify(_tool.name, {})
                         _blocked = [e for e in _effects if e in _forbidden_set]
-                        if _blocked and set(_effects) <= _forbidden_set:
-                            # ALL effects are forbidden — skip tool registration
+                        if _blocked:
+                            # At least one effect is forbidden — skip tool registration
                             logger.warning(
                                 "[EffectEnforcement] Pre-flight: agent=%s tool=%s blocked effects=%s",
                                 agent_def.id, _tool.name, _blocked,

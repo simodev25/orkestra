@@ -145,8 +145,8 @@ class TestGuardedMCPExecutorIntegration:
         await db_session.commit()
 
         from unittest.mock import patch, AsyncMock
-        from app.services.effect_classifier import get_classifier
-        with patch.object(get_classifier(), "classify", new=AsyncMock(return_value=["read"])):
+        with patch("app.services.guarded_mcp_executor.get_classifier") as mock_gc:
+            mock_gc.return_value.classify = AsyncMock(return_value=["read"])
             inv = await guarded_invoke_mcp(
                 db_session, run.id, "write_mcp", "restricted",
                 tool_action="read_data", tool_kwargs={},
@@ -170,8 +170,8 @@ class TestGuardedMCPExecutorIntegration:
         await db_session.commit()
 
         from unittest.mock import patch, AsyncMock
-        from app.services.effect_classifier import get_classifier
-        with patch.object(get_classifier(), "classify", new=AsyncMock(return_value=["read"])):
+        with patch("app.services.guarded_mcp_executor.get_classifier") as mock_gc:
+            mock_gc.return_value.classify = AsyncMock(return_value=["read"])
             inv = await guarded_invoke_mcp(
                 db_session, run.id, "doc_parser2", "partial_restricted",
                 tool_action="read_file", tool_kwargs={},
