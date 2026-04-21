@@ -1,5 +1,6 @@
 """Tests for EffectClassifier — LLM-based MCP tool effect classification."""
 
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.effect_classifier import EffectClassifier
@@ -8,9 +9,7 @@ from app.services.effect_classifier import EffectClassifier
 @pytest.fixture
 def classifier():
     """Fresh classifier (empty cache) per test."""
-    c = EffectClassifier()
-    c._cache.clear()
-    return c
+    return EffectClassifier()
 
 
 class TestHeuristicFallback:
@@ -85,3 +84,16 @@ class TestClassifyWithLLM:
             await classifier.classify("query_index", {})
         assert "query_index" in classifier._cache
         assert classifier._cache["query_index"] == ["search"]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_classify_llm_failure_both_get_heuristic(self, classifier):
+        """Both concurrent callers must get heuristic, not CancelledError."""
+        with patch.object(classifier, "_call_llm_sync", new=MagicMock(side_effect=Exception("LLM down"))):
+            results = await asyncio.gather(
+                classifier.classify("send_alert", {}),
+                classifier.classify("send_alert", {}),
+                return_exceptions=True,
+            )
+        # Both should get heuristic result ["act"], not CancelledError
+        assert results[0] == ["act"]
+        assert results[1] == ["act"]

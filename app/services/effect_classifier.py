@@ -48,7 +48,7 @@ class EffectClassifier:
         if tool_name in self._in_flight:
             return await asyncio.shield(self._in_flight[tool_name])
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         future: asyncio.Future = loop.create_future()
         self._in_flight[tool_name] = future
 
@@ -73,7 +73,8 @@ class EffectClassifier:
             future.set_result(effects)
             return effects
         except Exception:
-            future.cancel()
+            if not future.done():
+                future.set_result(self._heuristic_classify(tool_name))
             raise
         finally:
             self._in_flight.pop(tool_name, None)
