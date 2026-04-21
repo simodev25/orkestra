@@ -23,8 +23,16 @@ def upgrade() -> None:
         "runs",
         sa.Column("config", JSONB, nullable=True),
     )
+    op.alter_column("mcp_invocations", "effect_type",
+                    existing_type=sa.String(30),
+                    type_=sa.String(60),
+                    existing_nullable=False)
 
 
 def downgrade() -> None:
     op.drop_column("mcp_invocations", "calling_agent_id")
     op.drop_column("runs", "config")
+    op.alter_column("mcp_invocations", "effect_type",
+                    existing_type=sa.String(60),
+                    type_=sa.String(30),
+                    existing_nullable=False)

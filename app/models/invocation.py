@@ -39,7 +39,7 @@ class MCPInvocation(BaseModel):
     calling_agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     mcp_id: Mapped[str] = mapped_column(String(100))
     mcp_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    effect_type: Mapped[str] = mapped_column(String(30))
+    effect_type: Mapped[str] = mapped_column(String(60))
     status: Mapped[str] = mapped_column(String(30), default="requested")
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cost: Mapped[float] = mapped_column(Float, default=0.0)

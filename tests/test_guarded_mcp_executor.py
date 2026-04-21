@@ -238,11 +238,10 @@ class TestGuardedInvokeMCP:
             )
 
         mock_emit.assert_called_once()
-        _call_args = mock_emit.call_args
-        assert _call_args.args[1] == "mcp.denied"          # event_type
-        payload = _call_args.kwargs.get("payload") or _call_args.args[5] if len(_call_args.args) > 5 else _call_args.kwargs["payload"]
-        assert payload["reason"] == "forbidden_effect"
-        assert payload["effects"] == ["write"]
+        assert mock_emit.call_args.args[1] == "mcp.denied"  # event_type
+        call_kwargs = mock_emit.call_args.kwargs
+        assert call_kwargs["payload"]["reason"] == "forbidden_effect"
+        assert call_kwargs["payload"]["effects"] == ["write"]
 
     @pytest.mark.asyncio
     async def test_calling_agent_id_stored(self):
@@ -344,4 +343,4 @@ class TestGuardedInvokeMCP:
         assert len(added_objects) == 1
         inv = added_objects[0]
         assert isinstance(inv, MCPInvocation)
-        assert inv.effect_type == "write,act"
+        assert set(inv.effect_type.split(",")) == {"write", "act"}

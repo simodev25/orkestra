@@ -34,6 +34,11 @@ async def guarded_invoke_mcp(
     """
     # [1] Fetch agent's forbidden_effects
     agent = await db.get(AgentDefinition, calling_agent_id)
+    if agent is None:
+        logger.warning(
+            "[guarded_invoke_mcp] Unknown calling_agent_id=%s — no forbidden_effects enforced",
+            calling_agent_id,
+        )
     forbidden = set(agent.forbidden_effects or []) if agent else set()
 
     # [2] Only classify if there are forbidden_effects AND a tool_action
