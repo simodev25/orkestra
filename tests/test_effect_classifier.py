@@ -1,7 +1,7 @@
 """Tests for EffectClassifier — LLM-based MCP tool effect classification."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.effect_classifier import EffectClassifier
 
 
@@ -42,46 +42,46 @@ class TestHeuristicFallback:
 class TestClassifyWithLLM:
     @pytest.mark.asyncio
     async def test_classify_single_effect(self, classifier):
-        with patch.object(classifier, "_call_llm", new=AsyncMock(return_value="write")):
+        with patch.object(classifier, "_call_llm_sync", new=MagicMock(return_value="write")):
             result = await classifier.classify("save_document", {})
         assert result == ["write"]
 
     @pytest.mark.asyncio
     async def test_classify_compound_effects(self, classifier):
-        with patch.object(classifier, "_call_llm", new=AsyncMock(return_value="write,act")):
+        with patch.object(classifier, "_call_llm_sync", new=MagicMock(return_value="write,act")):
             result = await classifier.classify("publish_and_notify", {})
         assert "write" in result
         assert "act" in result
 
     @pytest.mark.asyncio
     async def test_classify_uses_cache_on_second_call(self, classifier):
-        mock_llm = AsyncMock(return_value="read")
-        with patch.object(classifier, "_call_llm", new=mock_llm):
+        mock_llm = MagicMock(return_value="read")
+        with patch.object(classifier, "_call_llm_sync", new=mock_llm):
             await classifier.classify("get_data", {})
             await classifier.classify("get_data", {"key": "val"})
         assert mock_llm.call_count == 1  # second call hits cache
 
     @pytest.mark.asyncio
     async def test_classify_invalid_llm_response_uses_heuristic(self, classifier):
-        with patch.object(classifier, "_call_llm", new=AsyncMock(return_value="destroy")):
+        with patch.object(classifier, "_call_llm_sync", new=MagicMock(return_value="destroy")):
             result = await classifier.classify("delete_all", {})
         assert result == ["write"]  # heuristic for delete_*
 
     @pytest.mark.asyncio
     async def test_classify_partial_invalid_response_filters_invalid(self, classifier):
-        with patch.object(classifier, "_call_llm", new=AsyncMock(return_value="write,destroy")):
+        with patch.object(classifier, "_call_llm_sync", new=MagicMock(return_value="write,destroy")):
             result = await classifier.classify("write_and_destroy", {})
         assert result == ["write"]  # "destroy" filtered, "write" kept
 
     @pytest.mark.asyncio
     async def test_classify_llm_failure_uses_heuristic(self, classifier):
-        with patch.object(classifier, "_call_llm", new=AsyncMock(side_effect=Exception("timeout"))):
+        with patch.object(classifier, "_call_llm_sync", new=MagicMock(side_effect=Exception("timeout"))):
             result = await classifier.classify("send_notification", {})
         assert result == ["act"]  # heuristic for send_*
 
     @pytest.mark.asyncio
     async def test_cache_populated_after_classify(self, classifier):
-        with patch.object(classifier, "_call_llm", new=AsyncMock(return_value="search")):
+        with patch.object(classifier, "_call_llm_sync", new=MagicMock(return_value="search")):
             await classifier.classify("query_index", {})
         assert "query_index" in classifier._cache
         assert classifier._cache["query_index"] == ["search"]

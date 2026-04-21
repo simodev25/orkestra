@@ -32,30 +32,54 @@ class EffectClassifier:
 
     def __init__(self) -> None:
         self._cache: dict[str, list[str]] = {}
+        self._in_flight: dict[str, asyncio.Future] = {}
 
     async def classify(self, tool_name: str, args: dict[str, Any]) -> list[str]:
         """Return the list of effects for this tool call.
 
         Uses process-level cache keyed on tool_name (effects are stable per tool).
+        In-flight deduplication prevents duplicate LLM calls for concurrent requests.
         Falls back to heuristic if LLM is unavailable or returns invalid output.
         """
         if tool_name in self._cache:
             return self._cache[tool_name]
 
+        # In-flight deduplication: if already classifying this tool, wait for it
+        if tool_name in self._in_flight:
+            return await asyncio.shield(self._in_flight[tool_name])
+
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future = loop.create_future()
+        self._in_flight[tool_name] = future
+
         try:
-            raw = await asyncio.wait_for(self._call_llm(tool_name, args), timeout=2.0)
-            effects = [e.strip() for e in raw.split(",") if e.strip() in EFFECT_TYPES]
-            if not effects:
+            try:
+                # Run blocking LLM call in thread pool so timeout is honoured
+                raw = await asyncio.wait_for(
+                    loop.run_in_executor(None, self._call_llm_sync, tool_name, args),
+                    timeout=2.0,
+                )
+                effects = [e.strip() for e in raw.split(",") if e.strip() in EFFECT_TYPES]
+                if not effects:
+                    effects = self._heuristic_classify(tool_name)
+            except Exception as exc:
+                logger.warning(
+                    "[EffectClassifier] LLM call failed for '%s': %s — using heuristic",
+                    tool_name, exc,
+                )
                 effects = self._heuristic_classify(tool_name)
-        except Exception as exc:
-            logger.warning("[EffectClassifier] LLM call failed for '%s': %s — using heuristic", tool_name, exc)
-            effects = self._heuristic_classify(tool_name)
 
-        self._cache[tool_name] = effects
-        return effects
+            self._cache[tool_name] = effects
+            future.set_result(effects)
+            return effects
+        except Exception:
+            future.cancel()
+            raise
+        finally:
+            self._in_flight.pop(tool_name, None)
 
-    async def _call_llm(self, tool_name: str, args: dict[str, Any]) -> str:
-        """Call LLM to classify the tool effect. Returns raw string response."""
+    def _call_llm_sync(self, tool_name: str, args: dict[str, Any]) -> str:
+        """Call LLM synchronously (runs in thread executor). Returns raw string response."""
         from app.llm.provider import get_chat_model
         from agentscope.message import Msg
 
