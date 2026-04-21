@@ -111,6 +111,12 @@ export function AgentForm({
   const [routingMode, setRoutingMode] = useState<string>(initial?.routing_mode ?? "sequential");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
 
+  // Effect violations state (edit mode only)
+  const [effectViolations, setEffectViolations] = useState<{
+    violations: Array<{ id: string; run_id: string; mcp_id: string; effects: string[]; blocked_at: string | null }>;
+    summary: Record<string, number>;
+  }>({ violations: [], summary: {} });
+
   useEffect(() => {
     if (initial?.llm_provider) {
       request<{ models: any[] }>(`/api/agents/llm-models/${initial.llm_provider}`)
@@ -163,6 +169,17 @@ export function AgentForm({
     setSkillsContent(content);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillIds, familySkills]);
+
+  useEffect(() => {
+    const id = initial?.id;
+    if (!id || mode !== "edit") return; // create mode — no fetch
+    request<{
+      violations: Array<{ id: string; run_id: string; mcp_id: string; effects: string[]; blocked_at: string | null }>;
+      summary: Record<string, number>;
+    }>(`/api/agents/${id}/effect-violations`)
+      .then((data) => setEffectViolations(data))
+      .catch(() => {}); // silently ignore
+  }, [initial?.id, mode]);
 
   const unknownAllowed = useMemo(() => {
     const knownIds = new Set(availableMcps.map((m) => m.id));
@@ -872,6 +889,58 @@ export function AgentForm({
           </div>
         </div>
       </section>
+
+      {/* Section — Violations d'effet (edit mode only) */}
+      {mode === "edit" && initial?.id && (
+        <div className="form-section">
+          <div className="form-section__header">
+            <h3 className="form-section__title">Violations d&apos;effet</h3>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {Object.entries(effectViolations.summary).map(([effect, count]) => (
+                <span
+                  key={effect}
+                  className="badge badge--failed"
+                  style={{ fontSize: "11px" }}
+                >
+                  {effect}: {count}
+                </span>
+              ))}
+            </div>
+          </div>
+          {effectViolations.violations.length === 0 ? (
+            <p style={{ color: "var(--ork-muted)", fontSize: "13px" }}>Aucune violation enregistrée.</p>
+          ) : (
+            <table className="tablewrap__table" style={{ fontSize: "12px" }}>
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>MCP</th>
+                  <th>Effets bloqués</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {effectViolations.violations.map((v) => (
+                  <tr key={v.id}>
+                    <td>
+                      <a href={`/test-lab/runs/${v.run_id}`} style={{ color: "var(--ork-cyan)" }}>
+                        {v.run_id.slice(0, 12)}…
+                      </a>
+                    </td>
+                    <td style={{ color: "var(--ork-muted)" }}>{v.mcp_id}</td>
+                    <td>
+                      <span style={{ color: "var(--ork-red)" }}>{v.effects.join(", ")}</span>
+                    </td>
+                    <td style={{ color: "var(--ork-dim)" }}>
+                      {v.blocked_at ? new Date(v.blocked_at).toLocaleDateString("fr-FR") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button
