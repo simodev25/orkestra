@@ -36,6 +36,7 @@ class MCPInvocation(BaseModel):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: new_id("mcp_inv_"))
     run_id: Mapped[str] = mapped_column(String(36))
     subagent_invocation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    calling_agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     mcp_id: Mapped[str] = mapped_column(String(100))
     mcp_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
     effect_type: Mapped[str] = mapped_column(String(30))

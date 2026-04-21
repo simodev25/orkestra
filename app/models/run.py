@@ -25,6 +25,7 @@ class Run(BaseModel):
     approval_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
     replay_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     final_output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class RunNode(BaseModel):
