@@ -440,6 +440,23 @@ export default function TestRunDetailPage() {
     }
   };
 
+  async function handleSaveOverrides() {
+    if (!run) return;
+    setOverrideSaving(true);
+    try {
+      await request(`/api/runs/${run.id}/config`, {
+        method: "PATCH",
+        body: JSON.stringify({ effect_overrides: effectOverrides }),
+      });
+      setOverrideSaved(true);
+      setTimeout(() => setOverrideSaved(false), 2000);
+    } catch {
+      // silently fail
+    } finally {
+      setOverrideSaving(false);
+    }
+  }
+
   // ── Graph view ──────────────────────────────────────────────────────
   if (view === 'graph' && run) {
     return (
@@ -809,6 +826,71 @@ export default function TestRunDetailPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Admin: effect overrides */}
+      {run && (
+        <div
+          style={{
+            border: '1px solid var(--ork-border)',
+            borderRadius: 'var(--radius)',
+            marginTop: 16,
+          }}
+        >
+          <details>
+            <summary
+              style={{
+                padding: '8px 12px',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--ork-muted)',
+                userSelect: 'none',
+              }}
+            >
+              ⚙ Override forbidden effects for this run
+              {effectOverrides.length > 0 && (
+                <span style={{ color: 'var(--ork-amber)', marginLeft: 8, fontSize: 10 }}>
+                  ⚠ {effectOverrides.length} override{effectOverrides.length > 1 ? 's' : ''} active
+                </span>
+              )}
+            </summary>
+            <div style={{ padding: '8px 12px', borderTop: '1px solid var(--ork-border)' }}>
+              <div className="flex flex-wrap gap-2" style={{ marginBottom: 10 }}>
+                {(["read", "search", "compute", "generate", "validate", "write", "act"] as const).map((effect) => (
+                  <label
+                    key={effect}
+                    className="flex items-center gap-1"
+                    style={{ fontSize: 12, cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={effectOverrides.includes(effect)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEffectOverrides((prev) => [...prev, effect]);
+                        } else {
+                          setEffectOverrides((prev) => prev.filter((x) => x !== effect));
+                        }
+                      }}
+                    />
+                    <span style={{ color: effectOverrides.includes(effect) ? 'var(--ork-amber)' : 'var(--ork-muted)' }}>
+                      {effect}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <button
+                onClick={handleSaveOverrides}
+                disabled={overrideSaving}
+                className="btn btn--ghost"
+                style={{ fontSize: 11 }}
+              >
+                {overrideSaving ? 'Saving...' : overrideSaved ? '✓ Saved' : 'Save overrides'}
+              </button>
+            </div>
+          </details>
         </div>
       )}
     </div>
