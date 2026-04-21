@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.models.run import Run
 from app.schemas.run import RunCreate, RunOut, RunNodeOut
 from app.services import execution_service
 
@@ -68,15 +69,12 @@ async def update_run_config(
     db: AsyncSession = Depends(get_db),
 ):
     """Update run configuration (admin: effect_overrides for forbidden effects bypass)."""
-    from app.models.run import Run
     run = await db.get(Run, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
-    # Merge into existing config (preserve other keys)
-    current_config = run.config or {}
-    current_config["effect_overrides"] = data.effect_overrides
-    run.config = current_config
+    # Merge into existing config (preserve other keys) — new dict ensures SQLAlchemy dirty tracking
+    run.config = {**(run.config or {}), "effect_overrides": data.effect_overrides}
     await db.flush()
     await db.commit()
     return {"run_id": run_id, "config": run.config}

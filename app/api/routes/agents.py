@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.family import AgentSkill
+from app.models.invocation import MCPInvocation
 from app.schemas.agent import (
     AgentCreate,
     AgentGenerationRequest,
@@ -314,9 +315,6 @@ async def list_agent_effect_violations(
     db: AsyncSession = Depends(get_db),
 ):
     """List MCPInvocations denied due to forbidden effects for this agent."""
-    from app.models.invocation import MCPInvocation
-    from sqlalchemy import select
-
     result = await db.execute(
         select(MCPInvocation)
         .where(
