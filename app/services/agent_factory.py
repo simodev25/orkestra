@@ -356,6 +356,54 @@ async def create_agentscope_agent(
                 # List available tools and register them
                 mcp_tools = await mcp_client.list_tools()
                 logger.info(f"MCP {mcp_id} ({srv['url']}): {len(mcp_tools)} tools found")
+
+                # Pre-flight effect enforcement: classify each tool and record
+                # denied invocations for tools whose ALL effects are forbidden.
+                # Only runs when the agent has forbidden_effects AND a run_id exists.
+                if agent_def.forbidden_effects and test_run_id and db:
+                    from app.services.effect_classifier import get_classifier
+                    from app.models.invocation import MCPInvocation
+                    from datetime import datetime, timezone
+                    from app.services.event_service import emit_event
+                    _eff_classifier = get_classifier()
+                    _forbidden_set = set(agent_def.forbidden_effects)
+                    _allowed_tools = []
+                    for _tool in mcp_tools:
+                        _effects = await _eff_classifier.classify(_tool.name, {})
+                        _blocked = [e for e in _effects if e in _forbidden_set]
+                        if _blocked and set(_effects) <= _forbidden_set:
+                            # ALL effects are forbidden — skip tool registration
+                            logger.warning(
+                                "[EffectEnforcement] Pre-flight: agent=%s tool=%s blocked effects=%s",
+                                agent_def.id, _tool.name, _blocked,
+                            )
+                            _inv = MCPInvocation(
+                                run_id=test_run_id,
+                                mcp_id=mcp_id,
+                                calling_agent_id=agent_def.id,
+                                effect_type=",".join(sorted(_blocked)),
+                                status="denied",
+                                approval_required=False,
+                                started_at=datetime.now(timezone.utc),
+                                ended_at=datetime.now(timezone.utc),
+                            )
+                            db.add(_inv)
+                            await db.flush()
+                            await emit_event(
+                                db, "mcp.denied", "runtime", "agent_factory",
+                                run_id=test_run_id,
+                                payload={
+                                    "mcp_id": mcp_id,
+                                    "agent_id": agent_def.id,
+                                    "reason": "forbidden_effect",
+                                    "tool": _tool.name,
+                                    "effects": _blocked,
+                                },
+                            )
+                        else:
+                            _allowed_tools.append(_tool)
+                    mcp_tools = _allowed_tools
+
                 # Patch known schema mismatches — some MCP servers declare
                 # complex object parameters as plain strings in their inputSchema,
                 # causing the LLM to generate strings where objects are required.

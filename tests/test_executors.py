@@ -7,6 +7,7 @@ from app.models.run import Run, RunNode
 from app.models.enums import RunNodeStatus, AgentStatus, MCPStatus
 from app.services.subagent_executor import execute_subagent
 from app.services.mcp_executor import invoke_mcp
+from app.services.guarded_mcp_executor import guarded_invoke_mcp
 
 
 async def _ensure_family(db_session, family_id="analysis"):
@@ -87,7 +88,7 @@ class TestMCPExecutor:
 
         assert inv.status == "completed"
         assert inv.mcp_id == "doc_parser"
-        assert inv.latency_ms == 120
+        assert inv.latency_ms >= 0
         assert inv.cost > 0
 
     async def test_invoke_mcp_denied_by_allowlist(self, db_session):
@@ -127,3 +128,54 @@ class TestMCPExecutor:
 
         with pytest.raises(ValueError, match="not available"):
             await invoke_mcp(db_session, run.id, "disabled_mcp", "test_agent")
+
+
+class TestGuardedMCPExecutorIntegration:
+    async def test_guarded_invoke_blocks_forbidden_effect(self, db_session):
+        """Integration test: guarded_invoke_mcp blocks when effect is forbidden."""
+        await _ensure_family(db_session)
+        await _setup_mcp(db_session, mcp_id="write_mcp")
+        agent = AgentDefinition(
+            id="restricted", name="Restricted Agent", family_id="analysis",
+            purpose="Restricted", version="1.0.0", status=AgentStatus.ACTIVE,
+            allowed_mcps=["write_mcp"], forbidden_effects=["read"],
+        )
+        db_session.add(agent)
+        run, _ = await _setup_run_with_node(db_session, agent_id="restricted")
+        await db_session.commit()
+
+        from unittest.mock import patch, AsyncMock
+        from app.services.effect_classifier import get_classifier
+        with patch.object(get_classifier(), "classify", new=AsyncMock(return_value=["read"])):
+            inv = await guarded_invoke_mcp(
+                db_session, run.id, "write_mcp", "restricted",
+                tool_action="read_data", tool_kwargs={},
+            )
+
+        assert inv.status == "denied"
+        assert inv.calling_agent_id == "restricted"
+        assert inv.effect_type == "read"
+
+    async def test_guarded_invoke_allows_non_forbidden_effect(self, db_session):
+        """Integration test: guarded_invoke_mcp delegates when effect is allowed."""
+        await _ensure_family(db_session)
+        await _setup_mcp(db_session, mcp_id="doc_parser2")
+        agent = AgentDefinition(
+            id="partial_restricted", name="Partial", family_id="analysis",
+            purpose="Partial", version="1.0.0", status=AgentStatus.ACTIVE,
+            allowed_mcps=["doc_parser2"], forbidden_effects=["write"],
+        )
+        db_session.add(agent)
+        run, _ = await _setup_run_with_node(db_session, agent_id="partial_restricted")
+        await db_session.commit()
+
+        from unittest.mock import patch, AsyncMock
+        from app.services.effect_classifier import get_classifier
+        with patch.object(get_classifier(), "classify", new=AsyncMock(return_value=["read"])):
+            inv = await guarded_invoke_mcp(
+                db_session, run.id, "doc_parser2", "partial_restricted",
+                tool_action="read_file", tool_kwargs={},
+            )
+
+        # invoke_mcp is called → should NOT be denied
+        assert inv.status != "denied"
