@@ -13,3 +13,8 @@ storage/
 debug-strategy/*
 debug-scenarios/*
 .superpowers/
+
+.samourai/
+.opencode
+.ai
+governance/
