@@ -127,11 +127,11 @@ This change fixes a security-relevant policy misconfiguration where the read-onl
 
 - [x] Reconcile with spec and test plan (ensure acceptance criteria are met and referenced tests exist). (validated AC-F1-1/AC-F1-2/AC-F2-1/AC-F3-1/AC-F4-1/AC-NFR3-1 via TC-WORDTEST-001..006)
 - [x] Apply version bump if repo conventions require explicit bump for `version_impact: patch`. (no repo CHANGELOG/version-bump convention file found; no bump applied)
-- [ ] Commit all changes.
+- [x] Commit all changes. (commit `9762144`: `test(BUG-2): add word_test_agent write bypass regression tests`)
 
 **Acceptance Criteria**:
 
-- Must: Git history contains a commit for BUG-2 work; tests pass. — PENDING COMMIT (tests PASSED: `python3 -m pytest tests/test_word_test_agent_policy.py -v --asyncio-mode=auto`)
+- Must: Git history contains a commit for BUG-2 work; tests pass. — PASSED (commit `9762144`; tests PASSED: `python3 -m pytest tests/test_word_test_agent_policy.py -v --asyncio-mode=auto`)
 - Should: Spec/test plan links remain accurate. — PASSED (links unchanged and valid)
 
 **Files and modules**:
@@ -179,3 +179,4 @@ Manual / Deferred (per test plan; not required for this plan’s remaining work)
 |---|---|---|
 | 2026-04-24 | @plan-writer | fix/BUG-2/word-test-agent-write-bypass | Plan created; fix marked done; tests & commit remain |
 | 2026-04-24 | @coder | fix/BUG-2/word-test-agent-write-bypass | Phase 2 executed: added TC-WORDTEST-001..006 in `tests/test_word_test_agent_policy.py`; targeted pytest run passed (6/6). |
+| 2026-04-24 | @committer | fix/BUG-2/word-test-agent-write-bypass | Phase 3 commit completed (`9762144`) after reconciliation/version-bump check. |
