@@ -13,11 +13,11 @@ The system is composed of eleven backend subsystems, a Next.js frontend, and an 
 | Subsystem | Responsibility | Key files |
 |-----------|---------------|-----------|
 | Agent Registry | CRUD, versioning, lifecycle state machine | `app/services/agent_registry_service.py`, `app/models/registry.py`, `app/state_machines/agent_lifecycle_sm.py` |
-| Agent Factory | Creates live ReActAgent from an AgentDefinition | `app/services/agent_factory.py` |
+| Agent Factory | Creates live ReActAgent from an AgentDefinition; pre-flight effect enforcement | `app/services/agent_factory.py` |
 | Families / Skills | Reusable prompt blocks; seeded from JSON at startup | `app/services/seed_service.py`, `app/config/families.seed.json`, `app/config/skills.seed.json` |
-| MCP Integration | Obot catalog sync; per-binding `enabled_in_orkestra` flag controls tool availability | `app/services/obot_catalog_service.py`, `app/services/mcp_registry_service.py` |
+| MCP Integration | Obot catalog sync; per-binding `enabled_in_orkestra` flag controls tool availability; runtime effect enforcement | `app/services/obot_catalog_service.py`, `app/services/mcp_registry_service.py`, `app/services/guarded_mcp_executor.py` |
 | Test Lab | Scenario execution and LLM-based evaluation | `app/services/test_lab/` (16 files), `app/tasks/test_lab.py` |
-| Governance | Approval workflows, audit trail, forbidden-effect declarations | `app/services/approval_service.py`, `app/services/audit_service.py`, `app/state_machines/` |
+| Governance | Approval workflows, audit trail, forbidden-effect declarations and enforcement | `app/services/approval_service.py`, `app/services/audit_service.py`, `app/state_machines/`, `app/services/effect_classifier.py` |
 | Prompt Builder | Assembles the 7-layer system prompt | `app/services/prompt_builder.py` |
 | Secrets | Fernet-encrypted secrets stored in the database | `app/services/secret_service.py`, `app/models/secret.py` |
 | API Layer | FastAPI, 20 routers, rate limiting, auth | `app/main.py`, `app/api/routes/` |
@@ -123,12 +123,26 @@ Layer 7 is the primary mechanism through which governance constraints reach the 
 
 Forbidden effects are declared at two levels:
 
-- `agent.forbidden_effects` — per-agent list of effect categories (e.g., `"external_write"`, `"financial_transaction"`)
+- `agent.forbidden_effects` — per-agent list of effect categories (e.g., `"write"`, `"publish"`, `"external_act"`)
 - `family.default_forbidden_effects` — family-level defaults
 
-At runtime, `prompt_builder` merges the two sets and injects the union into Layer 7 of the system prompt. The LLM reads this as a behavioral constraint.
+At runtime, enforcement occurs at three layers:
 
-**The API layer does not programmatically block calls based on forbidden effects.** Enforcement is model-behavioral, not code-enforced. There is no pre-execution check that refuses an invocation because the agent's action would violate a declared forbidden effect.
+1. **Pre-flight enforcement**: When an agent is created, `agent_factory.py` classifies each MCP tool against the agent's `forbidden_effects`. Tools with forbidden effects are excluded from the agent's toolkit entirely. A `denied` `MCPInvocation` record is created for each blocked tool.
+
+2. **Runtime enforcement**: When an agent attempts to call an MCP tool, `guarded_mcp_executor.guarded_invoke_mcp()` classifies the tool action. If any effect is forbidden, the call is blocked, a `denied` `MCPInvocation` is persisted, and an `mcp.denied` event is emitted.
+
+3. **Prompt-level guidance**: `prompt_builder` merges family and agent forbidden effects and injects the union into Layer 7 of the system prompt. The LLM reads this as a behavioral constraint. This serves as defense-in-depth.
+
+**Code-level enforcement exists at both pre-flight (tool registration) and runtime (tool invocation).** An LLM cannot bypass these constraints.
+
+#### Effect classification
+
+`EffectClassifier` (`app/services/effect_classifier.py`) maps MCP tool names to effect category strings using heuristic rules. Examples: `write_doc` → `["write"]`, `publish_article` → `["publish"]`.
+
+#### Run-level overrides
+
+`guarded_invoke_mcp()` accepts `run_effect_overrides: list[str]`. Effects in this list are temporarily allowed for a specific test run, enabling controlled testing of otherwise-forbidden operations. Overrides are scoped to the test run and do not modify the agent's base policy.
 
 ### Approval workflows
 
@@ -141,7 +155,9 @@ At runtime, `prompt_builder` merges the two sets and injects the union into Laye
 - Approval decisions
 - Lifecycle state transitions
 
-Records are immutable and stored in the `audit_events` table. There is no mechanism to delete or amend them.
+`MCPInvocation` records are written for every MCP tool call, including denied calls. Denied invocations have `status="denied"` and `effect_type` populated with the blocked effect categories.
+
+Records are immutable and stored in their respective tables. There is no mechanism to delete or amend them.
 
 ---
 
