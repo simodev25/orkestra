@@ -96,18 +96,18 @@ This change fixes a security-relevant policy misconfiguration where the read-onl
 
 **Tasks**:
 
-- [ ] Create `tests/test_word_test_agent_policy.py`.
-- [ ] Implement TC-WORDTEST-001: effect classification maps `write_doc` → `["write"]`.
-- [ ] Implement TC-WORDTEST-002: `guarded_mcp_executor` denies `write_doc` when agent forbids `"write"` (assert `MCPInvocation.status == "denied"`; ensure MCP tool is not executed).
-- [ ] Implement TC-WORDTEST-003: `word_test_agent.forbidden_effects` contains `"write"`.
-- [ ] Implement TC-WORDTEST-004: prompt content explicitly prohibits `write_doc` and does not invite it.
-- [ ] Implement TC-WORDTEST-005: `routing_keywords` excludes `"write_doc"`.
-- [ ] Implement TC-WORDTEST-006: `purpose`/`description` communicate read-only scope with no write capability claims.
+- [x] Create `tests/test_word_test_agent_policy.py`. (added `tests/test_word_test_agent_policy.py`)
+- [x] Implement TC-WORDTEST-001: effect classification maps `write_doc` → `["write"]`. (`test_tc_wordtest_001_heuristic_maps_write_doc_to_write`)
+- [x] Implement TC-WORDTEST-002: `guarded_mcp_executor` denies `write_doc` when agent forbids `"write"` (assert `MCPInvocation.status == "denied"`; ensure MCP tool is not executed). (`test_tc_wordtest_002_executor_denies_write_doc_for_write_forbidden_agent`, `invoke_mcp` mocked/not called)
+- [x] Implement TC-WORDTEST-003: `word_test_agent.forbidden_effects` contains `"write"`. (`test_tc_wordtest_003_agent_forbidden_effects_contains_write`)
+- [x] Implement TC-WORDTEST-004: prompt content explicitly prohibits `write_doc` and does not invite it. (`test_tc_wordtest_004_prompt_prohibits_write_doc`)
+- [x] Implement TC-WORDTEST-005: `routing_keywords` excludes `"write_doc"`. (`test_tc_wordtest_005_routing_keywords_excludes_write_doc`)
+- [x] Implement TC-WORDTEST-006: `purpose`/`description` communicate read-only scope with no write capability claims. (`test_tc_wordtest_006_purpose_and_description_are_read_only`)
 
 **Acceptance Criteria**:
 
-- Must: TC-WORDTEST-001..006 pass locally via `pytest`.
-- Must: Covers spec AC-F1-1, AC-F1-2, AC-F2-1, AC-F3-1, AC-F4-1, and AC-NFR3-1.
+- Must: TC-WORDTEST-001..006 pass locally via `pytest`. — PASSED (`python3 -m pytest tests/test_word_test_agent_policy.py -v --asyncio-mode=auto`, 6 passed)
+- Must: Covers spec AC-F1-1, AC-F1-2, AC-F2-1, AC-F3-1, AC-F4-1, and AC-NFR3-1. — PASSED (TC-WORDTEST-001..006 implemented in `tests/test_word_test_agent_policy.py`)
 
 **Files and modules**:
 
@@ -125,14 +125,14 @@ This change fixes a security-relevant policy misconfiguration where the read-onl
 
 **Tasks**:
 
-- [ ] Reconcile with spec and test plan (ensure acceptance criteria are met and referenced tests exist).
-- [ ] Apply version bump if repo conventions require explicit bump for `version_impact: patch`.
+- [x] Reconcile with spec and test plan (ensure acceptance criteria are met and referenced tests exist). (validated AC-F1-1/AC-F1-2/AC-F2-1/AC-F3-1/AC-F4-1/AC-NFR3-1 via TC-WORDTEST-001..006)
+- [x] Apply version bump if repo conventions require explicit bump for `version_impact: patch`. (no repo CHANGELOG/version-bump convention file found; no bump applied)
 - [ ] Commit all changes.
 
 **Acceptance Criteria**:
 
-- Must: Git history contains a commit for BUG-2 work; tests pass.
-- Should: Spec/test plan links remain accurate.
+- Must: Git history contains a commit for BUG-2 work; tests pass. — PENDING COMMIT (tests PASSED: `python3 -m pytest tests/test_word_test_agent_policy.py -v --asyncio-mode=auto`)
+- Should: Spec/test plan links remain accurate. — PASSED (links unchanged and valid)
 
 **Files and modules**:
 
@@ -178,3 +178,4 @@ Manual / Deferred (per test plan; not required for this plan’s remaining work)
 | Date (UTC) | Executor | Branch | Notes |
 |---|---|---|
 | 2026-04-24 | @plan-writer | fix/BUG-2/word-test-agent-write-bypass | Plan created; fix marked done; tests & commit remain |
+| 2026-04-24 | @coder | fix/BUG-2/word-test-agent-write-bypass | Phase 2 executed: added TC-WORDTEST-001..006 in `tests/test_word_test_agent_policy.py`; targeted pytest run passed (6/6). |
