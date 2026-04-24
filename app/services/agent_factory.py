@@ -6,8 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.registry import AgentDefinition
 from app.llm.provider import get_chat_model, get_formatter, is_agentscope_available, make_ollama_model
+from app.services.mcp_compat import apply_mcp_patches
 
 logger = logging.getLogger(__name__)
+
+# Apply MCP SDK compatibility patches (structuredContent list→dict,
+# ExceptionGroup unwrapping) at import time.
+apply_mcp_patches()
 
 # ── MCP schema patches ────────────────────────────────────────────────────────
 
