@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -113,7 +113,7 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
 // Main Page
 // ═════════════════════════════════════════════════════════════════════════════
 
-export default function TestLabPage() {
+function TestLabContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<"scenarios" | "interactive">(
@@ -344,29 +344,21 @@ export default function TestLabPage() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-[calc(100vh-0px)]">
+    <div className="animate-fade-in flex flex-col h-full">
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-6 pt-6 pb-0">
         <div className="max-w-[1200px] mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <FlaskConical size={18} className="text-ork-purple" />
-              <h1 className="font-mono text-sm tracking-wide text-ork-text uppercase">
-                Agentic Test Lab
-              </h1>
+          <div className="pagehead" style={{ marginBottom: "16px" }}>
+            <div>
+              <h1>Test Lab</h1>
+              <p>Testez vos agents en mode interactif ou exécutez des scénarios automatisés.</p>
             </div>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/test-lab/scenarios/new"
-                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-cyan/15 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/25 transition-colors"
-              >
+            <div className="pagehead__actions">
+              <Link href="/test-lab/scenarios/new" className="btn btn--cyan">
                 <Plus size={13} />
                 Create Scenario
               </Link>
-              <Link
-                href="/test-lab/config"
-                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-surface text-ork-muted border border-ork-border rounded hover:text-ork-text hover:border-ork-dim transition-colors"
-              >
+              <Link href="/test-lab/config" className="btn">
                 <Settings size={13} />
                 Config
               </Link>
@@ -430,12 +422,17 @@ export default function TestLabPage() {
                         <button
                           key={a.id}
                           onClick={() => void handleSelectAgent(a)}
-                          className={`w-full text-left px-3 py-2 text-xs font-mono hover:bg-ork-hover/40 transition-colors ${
-                            a.id === selectedAgentId ? "text-ork-cyan" : "text-ork-muted"
+                          className={`w-full text-left px-3 border-b border-ork-border/40 last:border-0 hover:bg-ork-hover/40 transition-colors ${
+                            a.id === selectedAgentId ? "bg-ork-cyan/5" : ""
                           }`}
+                          style={{ paddingTop: "7px", paddingBottom: "7px" }}
                         >
-                          <span className="block text-ork-text">{a.name}</span>
-                          <span className="block text-[10px] text-ork-dim">{a.id}</span>
+                          <div style={{ fontSize: "12px", lineHeight: "16px", color: a.id === selectedAgentId ? "var(--ork-cyan)" : "var(--ork-text)", fontFamily: "var(--font-sans)", fontWeight: 500 }}>
+                            {a.name}
+                          </div>
+                          <div style={{ fontSize: "10px", lineHeight: "14px", color: "var(--ork-muted-2)", fontFamily: "var(--font-mono)", marginTop: "1px" }}>
+                            {a.id}
+                          </div>
                         </button>
                       ))
                     )}
@@ -447,7 +444,7 @@ export default function TestLabPage() {
               <button
                 onClick={() => void handleNewSession()}
                 disabled={chatLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-wider bg-ork-surface text-ork-muted border border-ork-border rounded hover:text-ork-text hover:border-ork-dim transition-colors disabled:opacity-50"
+                className="btn"
               >
                 <Plus size={11} />
                 New Session
@@ -559,7 +556,7 @@ export default function TestLabPage() {
                 placeholder={!sessionId ? "Initializing..." : !targetAgent ? "Select an agent or type: Test [agent_id] on [objective]" : "Describe your test..."}
                 disabled={chatLoading || !sessionId}
                 rows={1}
-                className="flex-1 resize-none bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim/50 focus:outline-none focus:border-ork-cyan/40 transition-colors disabled:opacity-50 min-h-[38px] max-h-[120px] overflow-y-auto"
+                className="field flex-1 resize-none min-h-[38px] max-h-[120px] overflow-y-auto disabled:opacity-50"
                 style={{ height: "auto" }}
                 onInput={(e) => {
                   const el = e.currentTarget;
@@ -570,7 +567,7 @@ export default function TestLabPage() {
               <button
                 onClick={() => void sendMessage(chatInput)}
                 disabled={chatLoading || !chatInput.trim() || !sessionId}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider bg-ork-cyan/15 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                className="btn btn--cyan flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {chatLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                 Send
@@ -597,16 +594,16 @@ export default function TestLabPage() {
 
             {/* ── Filter bar ── */}
             {!scenariosLoading && scenarios.length > 0 && (
-              <div className="glass-panel p-3 flex flex-wrap items-center gap-2">
+              <div className="filters" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr auto" }}>
                 {/* Text search */}
-                <div className="relative flex-1 min-w-[180px]">
-                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ork-dim pointer-events-none" />
+                <div className="fieldwrap">
+                  <Search size={12} />
                   <input
                     type="text"
                     value={filterText}
                     onChange={(e) => setFilterText(e.target.value)}
                     placeholder="Search name or agent…"
-                    className="w-full pl-7 pr-3 py-1.5 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-text placeholder:text-ork-dim/50 focus:outline-none focus:border-ork-cyan/40 transition-colors"
+                    className="field"
                   />
                 </div>
 
@@ -614,7 +611,7 @@ export default function TestLabPage() {
                 <select
                   value={filterAgent}
                   onChange={(e) => setFilterAgent(e.target.value)}
-                  className="py-1.5 pl-2.5 pr-6 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-muted focus:outline-none focus:border-ork-cyan/40 transition-colors appearance-none cursor-pointer"
+                  className="field"
                 >
                   <option value="">All agents</option>
                   {scenarioAgents.map((a) => (
@@ -623,24 +620,24 @@ export default function TestLabPage() {
                 </select>
 
                 {/* Tag filter */}
-                {scenarioTags.length > 0 && (
+                {scenarioTags.length > 0 ? (
                   <select
                     value={filterTag}
                     onChange={(e) => setFilterTag(e.target.value)}
-                    className="py-1.5 pl-2.5 pr-6 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-muted focus:outline-none focus:border-ork-cyan/40 transition-colors appearance-none cursor-pointer"
+                    className="field"
                   >
                     <option value="">All tags</option>
                     {scenarioTags.map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
-                )}
+                ) : <div />}
 
                 {/* Enabled filter */}
                 <select
                   value={filterEnabled}
                   onChange={(e) => setFilterEnabled(e.target.value as "all" | "enabled" | "disabled")}
-                  className="py-1.5 pl-2.5 pr-6 text-xs font-mono bg-ork-bg border border-ork-border rounded text-ork-muted focus:outline-none focus:border-ork-cyan/40 transition-colors appearance-none cursor-pointer"
+                  className="field"
                 >
                   <option value="all">All</option>
                   <option value="enabled">Enabled</option>
@@ -648,18 +645,15 @@ export default function TestLabPage() {
                 </select>
 
                 {/* Clear + count */}
-                <div className="flex items-center gap-2 ml-auto">
-                  <span className="text-[10px] font-mono text-ork-dim">
+                <div className="flex items-center gap-2">
+                  <span className="section-title">
                     {filteredScenarios.length}
                     {filteredScenarios.length !== scenarios.length && (
                       <span className="text-ork-dim/50"> / {scenarios.length}</span>
                     )}
                   </span>
                   {hasActiveFilter && (
-                    <button
-                      onClick={clearFilters}
-                      className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-ork-dim hover:text-ork-text border border-ork-border rounded hover:border-ork-dim transition-colors"
-                    >
+                    <button onClick={clearFilters} className="btn btn--ghost">
                       <X size={10} /> Clear
                     </button>
                   )}
@@ -668,11 +662,11 @@ export default function TestLabPage() {
             )}
 
             {scenariosLoading ? (
-              <div className="glass-panel p-16 text-center">
-                <div className="text-ork-cyan font-mono text-sm animate-pulse">Loading scenarios...</div>
+              <div className="tablewrap" style={{ padding: "64px 0", textAlign: "center" }}>
+                <span className="section-title" style={{ color: "var(--ork-cyan)" }}>Loading scenarios...</span>
               </div>
             ) : (
-              <div className="glass-panel overflow-hidden">
+              <div className="tablewrap" style={{ overflowX: "auto" }}>
                 {scenarios.length === 0 ? (
                   <p className="text-ork-muted font-mono text-xs text-center py-12">
                     No scenarios yet. Create one to get started.
@@ -680,54 +674,55 @@ export default function TestLabPage() {
                 ) : filteredScenarios.length === 0 ? (
                   <div className="text-center py-12">
                     <p className="text-ork-muted font-mono text-xs">No scenarios match the current filters.</p>
-                    <button onClick={clearFilters} className="mt-2 text-[10px] font-mono text-ork-cyan hover:text-ork-cyan/80 transition-colors">
+                    <button onClick={clearFilters} className="btn btn--ghost" style={{ marginTop: "8px" }}>
                       Clear filters
                     </button>
                   </div>
                 ) : (
-                  <table className="w-full text-xs">
+                  <table className="table">
                     <thead>
-                      <tr className="border-b border-ork-border">
-                        <th className="data-label text-left px-4 py-2.5">Name</th>
-                        <th className="data-label text-left px-4 py-2.5">Agent</th>
-                        <th className="data-label text-left px-4 py-2.5">Assertions</th>
-                        <th className="data-label text-left px-4 py-2.5">Timeout</th>
-                        <th className="data-label text-left px-4 py-2.5">Tags</th>
-                        <th className="data-label text-left px-4 py-2.5">Enabled</th>
-                        <th className="data-label text-left px-4 py-2.5">Actions</th>
+                      <tr>
+                        <th>Name</th>
+                        <th>Agent</th>
+                        <th>Assertions</th>
+                        <th>Timeout</th>
+                        <th>Tags</th>
+                        <th>Enabled</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredScenarios.map((s) => (
-                        <tr key={s.id} className="border-b border-ork-border/50 hover:bg-ork-hover/30 transition-colors">
-                          <td className="px-4 py-2.5 font-mono text-ork-text font-medium">{s.name}</td>
-                          <td className="px-4 py-2.5 font-mono text-ork-muted">{s.agent_id}</td>
-                          <td className="px-4 py-2.5 font-mono text-ork-muted">{s.assertions?.length ?? 0}</td>
-                          <td className="px-4 py-2.5 font-mono text-ork-dim">{s.timeout_seconds}s</td>
-                          <td className="px-4 py-2.5">
-                            <div className="flex gap-1 flex-wrap">
+                        <tr key={s.id}>
+                          <td className="col-name">{s.name}</td>
+                          <td className="col-fam">{s.agent_id}</td>
+                          <td>{s.assertions?.length ?? 0}</td>
+                          <td>{s.timeout_seconds}s</td>
+                          <td>
+                            <div className="flex gap-1 flex-nowrap overflow-hidden">
                               {s.tags?.map((tag) => (
-                                <span key={tag} className="text-[10px] font-mono text-ork-purple bg-ork-purple/10 border border-ork-purple/20 px-1.5 py-0.5 rounded">
+                                <span key={tag} className="chip chip--mini shrink-0" style={{ color: "var(--ork-purple)", background: "var(--ork-purple-bg)", borderColor: "color-mix(in oklch, var(--ork-purple) 25%, transparent)" }}>
                                   {tag}
                                 </span>
                               ))}
                             </div>
                           </td>
-                          <td className="px-4 py-2.5">
+                          <td>
                             <StatusBadge status={s.enabled ? "active" : "disabled"} />
                           </td>
-                          <td className="px-4 py-2.5">
+                          <td>
                             <div className="flex items-center gap-2">
-                              <Link href={`/test-lab/scenarios/${s.id}`} className="flex items-center gap-1 text-ork-cyan hover:text-ork-cyan/80 transition-colors font-mono text-[10px]">
+                              <Link href={`/test-lab/scenarios/${s.id}`} className="btn btn--ghost" style={{ height: "22px", padding: "0 6px", fontSize: "11px" }}>
                                 <Eye size={12} /> View
                               </Link>
-                              <Link href={`/test-lab/scenarios/${s.id}/edit`} className="flex items-center gap-1 text-ork-dim hover:text-ork-text transition-colors font-mono text-[10px]">
+                              <Link href={`/test-lab/scenarios/${s.id}/edit`} className="btn btn--ghost" style={{ height: "22px", padding: "0 6px", fontSize: "11px" }}>
                                 <Pencil size={11} /> Edit
                               </Link>
                               <button
                                 onClick={() => handleRun(s.id)}
                                 disabled={runningId === s.id}
-                                className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-ork-green/15 text-ork-green border border-ork-green/30 rounded hover:bg-ork-green/25 transition-colors disabled:opacity-50"
+                                className="btn btn--cyan disabled:opacity-50"
+                                style={{ height: "22px", padding: "0 8px", fontSize: "11px" }}
                               >
                                 <Play size={10} />
                                 {runningId === s.id ? "Starting..." : "Run"}
@@ -737,16 +732,18 @@ export default function TestLabPage() {
                                   <button
                                     onClick={() => handleDelete(s.id)}
                                     disabled={deletingId === s.id}
-                                    className="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-ork-red/15 text-ork-red border border-ork-red/30 rounded hover:bg-ork-red/25 transition-colors disabled:opacity-50"
+                                    className="btn btn--red disabled:opacity-50"
+                                    style={{ height: "22px", padding: "0 8px", fontSize: "11px" }}
                                   >
                                     {deletingId === s.id ? "..." : "Confirm"}
                                   </button>
-                                  <button onClick={() => setConfirmDeleteId(null)} className="text-[10px] font-mono text-ork-dim hover:text-ork-text">Cancel</button>
+                                  <button onClick={() => setConfirmDeleteId(null)} className="btn btn--ghost" style={{ height: "22px", padding: "0 6px", fontSize: "11px" }}>Cancel</button>
                                 </span>
                               ) : (
                                 <button
                                   onClick={() => setConfirmDeleteId(s.id)}
-                                  className="flex items-center gap-1 text-ork-dim hover:text-ork-red transition-colors font-mono text-[10px]"
+                                  className="btn btn--ghost"
+                                  style={{ height: "22px", padding: "0 6px", fontSize: "11px", color: "var(--ork-muted-2)" }}
                                 >
                                   <Trash2 size={11} /> Delete
                                 </button>
@@ -764,5 +761,13 @@ export default function TestLabPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function TestLabPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-ork-dim font-mono text-xs">Loading...</div>}>
+      <TestLabContent />
+    </Suspense>
   );
 }

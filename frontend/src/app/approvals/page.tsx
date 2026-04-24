@@ -64,35 +64,33 @@ export default function ApprovalsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[60vh]">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-2 border-ork-amber/30 border-t-ork-amber rounded-full animate-spin mx-auto" />
-          <p className="data-label">LOADING APPROVAL WORKBENCH...</p>
+      <div className="page animate-fade-in" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <div style={{ textAlign: "center" }}>
+          <div className="w-8 h-8 border-2 border-ork-amber/30 border-t-ork-amber rounded-full animate-spin mx-auto" style={{ marginBottom: "10px" }} />
+          <p className="section-title">LOADING APPROVAL WORKBENCH...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="page animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="pagehead">
         <div>
-          <h1 className="section-title text-sm mb-1">APPROVAL WORKBENCH</h1>
-          <p className="text-ork-dim text-xs font-mono">
-            Review and action pending governance approvals
-          </p>
+          <h1>Approval Workbench</h1>
+          <p>Review and action pending governance approvals</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="pagehead__actions">
           {error && (
-            <span className="text-[10px] font-mono text-ork-red bg-ork-red/10 border border-ork-red/20 rounded px-2 py-1">
+            <span style={{ fontSize: "11px", fontFamily: "var(--font-mono)", color: "var(--ork-red)", background: "var(--ork-red-bg)", border: "1px solid color-mix(in oklch, var(--ork-red) 25%, transparent)", borderRadius: "var(--radius)", padding: "3px 8px" }}>
               {error}
             </span>
           )}
           {pendingCount > 0 && (
-            <div className="flex items-center gap-2 bg-ork-amber/10 border border-ork-amber/20 rounded-lg px-3 py-1.5">
-              <div className="w-2 h-2 rounded-full bg-ork-amber glow-dot animate-pulse-slow" />
-              <span className="font-mono text-xs text-ork-amber">
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--ork-amber-bg)", border: "1px solid color-mix(in oklch, var(--ork-amber) 25%, transparent)", borderRadius: "var(--radius)", padding: "4px 10px" }}>
+              <div className="glow-dot animate-pulse-slow" style={{ color: "var(--ork-amber)" }} />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--ork-amber)" }}>
                 {pendingCount} PENDING
               </span>
             </div>
@@ -101,7 +99,7 @@ export default function ApprovalsPage() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="stats" style={{ marginBottom: "12px" }}>
         <StatCard label="TOTAL APPROVALS" value={approvals.length} accent="cyan" />
         <StatCard
           label="PENDING / REQUESTED"
@@ -121,17 +119,14 @@ export default function ApprovalsPage() {
       </div>
 
       {/* Filter */}
-      <div className="glass-panel p-4 flex items-center gap-2">
-        <span className="data-label mr-2">STATUS</span>
+      <div className="glass-panel" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
+        <span className="data-label" style={{ marginRight: "4px" }}>STATUS</span>
         {STATUSES.map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider rounded border transition-colors duration-150 ${
-              statusFilter === s
-                ? "bg-ork-cyan/15 text-ork-cyan border-ork-cyan/30"
-                : "border-ork-border text-ork-muted hover:text-ork-text hover:border-ork-dim"
-            }`}
+            className={`btn${statusFilter === s ? " btn--cyan" : ""}`}
+            style={{ fontFamily: "var(--font-mono)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em" }}
           >
             {s}
           </button>
@@ -140,9 +135,9 @@ export default function ApprovalsPage() {
 
       {/* Approval Cards */}
       {approvals.length === 0 ? (
-        <div className="glass-panel p-12 text-center">
-          <p className="text-ork-muted text-sm">No approvals found</p>
-          <p className="text-ork-dim text-xs font-mono mt-1">
+        <div className="glass-panel" style={{ padding: "48px", textAlign: "center" }}>
+          <p style={{ color: "var(--ork-muted)", fontSize: "13px" }}>No approvals found</p>
+          <p style={{ color: "var(--ork-muted-2)", fontSize: "11px", fontFamily: "var(--font-mono)", marginTop: "4px" }}>
             Approval requests appear when governance policies require human review
           </p>
         </div>
@@ -153,45 +148,36 @@ export default function ApprovalsPage() {
             return (
               <div
                 key={a.id}
-                className={`glass-panel-hover p-5 space-y-4 ${
-                  isPending ? "border-l-2 border-l-ork-amber/40" : ""
-                }`}
+                className={`glass-panel glass-panel-hover${isPending ? " border-l-2 border-l-ork-amber/40" : ""}`}
+                style={{ padding: "14px 16px" }}
               >
                 {/* Card header */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-ork-purple uppercase tracking-wider">
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px", marginBottom: "12px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--ork-purple)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                         {a.approval_type}
                       </span>
                       <StatusBadge status={a.status} />
                     </div>
-                    <p className="text-sm text-ork-text">{a.reason}</p>
+                    <p style={{ fontSize: "13px", color: "var(--ork-text)", margin: 0 }}>{a.reason}</p>
                   </div>
                 </div>
 
-                {/* Metadata */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="data-label mb-0.5">RUN ID</p>
-                    <p className="font-mono text-xs text-ork-cyan">{a.run_id.slice(0, 12)}</p>
-                  </div>
-                  <div>
-                    <p className="data-label mb-0.5">CASE ID</p>
-                    <p className="font-mono text-xs text-ork-cyan">{a.case_id.slice(0, 12)}</p>
-                  </div>
-                  <div>
-                    <p className="data-label mb-0.5">REVIEWER ROLE</p>
-                    <p className="text-xs text-ork-text">{a.reviewer_role || "\u2014"}</p>
-                  </div>
-                  <div>
-                    <p className="data-label mb-0.5">ASSIGNED TO</p>
-                    <p className="text-xs text-ork-text">{a.assigned_to || "\u2014"}</p>
-                  </div>
+                {/* Metadata KV */}
+                <div className="kv" style={{ marginBottom: "10px" }}>
+                  <span className="k">RUN ID</span>
+                  <span className="v cyan">{a.run_id.slice(0, 12)}</span>
+                  <span className="k">CASE ID</span>
+                  <span className="v cyan">{a.case_id.slice(0, 12)}</span>
+                  <span className="k">REVIEWER ROLE</span>
+                  <span className="v">{a.reviewer_role || "\u2014"}</span>
+                  <span className="k">ASSIGNED TO</span>
+                  <span className="v">{a.assigned_to || "\u2014"}</span>
                 </div>
 
                 {/* Timestamps */}
-                <div className="flex items-center gap-4 text-[10px] font-mono text-ork-dim">
+                <div style={{ display: "flex", gap: "16px", fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--ork-muted-2)", marginBottom: "8px" }}>
                   {a.requested_at && (
                     <span>REQ: {new Date(a.requested_at).toLocaleString()}</span>
                   )}
@@ -202,15 +188,15 @@ export default function ApprovalsPage() {
 
                 {/* Decision comment if resolved */}
                 {a.decision_comment && (
-                  <div className="bg-ork-bg rounded-lg p-3 border border-ork-border/50">
-                    <p className="data-label mb-1">DECISION COMMENT</p>
-                    <p className="text-xs text-ork-text">{a.decision_comment}</p>
+                  <div style={{ background: "var(--ork-bg)", borderRadius: "var(--radius)", padding: "10px 12px", border: "1px solid var(--ork-border)", marginBottom: "8px" }}>
+                    <p className="data-label" style={{ marginBottom: "4px" }}>DECISION COMMENT</p>
+                    <p style={{ fontSize: "12px", color: "var(--ork-text)", margin: 0 }}>{a.decision_comment}</p>
                   </div>
                 )}
 
                 {/* Actions for pending items */}
                 {isPending && (
-                  <div className="space-y-3 pt-2 border-t border-ork-border/50">
+                  <div style={{ paddingTop: "10px", borderTop: "1px solid var(--ork-border)", display: "flex", flexDirection: "column", gap: "8px" }}>
                     <input
                       type="text"
                       placeholder="Optional comment..."
@@ -218,20 +204,44 @@ export default function ApprovalsPage() {
                       onChange={(e) =>
                         setComments((prev) => ({ ...prev, [a.id]: e.target.value }))
                       }
-                      className="w-full bg-ork-bg border border-ork-border rounded px-3 py-1.5 text-xs text-ork-text font-mono placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40"
+                      className="field"
+                      style={{ width: "100%" }}
                     />
-                    <div className="flex gap-2">
+                    <div style={{ display: "flex", gap: "6px" }}>
                       <button
                         onClick={() => handleApprove(a.id)}
                         disabled={actionLoading === a.id}
-                        className="flex-1 px-3 py-2 text-[11px] font-mono uppercase tracking-wider rounded border border-ork-green/30 bg-ork-green/10 text-ork-green hover:bg-ork-green/20 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="btn"
+                        style={{
+                          flex: 1,
+                          color: "var(--ork-green)",
+                          background: "var(--ork-green-bg)",
+                          borderColor: "color-mix(in oklch, var(--ork-green) 30%, transparent)",
+                          opacity: actionLoading === a.id ? 0.5 : 1,
+                          cursor: actionLoading === a.id ? "not-allowed" : undefined,
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "11px",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          justifyContent: "center",
+                        }}
                       >
                         {actionLoading === a.id ? "..." : "APPROVE"}
                       </button>
                       <button
                         onClick={() => handleReject(a.id)}
                         disabled={actionLoading === a.id}
-                        className="flex-1 px-3 py-2 text-[11px] font-mono uppercase tracking-wider rounded border border-ork-red/30 bg-ork-red/10 text-ork-red hover:bg-ork-red/20 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="btn btn--red"
+                        style={{
+                          flex: 1,
+                          opacity: actionLoading === a.id ? 0.5 : 1,
+                          cursor: actionLoading === a.id ? "not-allowed" : undefined,
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "11px",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          justifyContent: "center",
+                        }}
                       >
                         {actionLoading === a.id ? "..." : "REJECT"}
                       </button>

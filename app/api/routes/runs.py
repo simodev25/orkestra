@@ -1,13 +1,19 @@
 """Run API routes."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.models.run import Run
 from app.schemas.run import RunCreate, RunOut, RunNodeOut
 from app.services import execution_service
 
 router = APIRouter()
+
+
+class RunConfigUpdate(BaseModel):
+    effect_overrides: list[str] = []
 
 
 @router.post("/cases/{case_id}/runs", response_model=RunOut, status_code=201)
@@ -54,3 +60,51 @@ async def cancel_run(run_id: str, db: AsyncSession = Depends(get_db)):
         return await execution_service.cancel_run(db, run_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/runs/{run_id}/config")
+async def update_run_config(
+    run_id: str,
+    data: RunConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update run configuration (admin: effect_overrides for forbidden effects bypass)."""
+    run = await db.get(Run, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    # Merge into existing config (preserve other keys) — new dict ensures SQLAlchemy dirty tracking
+    run.config = {**(run.config or {}), "effect_overrides": data.effect_overrides}
+    await db.flush()
+    await db.commit()
+    return {"run_id": run_id, "config": run.config}
+
+
+@router.get("/runs/{run_id}/effect-denials")
+async def get_run_effect_denials(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get MCPInvocations denied due to forbidden effects for this run."""
+    from app.models.invocation import MCPInvocation
+    from sqlalchemy import select
+    result = await db.execute(
+        select(MCPInvocation)
+        .where(
+            MCPInvocation.run_id == run_id,
+            MCPInvocation.status == "denied",
+            MCPInvocation.effect_type.isnot(None),
+        )
+        .order_by(MCPInvocation.started_at.desc())
+    )
+    denials = result.scalars().all()
+    return [
+        {
+            "id": d.id,
+            "mcp_id": d.mcp_id,
+            "calling_agent_id": d.calling_agent_id,
+            "effects": [e.strip() for e in (d.effect_type or "").split(",") if e.strip()],
+            "blocked_at": d.started_at.isoformat() if d.started_at else None,
+        }
+        for d in denials
+    ]

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FlaskConical, Save, Plus, Trash2 } from "lucide-react";
@@ -100,7 +100,7 @@ const ASSERTION_DEFS: Record<
   },
 };
 
-export default function CreateScenarioPage() {
+function CreateScenarioForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedAgentId = searchParams.get("agent_id") || "";
@@ -524,5 +524,13 @@ export default function CreateScenarioPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function CreateScenarioPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-ork-dim font-mono text-xs">Loading...</div>}>
+      <CreateScenarioForm />
+    </Suspense>
   );
 }

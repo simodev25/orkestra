@@ -62,37 +62,39 @@ export default function AuditPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="page animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="section-title text-sm mb-1">AUDIT &amp; REPLAY EXPLORER</h1>
-        <p className="text-ork-dim text-xs font-mono">
-          Full audit trail and event replay for any orchestration run
-        </p>
+      <div className="pagehead">
+        <div>
+          <h1>Audit &amp; Replay Explorer</h1>
+          <p>Full audit trail and event replay for any orchestration run</p>
+        </div>
       </div>
 
       {/* Search Bar */}
-      <div className="glass-panel p-5">
+      <div className="glass-panel" style={{ padding: "14px 16px", marginBottom: "12px" }}>
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1">
-            <label className="data-label block mb-1.5">RUN ID</label>
+            <label className="field-label">RUN ID</label>
             <input
               type="text"
               value={runId}
               onChange={(e) => setRunId(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && loadAudit()}
               placeholder="Enter run ID to load audit trail..."
-              className="w-full bg-ork-bg border border-ork-border rounded-lg px-4 py-2.5 text-sm text-ork-text font-mono placeholder:text-ork-dim focus:outline-none focus:border-ork-cyan/40 focus:ring-1 focus:ring-ork-cyan/20"
+              className="field"
+              style={{ width: "100%" }}
             />
           </div>
           <div className="flex items-end">
             <button
               onClick={loadAudit}
               disabled={loading || !runId.trim()}
-              className="px-5 py-2.5 text-[11px] font-mono uppercase tracking-wider rounded-lg border border-ork-cyan/30 bg-ork-cyan/10 text-ork-cyan hover:bg-ork-cyan/20 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              className="btn btn--cyan"
+              style={{ opacity: loading || !runId.trim() ? 0.4 : 1, cursor: loading || !runId.trim() ? "not-allowed" : undefined }}
             >
               {loading ? (
-                <span className="flex items-center gap-2">
+                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <span className="w-3 h-3 border border-ork-cyan/30 border-t-ork-cyan rounded-full animate-spin" />
                   LOADING...
                 </span>
@@ -103,7 +105,7 @@ export default function AuditPage() {
           </div>
         </div>
         {error && (
-          <p className="mt-3 text-xs font-mono text-ork-red bg-ork-red/10 border border-ork-red/20 rounded px-3 py-2">
+          <p style={{ marginTop: "10px", fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--ork-red)", background: "var(--ork-red-bg)", border: "1px solid color-mix(in oklch, var(--ork-red) 25%, transparent)", borderRadius: "var(--radius)", padding: "6px 10px" }}>
             {error}
           </p>
         )}
@@ -111,8 +113,8 @@ export default function AuditPage() {
 
       {/* Timeline */}
       {loaded && (
-        <div className="glass-panel p-5">
-          <div className="flex items-center justify-between mb-5">
+        <div className="glass-panel" style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
             <h2 className="section-title">
               TIMELINE &mdash; {events.length} EVENT{events.length !== 1 ? "S" : ""}
             </h2>
@@ -125,7 +127,8 @@ export default function AuditPage() {
                       : new Set(events.map((e) => e.id))
                   )
                 }
-                className="text-[10px] font-mono text-ork-muted hover:text-ork-text transition-colors"
+                className="btn"
+                style={{ fontSize: "10px" }}
               >
                 {expandedEvents.size === events.length ? "COLLAPSE ALL" : "EXPAND ALL"}
               </button>
@@ -133,9 +136,9 @@ export default function AuditPage() {
           </div>
 
           {events.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-ork-muted text-sm">No audit events found for this run</p>
-              <p className="text-ork-dim text-xs font-mono mt-1">
+            <div style={{ textAlign: "center", padding: "40px 0" }}>
+              <p style={{ color: "var(--ork-muted)", fontSize: "13px" }}>No audit events found for this run</p>
+              <p style={{ color: "var(--ork-muted-2)", fontSize: "11px", fontFamily: "var(--font-mono)", marginTop: "4px" }}>
                 Verify the Run ID and try again
               </p>
             </div>
@@ -145,7 +148,7 @@ export default function AuditPage() {
               <div className="absolute left-[7px] top-3 bottom-3 w-px bg-ork-border" />
 
               <div className="space-y-1">
-                {events.map((event, idx) => {
+                {events.map((event) => {
                   const isExpanded = expandedEvents.has(event.id);
                   const colorClass = getEventColor(event.event_type);
 
@@ -224,12 +227,12 @@ export default function AuditPage() {
 
       {/* Placeholder when nothing loaded yet */}
       {!loaded && !loading && (
-        <div className="glass-panel p-12 text-center">
-          <div className="w-12 h-12 rounded-full border-2 border-ork-border flex items-center justify-center mx-auto mb-4">
-            <span className="text-ork-dim text-lg font-mono">?</span>
+        <div className="glass-panel" style={{ padding: "48px", textAlign: "center" }}>
+          <div style={{ width: "48px", height: "48px", borderRadius: "50%", border: "2px solid var(--ork-border)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <span style={{ color: "var(--ork-muted-2)", fontSize: "18px", fontFamily: "var(--font-mono)" }}>?</span>
           </div>
-          <p className="text-ork-muted text-sm">Enter a Run ID to explore its audit trail</p>
-          <p className="text-ork-dim text-xs font-mono mt-1">
+          <p style={{ color: "var(--ork-muted)", fontSize: "13px" }}>Enter a Run ID to explore its audit trail</p>
+          <p style={{ color: "var(--ork-muted-2)", fontSize: "11px", fontFamily: "var(--font-mono)", marginTop: "4px" }}>
             All governance events, state transitions, and actor actions are recorded
           </p>
         </div>

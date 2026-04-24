@@ -294,6 +294,7 @@ export default function TestRunDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [assertions, setAssertions] = useState<any[]>([]);
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
+  const [effectDenials, setEffectDenials] = useState<any[]>([]);
 
   // Chat with OrchestratorAgent
   const [chatMessages, setChatMessages] = useState<Array<{role: string; content: string}>>([]);
@@ -301,6 +302,11 @@ export default function TestRunDetailPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
+
+  // Effect overrides admin section
+  const [effectOverrides, setEffectOverrides] = useState<string[]>([]);
+  const [overrideSaving, setOverrideSaving] = useState(false);
+  const [overrideSaved, setOverrideSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -309,15 +315,20 @@ export default function TestRunDetailPage() {
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
-      const [runData, eventsData, assertionsData, diagnosticsData] = await Promise.all([
+      const [runData, eventsData, assertionsData, diagnosticsData, denialsData] = await Promise.all([
         request<any>(`/api/test-lab/runs/${id}`).catch(() => null),
         request<any>(`/api/test-lab/runs/${id}/events`).catch(() => []),
         request<any>(`/api/test-lab/runs/${id}/assertions`).catch(() => []),
         request<any>(`/api/test-lab/runs/${id}/diagnostics`).catch(() => []),
+        request<any>(`/api/runs/${id}/effect-denials`).catch(() => []),
       ]);
       if (runData) {
         setRun(runData);
         statusRef.current = runData.status;
+        // Initialize effectOverrides from run.config
+        if (runData?.config?.effect_overrides) {
+          setEffectOverrides(runData.config.effect_overrides);
+        }
       }
       const newEvents = Array.isArray(eventsData) ? eventsData : eventsData?.items ?? [];
       setEvents(prev => {
@@ -331,6 +342,7 @@ export default function TestRunDetailPage() {
       });
       setAssertions(Array.isArray(assertionsData) ? assertionsData : assertionsData?.items ?? []);
       setDiagnostics(Array.isArray(diagnosticsData) ? diagnosticsData : diagnosticsData?.items ?? []);
+      setEffectDenials(Array.isArray(denialsData) ? denialsData : []);
       setError(null);
     } catch (e: any) {
       setError(e.message || "Failed to load run data");
@@ -428,10 +440,27 @@ export default function TestRunDetailPage() {
     }
   };
 
+  async function handleSaveOverrides() {
+    if (!run) return;
+    setOverrideSaving(true);
+    try {
+      await request(`/api/runs/${run.id}/config`, {
+        method: "PATCH",
+        body: JSON.stringify({ effect_overrides: effectOverrides }),
+      });
+      setOverrideSaved(true);
+      setTimeout(() => setOverrideSaved(false), 2000);
+    } catch {
+      // silently fail
+    } finally {
+      setOverrideSaving(false);
+    }
+  }
+
   // ── Graph view ──────────────────────────────────────────────────────
   if (view === 'graph' && run) {
     return (
-      <div className="flex flex-col" style={{ height: '100vh', overflow: 'hidden' }}>
+      <div className="flex flex-col h-full overflow-hidden">
         <RunTopbar
           run={run}
           view={view}
@@ -440,7 +469,7 @@ export default function TestRunDetailPage() {
           rerunning={rerunning}
         />
         <div className="flex-1 overflow-hidden">
-          <RunGraph run={run} events={events} diagnostics={diagnostics} />
+          <RunGraph run={run} events={events} diagnostics={diagnostics} effectDenials={effectDenials} />
         </div>
       </div>
     );
@@ -797,6 +826,71 @@ export default function TestRunDetailPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Admin: effect overrides */}
+      {run && (
+        <div
+          style={{
+            border: '1px solid var(--ork-border)',
+            borderRadius: 'var(--radius)',
+            marginTop: 16,
+          }}
+        >
+          <details>
+            <summary
+              style={{
+                padding: '8px 12px',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--ork-muted)',
+                userSelect: 'none',
+              }}
+            >
+              ⚙ Override forbidden effects for this run
+              {effectOverrides.length > 0 && (
+                <span style={{ color: 'var(--ork-amber)', marginLeft: 8, fontSize: 10 }}>
+                  ⚠ {effectOverrides.length} override{effectOverrides.length > 1 ? 's' : ''} active
+                </span>
+              )}
+            </summary>
+            <div style={{ padding: '8px 12px', borderTop: '1px solid var(--ork-border)' }}>
+              <div className="flex flex-wrap gap-2" style={{ marginBottom: 10 }}>
+                {(["read", "search", "compute", "generate", "validate", "write", "act"] as const).map((effect) => (
+                  <label
+                    key={effect}
+                    className="flex items-center gap-1"
+                    style={{ fontSize: 12, cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={effectOverrides.includes(effect)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEffectOverrides((prev) => [...prev, effect]);
+                        } else {
+                          setEffectOverrides((prev) => prev.filter((x) => x !== effect));
+                        }
+                      }}
+                    />
+                    <span style={{ color: effectOverrides.includes(effect) ? 'var(--ork-amber)' : 'var(--ork-muted)' }}>
+                      {effect}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <button
+                onClick={handleSaveOverrides}
+                disabled={overrideSaving}
+                className="btn btn--ghost"
+                style={{ fontSize: 11 }}
+              >
+                {overrideSaving ? 'Saving...' : overrideSaved ? '✓ Saved' : 'Save overrides'}
+              </button>
+            </div>
+          </details>
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.family import AgentSkill
+from app.models.invocation import MCPInvocation
 from app.schemas.agent import (
     AgentCreate,
     AgentGenerationRequest,
@@ -305,6 +306,48 @@ async def list_agent_test_runs(
 ):
     """List persisted test runs for an agent, most recent first."""
     return await agent_test_run_service.list_runs(db, agent_id, limit=limit)
+
+
+@router.get("/{agent_id}/effect-violations")
+async def list_agent_effect_violations(
+    agent_id: str,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """List MCPInvocations denied due to forbidden effects for this agent."""
+    result = await db.execute(
+        select(MCPInvocation)
+        .where(
+            MCPInvocation.calling_agent_id == agent_id,
+            MCPInvocation.status == "denied",
+            MCPInvocation.effect_type.isnot(None),
+        )
+        .order_by(MCPInvocation.started_at.desc())
+        .limit(limit)
+    )
+    violations = result.scalars().all()
+
+    # Build summary: count per effect
+    summary: dict[str, int] = {}
+    for v in violations:
+        for eff in (v.effect_type or "").split(","):
+            eff = eff.strip()
+            if eff:
+                summary[eff] = summary.get(eff, 0) + 1
+
+    return {
+        "violations": [
+            {
+                "id": v.id,
+                "run_id": v.run_id,
+                "mcp_id": v.mcp_id,
+                "effects": [e.strip() for e in (v.effect_type or "").split(",") if e.strip()],
+                "blocked_at": v.started_at.isoformat() if v.started_at else None,
+            }
+            for v in violations
+        ],
+        "summary": summary,
+    }
 
 
 # ── Chat ───────────────────────────────────────────────────────────────

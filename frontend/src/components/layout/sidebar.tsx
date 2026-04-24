@@ -4,73 +4,72 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bot, Wrench, Activity, FlaskConical, Settings, SlidersHorizontal,
+  FileText, CheckSquare, Shield, List, BarChart2, Network, Layers, Zap,
 } from "lucide-react";
 
-const NAV = [
-  { label: "Dashboard", href: "/", icon: Activity },
+type NavItem =
+  | { section: string }
+  | { label: string; href: string; icon: React.ElementType };
+
+const NAV: NavItem[] = [
+  { label: "Dashboard",      href: "/",                       icon: Activity },
   { section: "Registries" },
-  { label: "Agents", href: "/agents", icon: Bot },
-  { label: "Orchestrateurs", href: "/agents/orchestrators/new", icon: Bot },
-  { label: "Families", href: "/agents/families", icon: Bot },
-  { label: "Agent Skills", href: "/agents/skills", icon: Bot },
-  { label: "Test Lab", href: "/test-lab", icon: FlaskConical },
-  { label: "Test Lab Config", href: "/test-lab/config", icon: SlidersHorizontal },
-  { label: "MCP Catalog", href: "/mcps", icon: Wrench },
+  { label: "Agents",         href: "/agents",                 icon: Bot },
+  { label: "Orchestrateurs", href: "/agents/orchestrators/new", icon: Network },
+  { label: "Families",       href: "/agents/families",        icon: Layers },
+  { label: "Agent Skills",   href: "/agents/skills",          icon: Zap },
+  { label: "Test Lab",       href: "/test-lab",               icon: FlaskConical },
+  { label: "MCP Catalog",    href: "/mcps",                   icon: Wrench },
+  { section: "Monitoring" },
+  { label: "Runs",           href: "/runs",                   icon: BarChart2 },
+  { label: "Requests",       href: "/requests",               icon: List },
+  { label: "Approvals",      href: "/approvals",              icon: CheckSquare },
+  { label: "Audit",          href: "/audit",                  icon: FileText },
+  { label: "Control",        href: "/control",                icon: Shield },
   { section: "Configuration" },
-  { label: "Admin", href: "/admin", icon: Settings },
+  { label: "Admin",          href: "/admin",                  icon: Settings },
+  { label: "Lab Config",     href: "/test-lab/config",        icon: SlidersHorizontal },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 bg-ork-surface border-r border-ork-border flex flex-col h-screen sticky top-0">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-ork-border">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded bg-ork-cyan/20 flex items-center justify-center">
-            <span className="text-ork-cyan font-mono font-bold text-sm">O</span>
-          </div>
-          <div>
-            <h1 className="text-sm font-semibold tracking-wide">ORKESTRA</h1>
-            <p className="text-[9px] font-mono text-ork-dim tracking-[0.15em]">ORCHESTRATION</p>
-          </div>
+    <aside className="sidebar">
+      <div className="sidebar__brand">
+        <div className="sidebar__logo">O</div>
+        <div>
+          <p className="sidebar__title">Orkestra</p>
+          <p className="sidebar__subtitle">Orchestration</p>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-3 px-3">
+      <nav className="sidebar__nav">
         {NAV.map((item, i) => {
           if ("section" in item) {
             return (
-              <p key={i} className="section-title px-2 pt-4 pb-1.5">
-                {item.section}
-              </p>
+              <p key={i} className="sidebar__section">{item.section}</p>
             );
           }
           const Icon = item.icon;
-          const active = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href!));
+          const active =
+            item.href === "/"
+              ? pathname === "/"
+              : pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.label}
-              href={item.href!}
-              className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded text-[13px] mb-0.5 transition-colors duration-150 ${
-                active
-                  ? "bg-ork-cyan/10 text-ork-cyan"
-                  : "text-ork-muted hover:text-ork-text hover:bg-ork-hover"
-              }`}
+              href={item.href}
+              className={`navlink${active ? " navlink--active" : ""}`}
             >
-              <Icon size={15} strokeWidth={active ? 2 : 1.5} />
+              <Icon size={14} strokeWidth={1.5} />
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      {/* Version */}
-      <div className="px-5 py-3 border-t border-ork-border">
-        <p className="text-[9px] font-mono text-ork-dim">v0.1.0 — Phase 1</p>
-      </div>
+      <div className="sidebar__foot">v0.9.4</div>
     </aside>
   );
 }

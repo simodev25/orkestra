@@ -84,19 +84,19 @@ export default function OrchestratorBuilderPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-ork-bg overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Page header */}
-      <div className="flex items-center gap-4 px-6 py-3.5 border-b border-[#1e2530] bg-ork-bg shrink-0">
+      <div className="flex items-center gap-4 px-6 py-3.5 border-b border-ork-border shrink-0">
         <button
           onClick={() => router.push("/agents")}
-          className="text-xs text-ork-dim hover:text-ork-text transition-colors"
+          className="text-xs text-ork-muted hover:text-ork-text transition-colors font-mono"
         >
           ← Agents
         </button>
-        <h1 className="text-base font-bold font-mono text-ork-text">
+        <h1 className="text-sm font-bold font-mono text-ork-text">
           Orchestrator Builder
         </h1>
-        <span className="text-[10px] text-ork-cyan border border-ork-cyan px-2 py-0.5 rounded-full">
+        <span className="text-[10px] text-ork-cyan border border-ork-cyan/40 px-2 py-0.5 rounded font-mono">
           BETA
         </span>
       </div>
@@ -120,13 +120,13 @@ export default function OrchestratorBuilderPage() {
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Config form — fades when result shown */}
           <div
-            className={`px-6 py-5 border-b border-[#1e2530] flex flex-col gap-4 shrink-0 transition-opacity ${
+            className={`px-6 py-5 border-b border-ork-border flex flex-col gap-4 shrink-0 transition-opacity ${
               draft ? "opacity-50" : "opacity-100"
             }`}
           >
             {/* Name */}
             <div>
-              <label className="block text-[10px] text-ork-dim uppercase tracking-widest mb-1.5">
+              <label className="block text-[10px] text-ork-muted uppercase tracking-widest font-mono mb-1.5">
                 Nom de l&apos;orchestrateur
               </label>
               <input
@@ -135,15 +135,15 @@ export default function OrchestratorBuilderPage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="hotel_pipeline_orchestrator"
                 disabled={!!draft}
-                className="w-full bg-[#1e2530] border border-[#2d3748] rounded-md px-3 py-2 text-sm text-ork-text font-mono placeholder:text-[#2d3748] focus:outline-none focus:border-ork-cyan disabled:cursor-not-allowed"
+                className="field w-full disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
 
             {/* LLM instructions */}
             <div>
-              <label className="block text-[10px] text-ork-dim uppercase tracking-widest mb-1.5">
+              <label className="block text-[10px] text-ork-muted uppercase tracking-widest font-mono mb-1.5">
                 Instructions pour le LLM{" "}
-                <span className="text-[9px] normal-case tracking-normal">
+                <span className="text-[9px] normal-case tracking-normal text-ork-muted-2">
                   (contexte, priorités, contraintes…)
                 </span>
               </label>
@@ -153,7 +153,7 @@ export default function OrchestratorBuilderPage() {
                 placeholder="Ex: Cet orchestrateur gère un pipeline hôtelier. Les agents doivent être appelés dans l'ordre : météo → budget → hôtels…"
                 disabled={!!draft}
                 rows={3}
-                className="w-full bg-[#1e2530] border border-[#2d6a7a] rounded-md px-3 py-2 text-xs text-[#a0c4ce] font-mono placeholder:text-[#2d3748] focus:outline-none focus:border-ork-cyan resize-none disabled:cursor-not-allowed"
+                className="field w-full resize-none disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
 
@@ -162,11 +162,11 @@ export default function OrchestratorBuilderPage() {
               <button
                 onClick={handleGenerate}
                 disabled={!canGenerate || generating}
-                className="w-full bg-ork-cyan text-black font-bold py-3 rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-ork-cyan/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="btn btn--cyan w-full py-2.5 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {generating ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     Génération en cours…
                   </>
                 ) : (
@@ -176,13 +176,13 @@ export default function OrchestratorBuilderPage() {
             )}
 
             {generateError && (
-              <div className="text-xs text-ork-red bg-ork-red/10 border border-ork-red/30 rounded-md px-3 py-2">
+              <div className="text-xs text-ork-red bg-ork-red/10 border border-ork-red/30 rounded px-3 py-2 font-mono">
                 {generateError}
               </div>
             )}
 
             {!canGenerate && !generating && !draft && (
-              <p className="text-[10px] text-ork-dim">
+              <p className="text-[10px] text-ork-muted font-mono">
                 {mode === "manual"
                   ? "Sélectionne au moins 2 agents et donne un nom (≥ 3 caractères)."
                   : "Décris ton pipeline et donne un nom (≥ 3 caractères)."}

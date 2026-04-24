@@ -21,7 +21,7 @@ export const testLabApi = {
   // Runs
   startRun: (scenarioId: string) =>
     request<T.TestRun>(`${BASE}/scenarios/${scenarioId}/run`, { method: "POST" }),
-  listRuns: (params?: { scenario_id?: string; agent_id?: string }) => {
+  listRuns: async (params?: { scenario_id?: string; agent_id?: string }) => {
     const q = new URLSearchParams();
     if (params?.scenario_id) q.set("scenario_id", params.scenario_id);
     if (params?.agent_id) q.set("agent_id", params.agent_id);

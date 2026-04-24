@@ -11,7 +11,8 @@ export type PhaseKind =
   | 'report';
 
 export interface AgentNodeData extends Record<string, unknown> {
-  kind: PhaseKind;
+  /** Fixed PhaseKind or a dynamic 'pipeline_*' string for sub-agent nodes. */
+  kind: PhaseKind | string;
   agentId: string;
   label: string;
   subLabel: string;

@@ -65,6 +65,7 @@ async def run_target_agent(
     allowed_tools: list[str] | None = None,
     timeout_seconds: int = 120,
     max_iterations: int = 5,
+    run_id: str | None = None,
 ) -> TargetAgentResult:
     """Execute a real AgentScope ReActAgent and return structured results.
 
@@ -130,6 +131,7 @@ async def run_target_agent(
             max_iters=max_iterations,
             fallback_model=tl_model,
             fallback_formatter=tl_formatter,
+            test_run_id=run_id,
         )
     except Exception as exc:
         logger.warning(f"Agent creation raised an exception for '{agent_id}': {exc}")

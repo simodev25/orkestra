@@ -11,12 +11,24 @@ Pattern mirrors the test lab orchestrator_agent.py subagent pattern.
 
 from __future__ import annotations
 
+import contextvars
 import logging
+import time
 from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("orkestra.pipeline_executor")
+
+# ── Context variable — threads run_id into pipeline tools (test-lab only) ─────
+_run_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "pipeline_run_id", default=None
+)
+
+
+def set_pipeline_run_id(run_id: str) -> None:
+    """Register the current test-lab run_id so pipeline tools can emit events."""
+    _run_id_var.set(run_id)
 
 
 @dataclass
@@ -43,6 +55,7 @@ def _run_async(coro):
 async def build_pipeline_tools(
     db: AsyncSession,
     pipeline_agent_ids: list[str],
+    test_run_id: str | None = None,
 ) -> tuple[list, PipelineContext]:
     """Pre-create all pipeline agents and return (tools, ctx).
 
@@ -85,16 +98,19 @@ async def build_pipeline_tools(
         except Exception as exc:
             logger.warning("Failed to pre-create pipeline agent '%s': %s", agent_id, exc)
 
+    # Use explicitly-passed run_id (most reliable) or fall back to ContextVar
+    run_id = test_run_id or _run_id_var.get()
+
     # Build one sync tool per pre-created agent
     tools: list = []
     for entry in entries:
-        tool = _make_tool(entry, ctx)
+        tool = _make_tool(entry, ctx, run_id=run_id)
         tools.append(tool)
 
     return tools, ctx
 
 
-def _make_tool(entry: dict, ctx: PipelineContext):
+def _make_tool(entry: dict, ctx: PipelineContext, run_id: str | None = None):
     """Factory to avoid late-binding closure issues."""
     from agentscope.message import Msg
     from agentscope.agent._react_agent import ToolResponse
@@ -110,6 +126,12 @@ def _make_tool(entry: dict, ctx: PipelineContext):
 
     def _tool(task: str = "") -> ToolResponse:
         """Executes this pipeline agent with the given task and accumulated context."""
+        from app.services.test_lab.execution_engine import emit_event as _emit
+
+        # run_id is captured at tool-creation time (correct async context)
+        safe_tool_name = f"run_{safe_id}"
+        phase_key = f"pipeline_{safe_id}"
+
         # Prepend accumulated context so the agent knows what happened before
         if ctx.accumulated:
             full_input = (
@@ -121,7 +143,20 @@ def _make_tool(entry: dict, ctx: PipelineContext):
         else:
             full_input = task
 
+        # Notify the graph: orchestrator called this pipeline tool
+        if run_id:
+            try:
+                _emit(
+                    run_id, "pipeline_tool_call", "orchestrator",
+                    f"→ {safe_tool_name}",
+                    details={"tool_name": safe_tool_name, "agent_id": agent_id, "agent_name": agent_name},
+                )
+                _emit(run_id, "phase_started", phase_key, f"{agent_name} started")
+            except Exception as exc:
+                logger.warning("Failed to emit pipeline_tool_call for %s: %s", agent_id, exc)
+
         msg = Msg("user", full_input, "user")
+        t0 = time.time()
 
         try:
             response = _run_async(react_agent(msg))
@@ -153,9 +188,33 @@ def _make_tool(entry: dict, ctx: PipelineContext):
             logger.warning("Pipeline agent '%s' raised during execution: %s", agent_id, exc)
             output = f"[ERROR] {agent_name} failed: {exc}"
 
+        elapsed_ms = int((time.time() - t0) * 1000)
+
         # Propagate output into shared context
         ctx.results[agent_id] = output
         ctx.accumulated += f"\n\n### {agent_name} ({agent_id}):\n{output}"
+
+        # Notify the graph: pipeline agent completed with its output
+        if run_id:
+            try:
+                success = not output.startswith("[ERROR]")
+                _emit(
+                    run_id, "pipeline_agent_output", phase_key,
+                    f"← {agent_name}",
+                    details={
+                        "agent_id": agent_id,
+                        "tool_name": safe_tool_name,
+                        "output": output[:3000],
+                        "success": success,
+                    },
+                    duration_ms=elapsed_ms,
+                )
+                _emit(
+                    run_id, "phase_completed", phase_key,
+                    f"{agent_name} {'completed' if success else 'failed'} ({elapsed_ms}ms)",
+                )
+            except Exception:
+                pass
 
         logger.info("Pipeline agent '%s' completed (%d chars)", agent_id, len(output))
         return ToolResponse(content=[TextBlock(type="text", text=output)])

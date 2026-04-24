@@ -31,6 +31,7 @@ interface RunGraphProps {
   run: TestRun;
   events: TestRunEvent[];
   diagnostics: TestRunDiagnostic[];
+  effectDenials?: Array<{ id: string; mcp_id: string; calling_agent_id: string | null; effects: string[]; blocked_at: string | null }>;
 }
 
 /** Replay duration for completed runs */
@@ -60,6 +61,14 @@ const PHASE_MAP: Record<string, string> = {
   verdict:       'report',
 };
 
+/** Resolve a raw event phase to a ReactFlow node ID (handles dynamic pipeline_* phases). */
+function resolveNodeId(rawPhase: string | null | undefined): string | null {
+  if (!rawPhase) return null;
+  if (PHASE_MAP[rawPhase]) return PHASE_MAP[rawPhase];
+  if (rawPhase.startsWith('pipeline_')) return rawPhase; // dynamic pipeline node IDs
+  return null;
+}
+
 /** Edge pulses this long before the target node springs in */
 const EDGE_LEAD_MS = 400;
 
@@ -70,7 +79,7 @@ function statusFromEvent(ev: TestRunEvent): string {
   return 'completed';
 }
 
-export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
+export function RunGraph({ run, events, diagnostics, effectDenials = [] }: RunGraphProps) {
   const { nodes: initNodes, edges: initEdges } = useMemo(
     () => buildGraph(events, run, diagnostics),
     [events, run, diagnostics]
@@ -102,6 +111,27 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
   useEffect(() => { setNodes(initNodes); }, [initNodes, setNodes]);
   useEffect(() => { setEdges(initEdges); }, [initEdges, setEdges]);
 
+  // ── Safety net: for completed runs ensure every node is eventually visible ──
+  // If new nodes appear in initNodes (e.g. pipeline agents) after the replay
+  // locked (replayDoneRef = true), this hook reveals them immediately.
+  useEffect(() => {
+    if (isLive) return; // live mode handles visibility via event stream
+    const allIds = new Set(initNodes.map((n) => n.id));
+    setVisiblePhases((prev) => {
+      const missing = [...allIds].filter((id) => !prev.has(id));
+      if (missing.length === 0) return prev;
+      return new Set([...prev, ...missing]);
+    });
+    setPhaseStatuses((prev) => {
+      const updated = { ...prev };
+      let changed = false;
+      for (const id of allIds) {
+        if (!(id in updated)) { updated[id] = 'completed'; changed = true; }
+      }
+      return changed ? updated : prev;
+    });
+  }, [initNodes, isLive]);
+
   // ── Core animation logic ────────────────────────────────────────────────────
   useEffect(() => {
     if (!isLive) {
@@ -120,14 +150,14 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
             setPhaseStatuses(prev => ({ ...prev, orchestrator: 'running' }));
           }
           if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
-            const nodeId = PHASE_MAP[ev.phase];
+            const nodeId = resolveNodeId(ev.phase);
             if (nodeId && nodeId !== 'orchestrator') {
               setVisiblePhases(prev => new Set([...prev, nodeId]));
               setPhaseStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
             }
           }
           if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
-            const nodeId = PHASE_MAP[ev.phase];
+            const nodeId = resolveNodeId(ev.phase);
             if (nodeId) {
               setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
               setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
@@ -176,7 +206,7 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
         }
 
         if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
-          const nodeId = PHASE_MAP[ev.phase];
+          const nodeId = resolveNodeId(ev.phase);
           if (nodeId && nodeId !== 'orchestrator') {
             schedule(delay, () =>
               setActiveEdgeTargets(prev => new Set([...prev, nodeId]))
@@ -193,7 +223,7 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
         }
 
         if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
-          const nodeId = PHASE_MAP[ev.phase];
+          const nodeId = resolveNodeId(ev.phase);
           if (nodeId) {
             schedule(delay, () => {
               setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
@@ -263,12 +293,12 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
       }
 
       if (PHASE_START_EVENTS.has(ev.event_type) && ev.phase) {
-        const nodeId = PHASE_MAP[ev.phase];
+        const nodeId = resolveNodeId(ev.phase);
         if (nodeId && nodeId !== 'orchestrator') revealNode(nodeId, EDGE_LEAD_MS);
       }
 
       if (PHASE_DONE_EVENTS.has(ev.event_type) && ev.phase) {
-        const nodeId = PHASE_MAP[ev.phase];
+        const nodeId = resolveNodeId(ev.phase);
         if (nodeId) {
           setVisiblePhases(prev => prev.has(nodeId) ? prev : new Set([...prev, nodeId]));
           setPhaseStatuses(prev => ({ ...prev, [nodeId]: statusFromEvent(ev) }));
@@ -362,6 +392,36 @@ export function RunGraph({ run, events, diagnostics }: RunGraphProps) {
 
   return (
     <div className="flex flex-col" style={{ height: '100%' }}>
+      {/* Effect denial banner */}
+      {effectDenials.length > 0 && (
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 flex-wrap"
+          style={{
+            background: 'color-mix(in oklch, var(--ork-red) 8%, transparent)',
+            borderBottom: '1px solid color-mix(in oklch, var(--ork-red) 25%, transparent)',
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ color: 'var(--ork-red)', fontSize: 11, fontWeight: 700 }}>⛔ BLOCKED EFFECTS</span>
+          {effectDenials.map((d) => (
+            <span
+              key={d.id}
+              title={`effects [${d.effects.join(', ')}] are forbidden for this agent`}
+              style={{
+                fontSize: 10,
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--ork-red)',
+                background: 'color-mix(in oklch, var(--ork-red) 12%, transparent)',
+                border: '1px solid color-mix(in oklch, var(--ork-red) 30%, transparent)',
+                borderRadius: 4,
+                padding: '1px 6px',
+              }}
+            >
+              {d.mcp_id}: {d.effects.join(', ')}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1" style={{ background: '#07070f' }}>
           <ReactFlow

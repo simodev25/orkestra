@@ -135,16 +135,16 @@ export default function AgentDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-5xl mx-auto">
-        <div className="glass-panel p-16 text-center text-sm font-mono text-ork-cyan">Loading agent details...</div>
+      <div className="page animate-fade-in">
+        <div className="glass-panel" style={{ padding: "64px", textAlign: "center", fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--ork-cyan)" }}>Loading agent details...</div>
       </div>
     );
   }
 
   if (error || !agent) {
     return (
-      <div className="p-6 max-w-5xl mx-auto">
-        <div className="glass-panel p-6 text-sm font-mono text-ork-red">{error ?? "Agent not found"}</div>
+      <div className="page animate-fade-in">
+        <div className="glass-panel" style={{ padding: "20px", fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--ork-red)" }}>{error ?? "Agent not found"}</div>
       </div>
     );
   }
@@ -169,36 +169,37 @@ export default function AgentDetailPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4 animate-fade-in">
+    <div className="page animate-fade-in">
       {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="pagehead">
         <div>
-          <Link href="/agents" className="text-xs font-mono text-ork-dim hover:text-ork-cyan">
+          <Link href="/agents" className="section-title" style={{ color: "var(--ork-muted)", marginBottom: "6px", display: "inline-block" }}>
             ← Back to Agent Registry
           </Link>
-          <h1 className="text-xl font-semibold mt-2">{agent.name}</h1>
-          <p className="text-xs font-mono text-ork-dim mt-1">
+          <h1>{agent.name}</h1>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}>
             {agent.id} · family={agent.family?.label || agent.family_id}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="pagehead__actions">
           <StatusBadge status={agent.status} />
           <Link
             href="/test-lab"
-            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-cyan/30 text-ork-cyan bg-ork-cyan/10"
+            className="btn"
           >
             Test Lab
           </Link>
           <Link
             href={`/agents/${agent.id}/edit`}
-            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-purple/30 text-ork-purple bg-ork-purple/10"
+            className="btn btn--purple"
           >
             Edit
           </Link>
           <button
             onClick={() => setConfirmDeleteOpen(true)}
             disabled={deleting}
-            className="px-3 py-2 text-xs font-mono uppercase tracking-wider rounded border border-ork-red/30 text-ork-red bg-ork-red/10 disabled:opacity-50"
+            className="btn btn--red"
+            style={{ opacity: deleting ? 0.5 : 1 }}
           >
             {deleting ? "Deleting..." : "Delete"}
           </button>
@@ -206,8 +207,8 @@ export default function AgentDetailPage() {
       </div>
 
       {actionError && (
-        <div className="glass-panel p-3 border border-ork-red/30">
-          <p className="text-xs font-mono text-ork-red">{actionError}</p>
+        <div className="glass-panel" style={{ padding: "10px 14px", border: "1px solid color-mix(in oklch, var(--ork-red) 30%, transparent)", marginBottom: "8px" }}>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--ork-red)", margin: 0 }}>{actionError}</p>
         </div>
       )}
 
@@ -217,25 +218,17 @@ export default function AgentDetailPage() {
       />
 
       {/* ── Tabs ── */}
-      <div className="flex gap-0 border-b border-ork-border">
+      <div className="tabs" style={{ marginTop: "8px" }}>
         <button
           onClick={() => setTab("details")}
-          className={`flex items-center gap-2 px-5 py-2.5 text-xs font-mono uppercase tracking-wider border-b-2 transition-colors ${
-            tab === "details"
-              ? "border-ork-purple text-ork-purple"
-              : "border-transparent text-ork-dim hover:text-ork-muted"
-          }`}
+          className={`tabs__btn${tab === "details" ? " tabs__btn--active" : ""}`}
         >
           <FileText size={13} />
           Details
         </button>
         <button
           onClick={() => setTab("chat")}
-          className={`flex items-center gap-2 px-5 py-2.5 text-xs font-mono uppercase tracking-wider border-b-2 transition-colors ${
-            tab === "chat"
-              ? "border-ork-cyan text-ork-cyan"
-              : "border-transparent text-ork-dim hover:text-ork-muted"
-          }`}
+          className={`tabs__btn${tab === "chat" ? " tabs__btn--active" : ""}`}
         >
           <MessageSquare size={13} />
           Chat direct
@@ -244,25 +237,26 @@ export default function AgentDetailPage() {
 
       {/* ── Tab: Chat direct ── */}
       {tab === "chat" && (
-        <div className="glass-panel flex flex-col" style={{ height: "60vh" }}>
+        <div className="glass-panel" style={{ display: "flex", flexDirection: "column", height: "60vh", marginTop: "8px" }}>
           {/* Chat header */}
           {chatMessages.length > 0 && (
-            <div className="flex justify-end px-4 pt-2 flex-shrink-0">
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px 0", flexShrink: 0 }}>
               <button
                 onClick={() => setChatMessages([])}
-                className="text-[10px] font-mono text-ork-dim/50 hover:text-ork-red transition-colors"
+                className="btn"
+                style={{ fontSize: "10px", color: "var(--ork-muted-2)" }}
               >
-                Effacer l'historique
+                Effacer l&apos;historique
               </button>
             </div>
           )}
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
             {chatMessages.length === 0 && (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-xs font-mono text-ork-dim text-center">
-                  Parle directement à <span className="text-ork-cyan">{agent.name}</span>.<br />
-                  <span className="text-ork-dim/50">Pas de scénario, pas de scoring — conversation brute.</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--ork-muted-2)", textAlign: "center" }}>
+                  Parle directement à <span style={{ color: "var(--ork-cyan)" }}>{agent.name}</span>.<br />
+                  <span style={{ color: "var(--ork-muted-2)", opacity: 0.6 }}>Pas de scénario, pas de scoring — conversation brute.</span>
                 </p>
               </div>
             )}
@@ -336,7 +330,7 @@ export default function AgentDetailPage() {
           </div>
 
           {/* Input */}
-          <div className="border-t border-ork-border/60 px-4 py-3 flex items-end gap-3 flex-shrink-0">
+          <div style={{ borderTop: "1px solid var(--ork-border)", padding: "10px 16px", display: "flex", alignItems: "flex-end", gap: "10px", flexShrink: 0 }}>
             <textarea
               ref={chatInputRef}
               value={chatInput}
@@ -350,8 +344,8 @@ export default function AgentDetailPage() {
               placeholder={`Message ${agent.name}… (Enter to send)`}
               disabled={chatLoading}
               rows={1}
-              className="flex-1 resize-none bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm font-mono text-ork-text placeholder:text-ork-dim/50 focus:outline-none focus:border-ork-cyan/40 transition-colors disabled:opacity-50 min-h-[38px] max-h-[100px] overflow-y-auto"
-              style={{ height: "auto" }}
+              className="field"
+              style={{ flex: 1, resize: "none", height: "auto", minHeight: "36px", maxHeight: "100px", overflowY: "auto", padding: "8px 10px", opacity: chatLoading ? 0.5 : 1 }}
               onInput={(e) => {
                 const el = e.currentTarget;
                 el.style.height = "auto";
@@ -361,7 +355,8 @@ export default function AgentDetailPage() {
             <button
               onClick={() => void sendChat(chatInput)}
               disabled={chatLoading || !chatInput.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono uppercase tracking-wider bg-ork-cyan/15 text-ork-cyan border border-ork-cyan/30 rounded hover:bg-ork-cyan/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+              className="btn btn--cyan"
+              style={{ opacity: chatLoading || !chatInput.trim() ? 0.4 : 1, cursor: chatLoading || !chatInput.trim() ? "not-allowed" : undefined, flexShrink: 0 }}
             >
               {chatLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               Send
@@ -374,38 +369,45 @@ export default function AgentDetailPage() {
       {tab === "details" && (<>
 
       <Section title="Identity">
-        <KV label="name" value={agent.name} />
-        <KV label="agent_id" value={agent.id} mono />
-        <KV label="family_id" value={agent.family_id} mono />
-        <KV label="family" value={agent.family ? `${agent.family.label} — ${agent.family.description || "no description"}` : "-"} />
-        <KV label="version" value={agent.version} mono />
-        <KV label="status" value={agent.status} mono />
-        <KV label="owner" value={agent.owner || "-"} mono />
+        <div className="kv">
+          <span className="k">name</span><span className="v">{agent.name}</span>
+          <span className="k">agent_id</span><span className="v mono">{agent.id}</span>
+          <span className="k">family_id</span><span className="v mono">{agent.family_id}</span>
+          <span className="k">family</span><span className="v">{agent.family ? `${agent.family.label} — ${agent.family.description || "no description"}` : "-"}</span>
+          <span className="k">version</span><span className="v mono">{agent.version}</span>
+          <span className="k">status</span><span className="v mono">{agent.status}</span>
+          <span className="k">owner</span><span className="v mono">{agent.owner || "-"}</span>
+        </div>
       </Section>
 
       <Section title="Mission / Description">
-        <KV label="purpose" value={agent.purpose} />
-        <KV label="description" value={agent.description || "-"} />
+        <div className="kv">
+          <span className="k">purpose</span><span className="v">{agent.purpose}</span>
+          <span className="k">description</span><span className="v">{agent.description || "-"}</span>
+        </div>
       </Section>
 
       <Section title="Skills">
         {agent.skills_resolved && agent.skills_resolved.length > 0 ? (
-          <div className="space-y-1">
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
             {agent.skills_resolved.map((s) => (
-              <div key={s.skill_id} className="text-xs font-mono flex gap-2">
-                <span className="text-ork-cyan">{s.skill_id}</span>
-                <span className="text-ork-text">{s.label}</span>
-                <span className="text-ork-dim">[{s.category}]</span>
+              <div key={s.skill_id} style={{ fontFamily: "var(--font-mono)", fontSize: "12px", display: "flex", gap: "8px" }}>
+                <span style={{ color: "var(--ork-cyan)" }}>{s.skill_id}</span>
+                <span style={{ color: "var(--ork-text)" }}>{s.label}</span>
+                <span style={{ color: "var(--ork-muted-2)" }}>[{s.category}]</span>
               </div>
             ))}
           </div>
         ) : (
-          <KV label="skill_ids" value={skillIds.length > 0 ? skillIds.join(", ") : "-"} />
+          <div className="kv">
+            <span className="k">skill_ids</span>
+            <span className="v mono">{skillIds.length > 0 ? skillIds.join(", ") : "-"}</span>
+          </div>
         )}
       </Section>
 
       <Section title="Selection hints">
-        <pre className="text-xs font-mono text-ork-muted whitespace-pre-wrap bg-ork-bg border border-ork-border rounded p-3">
+        <pre style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--ork-muted)", whiteSpace: "pre-wrap", background: "var(--ork-bg)", border: "1px solid var(--ork-border)", borderRadius: "var(--radius)", padding: "10px 12px", margin: 0 }}>
 {JSON.stringify(agent.selection_hints ?? {}, null, 2)}
         </pre>
       </Section>
@@ -413,29 +415,35 @@ export default function AgentDetailPage() {
       {isOrchestrator ? (
         /* Pipeline section replaces MCP permissions for orchestrators */
         <Section title="Pipeline d'agents">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-[10px] text-ork-dim uppercase tracking-widest">Mode de routage</span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+          <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--ork-muted-2)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Mode de routage</span>
+            <span className={`chip${
               (agent.routing_mode ?? "sequential") === "dynamic"
-                ? "border-purple-500/40 text-purple-400 bg-purple-500/10"
-                : "border-ork-cyan/40 text-ork-cyan bg-ork-cyan/10"
-            }`}>
+                ? ""
+                : ""
+            }`} style={{
+              color: (agent.routing_mode ?? "sequential") === "dynamic" ? "var(--ork-purple)" : "var(--ork-cyan)",
+              background: (agent.routing_mode ?? "sequential") === "dynamic" ? "var(--ork-purple-bg)" : "var(--ork-cyan-bg)",
+              borderColor: (agent.routing_mode ?? "sequential") === "dynamic"
+                ? "color-mix(in oklch, var(--ork-purple) 40%, transparent)"
+                : "color-mix(in oklch, var(--ork-cyan) 40%, transparent)",
+            }}>
               {(agent.routing_mode ?? "sequential") === "dynamic" ? "Dynamique (LLM choisit)" : "Séquentiel (ordre fixe)"}
             </span>
           </div>
           {(agent.pipeline_agent_ids ?? []).length === 0 ? (
-            <p className="text-sm text-ork-dim font-mono">Aucun agent configuré dans ce pipeline.</p>
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--ork-muted-2)" }}>Aucun agent configuré dans ce pipeline.</p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               {(agent.pipeline_agent_ids ?? []).map((agentId, idx) => (
-                <div key={agentId} className="flex items-center gap-3 bg-ork-bg border border-ork-border rounded-md px-3 py-2">
-                  <span className="bg-ork-cyan text-black text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">
+                <div key={agentId} style={{ display: "flex", alignItems: "center", gap: "10px", background: "var(--ork-bg)", border: "1px solid var(--ork-border)", borderRadius: "var(--radius)", padding: "6px 10px" }}>
+                  <span style={{ background: "var(--ork-cyan)", color: "oklch(0.15 0.03 145)", fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, padding: "1px 6px", borderRadius: "var(--radius)", flexShrink: 0 }}>
                     {idx + 1}
                   </span>
-                  <span className="text-xs text-ork-cyan font-mono flex-1">{agentId}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--ork-cyan)", flex: 1 }}>{agentId}</span>
                   <a
                     href={`/agents/${agentId}`}
-                    className="text-[10px] text-ork-dim hover:text-ork-cyan transition-colors"
+                    style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--ork-muted-2)" }}
                   >
                     voir →
                   </a>
@@ -448,24 +456,24 @@ export default function AgentDetailPage() {
         /* Normal MCP permissions section for non-orchestrators */
         <Section title="MCP permissions">
           {allowedMcps.length === 0 ? (
-            <p className="text-sm text-ork-dim font-mono">No allowed MCPs configured.</p>
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--ork-muted-2)" }}>No allowed MCPs configured.</p>
           ) : (
-            <div className="space-y-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               {allowedMcps.map((mcpId) => {
                 const mcp = mcpMap.get(mcpId);
                 return (
-                  <div key={mcpId} className="border border-ork-border rounded p-2 text-xs font-mono">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-ork-cyan">{mcpId}</span>
+                  <div key={mcpId} style={{ border: "1px solid var(--ork-border)", borderRadius: "var(--radius)", padding: "6px 10px", fontFamily: "var(--font-mono)", fontSize: "12px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                      <span style={{ color: "var(--ork-cyan)" }}>{mcpId}</span>
                       {mcp ? (
                         <>
-                          <span className="text-ork-text">{mcp.name}</span>
-                          <span className="text-ork-dim">{mcp.effect_type}</span>
+                          <span style={{ color: "var(--ork-text)" }}>{mcp.name}</span>
+                          <span style={{ color: "var(--ork-muted-2)" }}>{mcp.effect_type}</span>
                           <StatusBadge status={mcp.orkestra_state} />
                           <StatusBadge status={mcp.obot_state} />
                         </>
                       ) : (
-                        <span className="text-ork-dim">not present in current catalog snapshot</span>
+                        <span style={{ color: "var(--ork-muted-2)" }}>not present in current catalog snapshot</span>
                       )}
                     </div>
                   </div>
@@ -473,44 +481,60 @@ export default function AgentDetailPage() {
               })}
             </div>
           )}
-          <KV label="forbidden_effects" value={forbiddenEffects.length > 0 ? forbiddenEffects.join(", ") : "-"} />
+          <div className="kv" style={{ marginTop: "8px" }}>
+            <span className="k">forbidden_effects</span>
+            <span className="v">{forbiddenEffects.length > 0 ? forbiddenEffects.join(", ") : "-"}</span>
+          </div>
         </Section>
       )}
 
       <Section title="Contracts">
-        <KV label="input_contract_ref" value={agent.input_contract_ref || "-"} mono />
-        <KV label="output_contract_ref" value={agent.output_contract_ref || "-"} mono />
+        <div className="kv">
+          <span className="k">input_contract_ref</span><span className="v mono">{agent.input_contract_ref || "-"}</span>
+          <span className="k">output_contract_ref</span><span className="v mono">{agent.output_contract_ref || "-"}</span>
+        </div>
       </Section>
 
       <Section title="Prompt">
-        <KV label="prompt_ref" value={agent.prompt_ref || "-"} mono />
-        <pre className="text-xs font-mono text-ork-text whitespace-pre-wrap bg-ork-bg border border-ork-border rounded p-3">
+        <div className="kv" style={{ marginBottom: "8px" }}>
+          <span className="k">prompt_ref</span><span className="v mono">{agent.prompt_ref || "-"}</span>
+        </div>
+        <pre style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--ork-text)", whiteSpace: "pre-wrap", background: "var(--ork-bg)", border: "1px solid var(--ork-border)", borderRadius: "var(--radius)", padding: "10px 12px", margin: 0 }}>
 {agent.prompt_content || "-"}
         </pre>
       </Section>
 
       <Section title="Skills file">
-        <KV label="skills_ref" value={agent.skills_ref || "-"} mono />
-        <pre className="text-xs font-mono text-ork-text whitespace-pre-wrap bg-ork-bg border border-ork-border rounded p-3">
+        <div className="kv" style={{ marginBottom: "8px" }}>
+          <span className="k">skills_ref</span><span className="v mono">{agent.skills_ref || "-"}</span>
+        </div>
+        <pre style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--ork-text)", whiteSpace: "pre-wrap", background: "var(--ork-bg)", border: "1px solid var(--ork-border)", borderRadius: "var(--radius)", padding: "10px 12px", margin: 0 }}>
 {agent.skills_content || "-"}
         </pre>
       </Section>
 
       <Section title="Limitations">
-        <KV label="limitations" value={limitations.length > 0 ? limitations.join(", ") : "-"} />
+        <div className="kv">
+          <span className="k">limitations</span>
+          <span className="v">{limitations.length > 0 ? limitations.join(", ") : "-"}</span>
+        </div>
       </Section>
 
       <Section title="Reliability / Tests">
-        <KV label="last_test_status" value={agent.last_test_status || "not_tested"} mono />
-        <KV label="last_validated_at" value={agent.last_validated_at || "-"} mono />
+        <div className="kv">
+          <span className="k">last_test_status</span><span className="v mono">{agent.last_test_status || "not_tested"}</span>
+          <span className="k">last_validated_at</span><span className="v mono">{agent.last_validated_at || "-"}</span>
+        </div>
       </Section>
 
       <Section title="Usage metadata">
-        <KV label="usage_count" value={String(agent.usage_count)} mono />
-        <KV label="criticality" value={agent.criticality} />
-        <KV label="cost_profile" value={agent.cost_profile} />
-        <KV label="created_at" value={agent.created_at} mono />
-        <KV label="updated_at" value={agent.updated_at} mono />
+        <div className="kv">
+          <span className="k">usage_count</span><span className="v mono">{String(agent.usage_count)}</span>
+          <span className="k">criticality</span><span className="v">{agent.criticality}</span>
+          <span className="k">cost_profile</span><span className="v">{agent.cost_profile}</span>
+          <span className="k">created_at</span><span className="v mono">{agent.created_at}</span>
+          <span className="k">updated_at</span><span className="v mono">{agent.updated_at}</span>
+        </div>
       </Section>
 
       <ConfirmDangerDialog
@@ -595,18 +619,9 @@ function AgentMessageContent({ content }: { content: string }) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="glass-panel p-4 space-y-2">
-      <h2 className="section-title text-sm">{title}</h2>
+    <section className="glass-panel" style={{ padding: "14px 16px", marginTop: "8px" }}>
+      <h2 className="section-title" style={{ marginBottom: "10px" }}>{title}</h2>
       {children}
     </section>
-  );
-}
-
-function KV({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="grid grid-cols-[180px_1fr] gap-3 items-start text-xs">
-      <p className="data-label">{label}</p>
-      <p className={`${mono ? "font-mono" : ""} text-ork-text`}>{value}</p>
-    </div>
   );
 }

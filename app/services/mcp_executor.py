@@ -75,18 +75,18 @@ async def invoke_mcp(
         result = await _execute_mcp_tool(mcp_id, tool_action, tool_kwargs or {})
         elapsed_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
+        inv.status = "completed"
+        inv.latency_ms = elapsed_ms
+        inv.cost = 0.02
         if result is not None:
-            inv.status = "completed"
-            inv.latency_ms = elapsed_ms
-            inv.cost = 0.02
             inv.output_summary = result[:200] if isinstance(result, str) else str(result)[:200]
-            inv.ended_at = datetime.now(timezone.utc)
+        inv.ended_at = datetime.now(timezone.utc)
 
-            await emit_event(db, "mcp.completed", "runtime", "mcp_executor",
-                             run_id=run_id,
-                             payload={"mcp_id": mcp_id, "mode": "real", "latency_ms": elapsed_ms})
-            await db.flush()
-            return inv
+        await emit_event(db, "mcp.completed", "runtime", "mcp_executor",
+                         run_id=run_id,
+                         payload={"mcp_id": mcp_id, "mode": "real", "latency_ms": elapsed_ms})
+        await db.flush()
+        return inv
     except Exception as exc:
         inv.status = "failed"
         inv.latency_ms = 0
