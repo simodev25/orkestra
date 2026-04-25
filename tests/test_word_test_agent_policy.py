@@ -1,12 +1,13 @@
 """Regression tests for BUG-2 word_test_agent write bypass."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.models.registry import AgentDefinition
 from app.services.effect_classifier import EffectClassifier
-from app.services.guarded_mcp_executor import guarded_invoke_mcp
+from app.services.agent_factory import _enforce_forbidden_effects_on_mcp_tools
 from scripts.create_word_test_agent import AGENT
 
 
@@ -19,31 +20,32 @@ def test_tc_wordtest_001_heuristic_maps_write_doc_to_write() -> None:
 
 @pytest.mark.asyncio
 async def test_tc_wordtest_002_executor_denies_write_doc_for_write_forbidden_agent() -> None:
-    """TC-WORDTEST-002: guarded executor must deny write_doc when write is forbidden."""
+    """TC-WORDTEST-002: write_doc must be excluded when write is forbidden."""
     db = MagicMock()
-    agent = MagicMock(spec=AgentDefinition)
-    agent.forbidden_effects = ["write"]
-    db.get = AsyncMock(return_value=agent)
     db.add = MagicMock()
     db.flush = AsyncMock()
+    agent = MagicMock(spec=AgentDefinition)
+    agent.id = "word_test_agent"
+    agent.forbidden_effects = ["write"]
+
+    tools = [
+        SimpleNamespace(name="write_doc"),
+        SimpleNamespace(name="list_docs"),
+    ]
 
     classifier = EffectClassifier()
 
     with patch.object(classifier, "_call_llm_sync", side_effect=RuntimeError("llm down")), \
-        patch("app.services.guarded_mcp_executor.get_classifier", return_value=classifier), \
-        patch("app.services.guarded_mcp_executor.invoke_mcp", new_callable=AsyncMock) as mock_invoke, \
-        patch("app.services.guarded_mcp_executor.emit_event", new_callable=AsyncMock):
-        result = await guarded_invoke_mcp(
-            db=db,
-            run_id="run_bug2",
+        patch("app.services.effect_classifier.get_classifier", return_value=classifier):
+        result = await _enforce_forbidden_effects_on_mcp_tools(
+            agent_def=agent,
             mcp_id="mcp_word",
-            calling_agent_id="word_test_agent",
-            tool_action="write_doc",
-            tool_kwargs={"doc_id": "abc", "content": "hello"},
+            mcp_tools=tools,
+            test_run_id=None,
+            db=db,
         )
 
-    assert result.status == "denied"
-    mock_invoke.assert_not_called()
+    assert [t.name for t in result] == ["list_docs"]
 
 
 def test_tc_wordtest_003_agent_forbidden_effects_contains_write() -> None:
