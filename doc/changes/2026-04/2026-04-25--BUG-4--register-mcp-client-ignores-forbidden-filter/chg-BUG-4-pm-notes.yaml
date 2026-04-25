@@ -1,0 +1,31 @@
+change_id: BUG-4
+title: "register_mcp_client re-registers all MCP tools, ignoring forbidden_effects filter"
+phases:
+  clarify_scope: { started: "2026-04-25", completed: "2026-04-25" }
+  specification: { started: null, completed: null }
+  test_planning: { started: null, completed: null }
+  delivery_planning: { started: null, completed: null }
+  delivery: { started: null, completed: null }
+  system_spec_update: { started: null, completed: null }
+  review_fix: { started: null, completed: null }
+  quality_gates: { started: null, completed: null }
+  dod_check: { started: null, completed: null }
+  pr_creation: { started: null, completed: null, url: null }
+
+decisions:
+  - text: >
+      Root cause confirmed by inspecting AgentScope Toolkit.register_mcp_client signature.
+      The method accepts enable_funcs: list[str] | None — if None (current code), ALL tools
+      from the MCP server are re-registered, bypassing our mcp_tools filter.
+      Fix: pass enable_funcs=[t.name for t in mcp_tools] to register_mcp_client.
+      This is the actual enforcement gap that allows write_doc to be called despite forbidden_effects.
+      BUG-2 and BUG-3 fixed the config and the gate condition, but not the registration call itself.
+    date: "2026-04-25"
+
+open_questions: []
+blockers: []
+
+notes:
+  - text: "User confirmed bypass still works despite full forbidden_effects list. Root cause is in register_mcp_client call missing enable_funcs parameter."
+    type: info
+    date: "2026-04-25"

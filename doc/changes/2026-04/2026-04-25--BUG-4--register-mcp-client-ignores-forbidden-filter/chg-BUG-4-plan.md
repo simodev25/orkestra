@@ -45,7 +45,7 @@ Acceptance criteria:
 
 ### Phase 4: Finalization
 
-- [ ] Commit all BUG-4 files
+- [x] Commit all BUG-4 files (commit `840d977`)
 - [ ] Create PR to `master`
 
 Acceptance criteria:
@@ -60,3 +60,4 @@ Acceptance criteria:
 - 2026-04-25: Phase 1 completed (spec + test plan + plan created).
 - 2026-04-25: Phase 2 completed (register_mcp_client now passes enable_funcs from filtered tool list).
 - 2026-04-25: Phase 3 completed (added BUG-4 test file; 4 tests passing).
+- 2026-04-25: Phase 4 task commit completed (`840d977`).
