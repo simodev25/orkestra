@@ -51,9 +51,19 @@ Acceptance criteria:
 Acceptance criteria:
 - Criterion: PR created with requested title/body — PENDING
 
+### Phase 5: Live E2E forbidden-effects validation
+
+- [x] Add `tests/e2e/test_forbidden_effects_e2e.py` with live API checks for config, prompt policy, MCP catalog, denial path, create-without-forbidden, and patch persistence (file created)
+- [x] Run `python3 -m pytest tests/e2e/test_forbidden_effects_e2e.py -v --no-header -m e2e` (4 passed, 2 failed)
+
+Acceptance criteria:
+- Criterion: Live E2E suite validates `write_doc` is denied for `word_test_agent` — FAILED (`test_write_doc_invocation_is_denied_and_recorded`: no denial recorded; `write_doc` executed successfully)
+- Criterion: Agent prompt does not invite blocked write action and communicates read-only authorization — FAILED (`test_word_test_agent_prompt_does_not_invite_write_doc`: prompt explicitly instructs to call `write_doc` and has no `not authorized`/`read-only` guard text)
+
 ## Plan revision log
 
 - 2026-04-25: Initial plan created.
+- 2026-04-25: Added Phase 5 for live E2E forbidden-effects validation on running API.
 
 ## Execution log
 
@@ -61,3 +71,4 @@ Acceptance criteria:
 - 2026-04-25: Phase 2 completed (register_mcp_client now passes enable_funcs from filtered tool list).
 - 2026-04-25: Phase 3 completed (added BUG-4 test file; 4 tests passing).
 - 2026-04-25: Phase 4 task commit completed (`840d977`).
+- 2026-04-25: Phase 5 executed (live E2E suite added; enforcement checks reveal `write_doc` is still allowed and prompt policy is not aligned with forbidden effects).
