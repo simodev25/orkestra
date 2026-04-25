@@ -134,13 +134,15 @@ async def run_target_agent(
             test_run_id=run_id,
         )
     except Exception as exc:
-        logger.warning(f"Agent creation raised an exception for '{agent_id}': {exc}")
+        from app.services.agent_factory import _format_mcp_exception
+        readable_err = _format_mcp_exception(exc)
+        logger.warning(f"Agent creation raised an exception for '{agent_id}': {readable_err}")
         return TargetAgentResult(
             status="failed",
             final_output="",
             duration_ms=0,
             iteration_count=0,
-            error=f"Agent creation failed: {exc}",
+            error=f"Agent creation failed: {readable_err}",
         )
 
     if react_agent is None:
@@ -198,7 +200,10 @@ async def run_target_agent(
         )
     except Exception as exc:
         duration_ms = int((time.time() - t0) * 1000)
-        logger.warning(f"Agent '{agent_id}' raised an error during execution: {exc}")
+        # Unwrap ExceptionGroup / TaskGroup to surface the real sub-exception
+        from app.services.agent_factory import _format_mcp_exception
+        readable_err = _format_mcp_exception(exc)
+        logger.warning(f"Agent '{agent_id}' raised an error during execution: {readable_err}")
         # Try to salvage partial memory so assertions have something to evaluate
         partial_output = ""
         partial_history: list[dict] = []
@@ -223,7 +228,7 @@ async def run_target_agent(
             duration_ms=duration_ms,
             iteration_count=len(partial_history),
             message_history=partial_history,
-            error=f"Execution error: {exc}",
+            error=f"Execution error: {readable_err}",
             connected_mcps=connected_mcps,
             discovered_tools=discovered_tools,
         )

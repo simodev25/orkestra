@@ -1,0 +1,31 @@
+change_id: BUG-1
+title: "list_docs MCP tool fails with TaskGroup exception in word_test_agent"
+phases:
+  clarify_scope: { started: "2026-04-24T00:00:00Z", completed: null }
+  specification: { started: null, completed: null }
+  test_planning: { started: null, completed: null }
+  delivery_planning: { started: null, completed: null }
+  delivery: { started: null, completed: null }
+  system_spec_update: { started: null, completed: null }
+  review_fix: { started: null, completed: null }
+  quality_gates: { started: null, completed: null }
+  dod_check: { started: null, completed: null }
+  pr_creation: { started: null, completed: null, url: null }
+decisions:
+  - text: "Two-part fix needed: (1) unwrap ExceptionGroup in tool execution path, not just probe path; (2) handle structuredContent list→dict format mismatch from MCP Word server"
+    date: "2026-04-24"
+open_questions: []
+blockers: []
+notes:
+  - text: "Error observed: list_docs call returns 'unhandled errors in a TaskGroup (1 sub-exception)' — originates from mcp SDK streamablehttp_client transport layer"
+    type: info
+    date: "2026-04-24"
+  - text: "User requests Docker-based investigation (logs + live testing)"
+    type: info
+    date: "2026-04-24"
+  - text: "Docker test revealed real root cause: ValidationError in MCP SDK — CallToolResult.structuredContent expects dict but MCP Word server returns list. First fix only covered probe path, not tool execution path."
+    type: retro
+    date: "2026-04-24"
+  - text: "Probe path logs now show unwrapped error correctly. Tool execution path (AgentScope MCPToolFunction.__call__) still shows opaque TaskGroup message."
+    type: info
+    date: "2026-04-24"

@@ -1,0 +1,36 @@
+change_id: BUG-2
+title: "word_test_agent can bypass write restriction on Word MCP via missing forbidden_effects"
+phases:
+  clarify_scope: { started: "2026-04-24", completed: "2026-04-24" }
+  specification: { started: "2026-04-24", completed: "2026-04-24" }
+  test_planning: { started: "2026-04-24", completed: "2026-04-24" }
+  delivery_planning: { started: "2026-04-24", completed: "2026-04-24" }
+  delivery: { started: "2026-04-24", completed: "2026-04-24" }
+  system_spec_update: { started: "2026-04-24", completed: "2026-04-24" }
+  review_fix: { started: "2026-04-24", completed: "2026-04-24" }
+  quality_gates: { started: "2026-04-24", completed: "2026-04-24" }
+  dod_check: { started: "2026-04-24", completed: "2026-04-24" }
+  pr_creation: { started: "2026-04-25", completed: null, url: null }
+
+decisions:
+  - text: "Root cause confirmed: forbidden_effects for word_test_agent omits 'write'; guarded_mcp_executor only blocks effects explicitly listed. Two fix locations: (1) forbidden_effects in agent definition, (2) prompt_content rule 4."
+    date: "2026-04-24"
+
+open_questions: []
+
+blockers: []
+
+notes:
+  - text: "Bug discovered during user smoke test — word_test_agent successfully called write_doc despite intent to restrict it to read-only."
+    type: info
+    date: "2026-04-24"
+  - text: >
+      Root cause: agent definition in scripts/create_word_test_agent.py sets
+      forbidden_effects: ['publish', 'approve', 'external_act'] — 'write' is absent.
+      EffectClassifier correctly classifies write_doc as ['write'], but guarded_mcp_executor
+      only blocks effects present in forbidden_effects. Additionally, prompt_content rule 4
+      explicitly instructs the agent to call write_doc when asked to write.
+      Fix requires: (1) add 'write' to forbidden_effects, (2) remove/restrict rule 4 in prompt,
+      (3) update any seeded agent record in DB if already created.
+    type: decision
+    date: "2026-04-24"

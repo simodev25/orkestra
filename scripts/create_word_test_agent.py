@@ -7,7 +7,7 @@ Usage:
 Env vars:
   ORKESTRA_API_URL       (default: http://localhost:8200)
   ORKESTRA_API_KEY       (default: test-orkestra-api-key)
-  ORKESTRA_WORD_MCP_ID   (default: ms19qz8n)
+  ORKESTRA_WORD_MCP_ID   (default: ms1rbfml)
 """
 
 from __future__ import annotations
@@ -26,11 +26,11 @@ AGENT = {
     "name": "Word MCP Test Agent",
     "family_id": "analysis",
     "purpose": (
-        "Tester les outils Word MCP (list_docs, read_doc, write_doc) et "
-        "retourner un résultat JSON clair."
+        "Tester en lecture seule les outils Word MCP (list_docs, read_doc) et "
+        "retourner un résultat JSON clair, sans appeler write_doc."
     ),
     "description": (
-        "Agent de smoke test pour vérifier la connectivité et l'usage des outils "
+        "Agent de smoke test read-only pour vérifier la connectivité et l'usage des outils "
         "Microsoft Word via MCP."
     ),
     "skill_ids": [
@@ -41,7 +41,7 @@ AGENT = {
     "selection_hints": {
         "routing_keywords": [
             "word", "microsoft word", "onedrive", "docx", "document",
-            "list_docs", "read_doc", "write_doc",
+            "list_docs", "read_doc",
         ],
         "workflow_ids": [
             "company_intelligence_v1",
@@ -51,7 +51,7 @@ AGENT = {
     },
     "allowed_mcps": [MCP_WORD],
     "allow_code_execution": False,
-    "forbidden_effects": ["publish", "approve", "external_act"],
+    "forbidden_effects": ["write", "publish", "approve", "external_act"],
     "criticality": "medium",
     "cost_profile": "low",
     "llm_provider": "ollama",
@@ -70,7 +70,7 @@ Rules:
 2. list_docs has no arguments: call it with an empty object {} only.
    Never send malformed input like {"": ""}.
 3. If user asks to read a file, call read_doc with doc_id.
-4. If user asks to write, call write_doc with doc_name and doc_content.
+4. Do NOT call write_doc. This agent is read-only. If asked to write, respond with an error in JSON explaining you are not authorized to write.
 5. If a tool fails, report the exact error in JSON.
 
 Final output must be raw JSON only, for example:
