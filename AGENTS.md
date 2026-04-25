@@ -26,6 +26,13 @@ Référence opérationnelle de la V1 pour OpenCode, avec extension V1.1 ciblée 
 - `@committer` fait un seul Conventional Commit.
 - `@pr-manager` crée/met à jour la PR et s’arrête avant merge.
 
+## Politique de langue
+
+- `/bootstrap` doit demander la langue de travail (`fr` ou `en`) et verrouiller ce choix.
+- Si `fr` est choisi, tous les agents doivent communiquer uniquement en français.
+- Si `en` est choisi, tous les agents doivent communiquer uniquement en anglais.
+- Un changement de langue n’est autorisé que sur demande explicite de l’utilisateur.
+
 ## Agents complémentaires
 
 - `@architect`
@@ -36,6 +43,8 @@ Référence opérationnelle de la V1 pour OpenCode, avec extension V1.1 ciblée 
 - `@image-reviewer`
 - `@review-feedback-applier`
 - `@toolsmith`
+- `@code-reviewer` — analyse ciblée d'un diff (sécurité, correctness, perf) ; délégué par @reviewer et /git-workflow
+- `@tdd-orchestrator` — enforce red-green-refactor pour une tâche ; délégué par @coder dans /run-plan
 
 ## Skills comportementaux obligatoires
 
@@ -43,11 +52,13 @@ Les agents doivent appliquer les skills sélectionnés dans `.opencode/skills/` 
 
 - cadrage: `brainstorming`
 - planification: `writing-plans`
-- implémentation: `test-driven-development`
+- implémentation: `test-driven-development`, `tdd-orchestrator`
 - debug: `systematic-debugging`
 - review: `requesting-code-review`, `receiving-code-review`
 - clôture: `verification-before-completion`, `finishing-a-development-branch`
 - parallélisation: `dispatching-parallel-agents`
+- orchestration multi-agents: `agent-orchestration`
+- git/commit/PR: `git-workflow-orchestrator`
 
 ## Activation des skills projet générés
 
@@ -79,12 +90,14 @@ Règles d’activation:
 - `/write-test-plan <workItemRef>`
 - `/write-plan <workItemRef>`
 - `/run-plan <workItemRef>`
+- `/tdd <workItemRef>` — implémentation TDD stricte (red-green-refactor) pour une tâche ou une phase
 - `/review <workItemRef>`
 - `/check`
 - `/check-fix`
 - `/sync-docs <workItemRef>`
 - `/commit`
 - `/pr`
+- `/git-workflow <target-branch>` — pipeline git complet (review → tests → commit → push → PR) avec checkpoints
 
 ## Extension V1.1
 
