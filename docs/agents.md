@@ -152,21 +152,19 @@ The `version` field is a semantic version string managed manually by the API cal
 
 ### Enforcement mechanism
 
-Forbidden effects are enforced at three layers:
+Forbidden effects are enforced at two layers:
 
-1. **Pre-flight enforcement (agent factory)**: When an agent is created, each MCP tool is classified by the `EffectClassifier`. Tools whose effects intersect with the agent's `forbidden_effects` are excluded from the agent's toolkit entirely. The exclusion is logged, and a `denied` `MCPInvocation` record is created.
+1. **Pre-flight enforcement (agent factory)**: When an agent is created, each MCP tool is classified by the `EffectClassifier`. Tools whose effects intersect with the agent's `forbidden_effects` are excluded from the agent's toolkit entirely. This enforcement is **unconditional**: it applies in all execution contexts (Test Lab, subagent, pipeline, standalone), regardless of the presence of a `test_run_id`.
+   - **Test Lab context** (`test_run_id` + `db` present): The exclusion is logged, and a `denied` `MCPInvocation` record is created for audit. An `mcp.denied` event is emitted.
+   - **Non-Test Lab context**: The exclusion is logged as a WARNING with structured fields (`agent_id`, `tool_name`, `forbidden_effect`). No database record is created to avoid orphan records without a valid `run_id`.
 
-2. **Runtime enforcement (guarded executor)**: When an agent attempts to invoke an MCP tool, `guarded_mcp_executor.guarded_invoke_mcp()` classifies the tool action and blocks the call if any effect is forbidden. The invocation is denied, a `denied` `MCPInvocation` record is persisted, and an `mcp.denied` event is emitted.
+2. **Prompt-level guidance (Layer 7)**: Forbidden effects are injected as text in Layer 7 of the system prompt. The LLM is instructed to avoid the listed effects. This serves as defense-in-depth but is not the primary enforcement mechanism.
 
-3. **Prompt-level guidance (Layer 7)**: Forbidden effects are injected as text in Layer 7 of the system prompt. The LLM is instructed to avoid the listed effects. This serves as defense-in-depth but is not the primary enforcement mechanism.
-
-**Code-level enforcement exists at both the agent factory and runtime execution layers.** An LLM cannot bypass these constraints; the infrastructure denies access to forbidden tools before and during execution.
+**Code-level enforcement exists at the agent factory (tool registration).** An LLM cannot bypass this constraint; the infrastructure denies access to forbidden tools before execution begins.
 
 #### Effect classification
 
-The `EffectClassifier` (`app/services/effect_classifier.py`) maps MCP tool names to effect categories (e.g., `write_doc` → `["write"]`, `publish_blog` → `["publish"]`). This mapping is used by both pre-flight and runtime enforcement.
-
-Run-level overrides: `guarded_invoke_mcp()` accepts a `run_effect_overrides` parameter. Effects in this list are temporarily allowed for a specific test run, enabling controlled testing of otherwise-forbidden operations.
+The `EffectClassifier` (`app/services/effect_classifier.py`) maps MCP tool names to effect categories (e.g., `write_doc` → `["write"]`, `publish_blog` → `["publish"]`). This mapping is used by pre-flight enforcement at agent construction time.
 
 ### Audit trail
 

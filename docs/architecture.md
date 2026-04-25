@@ -15,7 +15,7 @@ The system is composed of eleven backend subsystems, a Next.js frontend, and an 
 | Agent Registry | CRUD, versioning, lifecycle state machine | `app/services/agent_registry_service.py`, `app/models/registry.py`, `app/state_machines/agent_lifecycle_sm.py` |
 | Agent Factory | Creates live ReActAgent from an AgentDefinition; pre-flight effect enforcement | `app/services/agent_factory.py` |
 | Families / Skills | Reusable prompt blocks; seeded from JSON at startup | `app/services/seed_service.py`, `app/config/families.seed.json`, `app/config/skills.seed.json` |
-| MCP Integration | Obot catalog sync; per-binding `enabled_in_orkestra` flag controls tool availability; runtime effect enforcement | `app/services/obot_catalog_service.py`, `app/services/mcp_registry_service.py`, `app/services/guarded_mcp_executor.py` |
+| MCP Integration | Obot catalog sync; per-binding `enabled_in_orkestra` flag controls tool availability | `app/services/obot_catalog_service.py`, `app/services/mcp_registry_service.py` |
 | Test Lab | Scenario execution and LLM-based evaluation | `app/services/test_lab/` (16 files), `app/tasks/test_lab.py` |
 | Governance | Approval workflows, audit trail, forbidden-effect declarations and enforcement | `app/services/approval_service.py`, `app/services/audit_service.py`, `app/state_machines/`, `app/services/effect_classifier.py` |
 | Prompt Builder | Assembles the 7-layer system prompt | `app/services/prompt_builder.py` |
@@ -126,23 +126,19 @@ Forbidden effects are declared at two levels:
 - `agent.forbidden_effects` — per-agent list of effect categories (e.g., `"write"`, `"publish"`, `"external_act"`)
 - `family.default_forbidden_effects` — family-level defaults
 
-At runtime, enforcement occurs at three layers:
+At runtime, enforcement occurs at two layers:
 
-1. **Pre-flight enforcement**: When an agent is created, `agent_factory.py` classifies each MCP tool against the agent's `forbidden_effects`. Tools with forbidden effects are excluded from the agent's toolkit entirely. A `denied` `MCPInvocation` record is created for each blocked tool.
+1. **Pre-flight enforcement**: When an agent is created, `agent_factory.py` classifies each MCP tool against the agent's `forbidden_effects`. Tools with forbidden effects are excluded from the agent's toolkit entirely. This enforcement is **unconditional**: it applies in all execution contexts (Test Lab, subagent, pipeline, standalone), regardless of the presence of a `test_run_id`.
+   - **Test Lab context** (`test_run_id` + `db` present): A `denied` `MCPInvocation` record is created for each blocked tool, and an `mcp.denied` event is emitted.
+   - **Non-Test Lab context**: A WARNING log is emitted with structured fields. No database record is created to avoid orphan records without a valid `run_id`.
 
-2. **Runtime enforcement**: When an agent attempts to call an MCP tool, `guarded_mcp_executor.guarded_invoke_mcp()` classifies the tool action. If any effect is forbidden, the call is blocked, a `denied` `MCPInvocation` is persisted, and an `mcp.denied` event is emitted.
+2. **Prompt-level guidance**: `prompt_builder` merges family and agent forbidden effects and injects the union into Layer 7 of the system prompt. The LLM reads this as a behavioral constraint. This serves as defense-in-depth.
 
-3. **Prompt-level guidance**: `prompt_builder` merges family and agent forbidden effects and injects the union into Layer 7 of the system prompt. The LLM reads this as a behavioral constraint. This serves as defense-in-depth.
-
-**Code-level enforcement exists at both pre-flight (tool registration) and runtime (tool invocation).** An LLM cannot bypass these constraints.
+**Code-level enforcement exists at pre-flight (tool registration).** An LLM cannot bypass this constraint.
 
 #### Effect classification
 
-`EffectClassifier` (`app/services/effect_classifier.py`) maps MCP tool names to effect category strings using heuristic rules. Examples: `write_doc` → `["write"]`, `publish_article` → `["publish"]`.
-
-#### Run-level overrides
-
-`guarded_invoke_mcp()` accepts `run_effect_overrides: list[str]`. Effects in this list are temporarily allowed for a specific test run, enabling controlled testing of otherwise-forbidden operations. Overrides are scoped to the test run and do not modify the agent's base policy.
+`EffectClassifier` (`app/services/effect_classifier.py`) maps MCP tool names to effect category strings using heuristic rules. Examples: `write_doc` → `["write"]`, `publish_article` → `["publish"]`. This mapping is used by pre-flight enforcement at agent construction time.
 
 ### Approval workflows
 

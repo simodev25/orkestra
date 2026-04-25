@@ -1,0 +1,48 @@
+change_id: BUG-3
+title: "forbidden_effects enforcement bypassed outside Test Lab runs"
+phases:
+  clarify_scope: { started: "2026-04-25", completed: "2026-04-25" }
+  specification: { started: null, completed: null }
+  test_planning: { started: null, completed: null }
+  delivery_planning: { started: null, completed: null }
+  delivery: { started: null, completed: null }
+  system_spec_update: { started: null, completed: null }
+  review_fix: { started: null, completed: null }
+  quality_gates: { started: null, completed: null }
+  dod_check: { started: null, completed: null }
+  pr_creation: { started: null, completed: null, url: null }
+
+decisions:
+  - text: >
+      Root cause confirmed via code inspection. Three findings:
+      (1) guarded_mcp_executor.py is dead code — never called anywhere.
+      (2) agent_factory.py enforcement gated on `test_run_id and db` — only fires in Test Lab runs.
+          Callers: subagent_executor.py calls create_agentscope_agent WITHOUT test_run_id → no enforcement.
+      (3) EffectClassifier has process-level cache per tool_name — stale classifications persist until restart.
+      Fix strategy: make enforcement unconditional in agent_factory.py, remove test_run_id gate.
+      guarded_mcp_executor.py can be wired in or removed (TBD in spec).
+    date: "2026-04-25"
+
+open_questions: []
+
+decisions:
+  - text: >
+      Root cause confirmed via code inspection. Three findings:
+      (1) guarded_mcp_executor.py is dead code — never called anywhere.
+      (2) agent_factory.py enforcement gated on `test_run_id and db` — only fires in Test Lab runs.
+          Callers: subagent_executor.py calls create_agentscope_agent WITHOUT test_run_id → no enforcement.
+      (3) EffectClassifier has process-level cache per tool_name — stale classifications persist until restart.
+      Fix strategy: make enforcement unconditional in agent_factory.py, remove test_run_id gate.
+      guarded_mcp_executor.py can be wired in or removed (TBD in spec).
+    date: "2026-04-25"
+  - text: "User decision: consolidate enforcement in agent_factory.py, delete guarded_mcp_executor.py."
+    date: "2026-04-25"
+  - text: "Audit trail for non-test-lab runs: log only (no MCPInvocation without run_id — avoids orphan records)."
+    date: "2026-04-25"
+
+blockers: []
+
+notes:
+  - text: "Discovered during user suspicion that forbidden_effects was not working on updates. Root cause is deeper — enforcement never fires outside Test Lab."
+    type: info
+    date: "2026-04-25"
