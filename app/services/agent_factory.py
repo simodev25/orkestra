@@ -418,6 +418,7 @@ async def create_agentscope_agent(
                         mcp_client=mcp_client,
                         group_name="basic",
                         namesake_strategy="rename",
+                        enable_funcs=[t.name for t in mcp_tools],
                     )
                     connected_mcps.append({
                         "id": mcp_id,
