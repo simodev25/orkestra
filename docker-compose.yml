@@ -107,6 +107,7 @@ services:
     volumes:
       - ./app:/app/app:ro
       - ./migrations:/app/migrations:ro
+      - ./data:/app/data:ro
       - ./alembic.ini:/app/alembic.ini:ro
       - ./storage:/app/storage
       # Docker socket for BaseSandbox container isolation

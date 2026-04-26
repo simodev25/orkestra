@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { StatCard } from "@/components/ui/stat-card";
@@ -23,6 +23,8 @@ import type {
 } from "@/lib/agent-registry/types";
 import { listFamilies } from "@/lib/families/service";
 import type { FamilyDefinition } from "@/lib/families/types";
+import { importAllDefinitions } from "@/lib/definitions/service";
+import type { ImportAllResult } from "@/lib/definitions/service";
 
 const DEFAULT_STATS: AgentRegistryStats = {
   total_agents: 0,
@@ -68,6 +70,9 @@ function AgentRegistryPageContent() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
   const [activeTab, setActiveTab] = useState<"details" | "skills">("details");
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setActiveTab("details");
@@ -103,6 +108,39 @@ function AgentRegistryPageContent() {
 
   async function applyFilters() {
     await loadAll(filters);
+  }
+
+  function triggerImportPicker() {
+    importFileRef.current?.click();
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text) as { definitions?: unknown[] };
+      const definitions = json.definitions ?? [];
+      if (!Array.isArray(definitions) || definitions.length === 0) {
+        setImportResult("❌ Fichier invalide — clé 'definitions' manquante ou vide");
+        return;
+      }
+      const result = await importAllDefinitions(definitions);
+      const errCount = result.errors.length;
+      setImportResult(
+        `✅ ${result.created} created, ${result.updated} updated, ${result.skipped} skipped` +
+        (errCount ? ` — ⚠ ${errCount} error(s)` : "")
+      );
+      await loadAll(filters);
+    } catch (err: unknown) {
+      setImportResult(`❌ ${err instanceof Error ? err.message : "Import failed"}`);
+    } finally {
+      setImporting(false);
+      // reset input so même fichier peut être re-sélectionné
+      if (importFileRef.current) importFileRef.current.value = "";
+    }
   }
 
   function updateFilter<K extends keyof AgentRegistryFilters>(key: K, value: AgentRegistryFilters[K]) {
@@ -148,9 +186,40 @@ function AgentRegistryPageContent() {
         </div>
         <div className="pagehead__actions">
           <Link href="/agents/new" className="btn btn--cyan">+ Add Agent</Link>
+          <>
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".json"
+              style={{ display: "none" }}
+              onChange={(e) => void handleImportFile(e)}
+            />
+            <button
+              onClick={triggerImportPicker}
+              disabled={importing}
+              className="btn btn--amber"
+            >
+              {importing ? "Importing…" : "⬆ Import All"}
+            </button>
+          </>
           <button onClick={() => setAiModalOpen(true)} className="btn btn--purple">✦ Generate</button>
         </div>
       </div>
+
+      {importResult && (
+        <div style={{
+          padding: "8px 12px",
+          background: "var(--ork-surface)",
+          border: "1px solid var(--ork-border)",
+          borderRadius: 6,
+          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+          color: "var(--ork-text)",
+          marginBottom: 4,
+        }}>
+          {importResult}
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="stats">

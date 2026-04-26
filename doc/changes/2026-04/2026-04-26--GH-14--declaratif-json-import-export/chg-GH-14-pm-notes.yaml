@@ -1,0 +1,33 @@
+change_id: GH-14
+title: "Système déclaratif JSON import/export pour agents, scénarios et orchestrateurs"
+phases:
+  clarify_scope:     { started: "2026-04-26", completed: "2026-04-26" }
+  specification:     { started: "2026-04-26", completed: "2026-04-26" }
+  test_planning:     { started: "2026-04-26", completed: "2026-04-26" }
+  delivery_planning: { started: "2026-04-26", completed: "2026-04-26" }
+  delivery:          { started: "2026-04-26", completed: "2026-04-26" }
+  system_spec_update:{ started: "2026-04-26", completed: "2026-04-26" }
+  review_fix:        { started: "2026-04-26", completed: "2026-04-26" }
+  quality_gates:     { started: "2026-04-26", completed: "2026-04-26" }
+  dod_check:         { started: "2026-04-26", completed: "2026-04-26" }
+  pr_creation:       { started: "2026-04-26", completed: "2026-04-26", url: "https://github.com/simodev25/orkestra/pull/15" }
+
+decisions:
+  - text: "Pas de CLI — uniquement services Python + endpoints REST pour import/export"
+    date: "2026-04-26"
+  - text: "@architect consulté avant démarrage — ALT-1 retenue (JSON déclaratif au-dessus des modèles existants)"
+    date: "2026-04-26"
+  - text: "Ticket unique (pas de découpage en 5) — scope global accepté par l'utilisateur"
+    date: "2026-04-26"
+
+open_questions: []
+
+blockers: []
+
+notes:
+  - text: "Analyse architecturale complète réalisée par @architect avant création du ticket"
+    type: "info"
+    date: "2026-04-26"
+  - text: "Clé API Obot expirée — créé une nouvelle clé globale couvrant ms1289fd+ms1gwpkf+ms19zt8l via POST /api/api-keys, mis à jour .env, redémarré API. MCP Tavily opérationnel (tool_use + tool_result confirmés en logs)."
+    type: "retro"
+    date: "2026-04-26"

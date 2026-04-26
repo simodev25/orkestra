@@ -1,0 +1,74 @@
+{
+  "kind": "scenario",
+  "schema_version": "v1",
+  "definition_key": "scn-budget-fit-agent--budget-fit-lisbonne-mai-2026-3-options-budget-180--b0d224bf",
+  "name": "Budget & Fit — Lisbonne mai 2026 (3 options, budget 180€)",
+  "description": "Test de scoring déterministe pour 3 hébergements à Lisbonne avec un budget de 180€/nuit. L'agent doit calculer budget_score, overall_fit_score et fit_explanation pour chaque option en appliquant les règles explicites du prompt, sans outil externe.",
+  "agent_id": "budget_fit_agent",
+  "input_prompt": "Compute the budget and fit scores for the following accommodation options. Apply the deterministic scoring rules. Return raw JSON only.\n\nRequest:\n{\n  \"budget_per_night\": 180,\n  \"options\": [\n    {\n      \"option_id\": \"stay_001\",\n      \"name\": \"Hotel Bairro Alto\",\n      \"price_per_night\": 165,\n      \"mobility_score\": 0.84,\n      \"weather_score\": 0.88\n    },\n    {\n      \"option_id\": \"stay_002\",\n      \"name\": \"Hotel Oriente\",\n      \"price_per_night\": 210,\n      \"mobility_score\": 0.71,\n      \"weather_score\": 0.88\n    },\n    {\n      \"option_id\": \"stay_003\",\n      \"name\": \"Hotel Cascais\",\n      \"price_per_night\": 140,\n      \"mobility_score\": 0.42,\n      \"weather_score\": 0.88\n    }\n  ]\n}",
+  "expected_tools": [],
+  "assertions": [
+    {
+      "type": "output_field_exists",
+      "target": "fit_results",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "top_pick",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "scoring_weights",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "explanation",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "stay_001",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "budget_score",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "overall_fit_score",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "fit_rank",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "fit_explanation",
+      "critical": true
+    },
+    {
+      "type": "max_duration_ms",
+      "expected": "80000",
+      "critical": false
+    }
+  ],
+  "timeout_seconds": 90,
+  "max_iterations": 8,
+  "tags": [
+    "budget",
+    "fit",
+    "scoring",
+    "deterministic",
+    "lisbonne",
+    "governance",
+    "smoke_test"
+  ],
+  "enabled": true
+}

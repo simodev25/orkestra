@@ -1,0 +1,55 @@
+{
+  "kind": "scenario",
+  "schema_version": "v1",
+  "definition_key": "scn-hotel-pipeline-orchestrator--hotel-pipeline-full-run-lisbonne--4cfeff51",
+  "name": "hotel-pipeline-full-run-lisbonne",
+  "description": "Teste le pipeline complet : l'orchestrateur doit appeler les 4 agents dans l'ordre (stay_discovery → mobility → weather → budget_fit) et retourner un classement d'hébergements avec scores. Score cible : 92/100 (validé 2026-04-18).",
+  "agent_id": "hotel_pipeline_orchestrator",
+  "input_prompt": "Je cherche un hébergement à Lisbonne pour 2 personnes du 10 au 15 mai 2026. Budget maximum 180€ par nuit. Je veux être proche du centre historique (Alfama) et de l'aéroport. Donne-moi les 3 meilleures options avec scores de mobilité, météo et budget.",
+  "expected_tools": [
+    "run_stay_discovery_agent",
+    "run_mobility_agent",
+    "run_weather_agent",
+    "run_budget_fit_agent"
+  ],
+  "assertions": [
+    {
+      "type": "output_contains",
+      "expected": "mobilité",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "météo",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "budget",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "180",
+      "critical": true
+    },
+    {
+      "type": "max_duration_ms",
+      "expected": "600000",
+      "critical": false
+    }
+  ],
+  "timeout_seconds": 600,
+  "max_iterations": 5,
+  "tags": [
+    "pipeline",
+    "hotel",
+    "lisbonne",
+    "alfama",
+    "orchestration",
+    "smoke_test",
+    "full_pipeline",
+    "92_score"
+  ],
+  "enabled": true
+}

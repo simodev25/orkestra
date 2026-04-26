@@ -1,0 +1,69 @@
+{
+  "kind": "scenario",
+  "schema_version": "v1",
+  "definition_key": "scn-weather-agent--weather-context-lisbonne-mai-2026-3-jours--fbe9dac8",
+  "name": "Weather context — Lisbonne mai 2026 (3 jours)",
+  "description": "Test d'évaluation météo pour un séjour à Lisbonne du 12 au 15 mai 2026. L'agent doit utiliser tavily_search pour rechercher les prévisions météo, identifier les conditions attendues et les risques, calculer un comfort_score, puis retourner un JSON structuré avec weather_summary et weather_confidence.",
+  "agent_id": "weather_agent",
+  "input_prompt": "Evaluate the weather context for the following trip. Use web search to find forecasts. Return raw JSON only.\n\nRequest:\n{\n  \"destination\": \"Lisbonne\",\n  \"check_in\": \"2026-05-12\",\n  \"check_out\": \"2026-05-15\",\n  \"weather_sensitive\": true\n}",
+  "expected_tools": [
+    "tavily_search"
+  ],
+  "assertions": [
+    {
+      "type": "no_tool_failures",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "weather_summary",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "weather_confidence",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "explanation",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "search_queries_used",
+      "critical": false
+    },
+    {
+      "type": "output_contains",
+      "expected": "comfort_score",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "risk_flags",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "Lisbonne",
+      "critical": true
+    },
+    {
+      "type": "max_duration_ms",
+      "expected": "100000",
+      "critical": false
+    }
+  ],
+  "timeout_seconds": 120,
+  "max_iterations": 10,
+  "tags": [
+    "weather",
+    "travel",
+    "lisbonne",
+    "forecast",
+    "comfort",
+    "smoke_test"
+  ],
+  "enabled": true
+}
