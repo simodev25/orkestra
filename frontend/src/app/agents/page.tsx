@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { StatCard } from "@/components/ui/stat-card";
@@ -72,6 +72,7 @@ function AgentRegistryPageContent() {
   const [activeTab, setActiveTab] = useState<"details" | "skills">("details");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setActiveTab("details");
@@ -109,11 +110,24 @@ function AgentRegistryPageContent() {
     await loadAll(filters);
   }
 
-  async function handleImportAll() {
+  function triggerImportPicker() {
+    importFileRef.current?.click();
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
     setImporting(true);
     setImportResult(null);
     try {
-      const result = await importAllDefinitions();
+      const text = await file.text();
+      const json = JSON.parse(text) as { definitions?: unknown[] };
+      const definitions = json.definitions ?? [];
+      if (!Array.isArray(definitions) || definitions.length === 0) {
+        setImportResult("❌ Fichier invalide — clé 'definitions' manquante ou vide");
+        return;
+      }
+      const result = await importAllDefinitions(definitions);
       const errCount = result.errors.length;
       setImportResult(
         `✅ ${result.created} created, ${result.updated} updated, ${result.skipped} skipped` +
@@ -124,6 +138,8 @@ function AgentRegistryPageContent() {
       setImportResult(`❌ ${err instanceof Error ? err.message : "Import failed"}`);
     } finally {
       setImporting(false);
+      // reset input so même fichier peut être re-sélectionné
+      if (importFileRef.current) importFileRef.current.value = "";
     }
   }
 
@@ -170,13 +186,22 @@ function AgentRegistryPageContent() {
         </div>
         <div className="pagehead__actions">
           <Link href="/agents/new" className="btn btn--cyan">+ Add Agent</Link>
-          <button
-            onClick={() => void handleImportAll()}
-            disabled={importing}
-            className="btn btn--amber"
-          >
-            {importing ? "Importing…" : "⬆ Import All"}
-          </button>
+          <>
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".json"
+              style={{ display: "none" }}
+              onChange={(e) => void handleImportFile(e)}
+            />
+            <button
+              onClick={triggerImportPicker}
+              disabled={importing}
+              className="btn btn--amber"
+            >
+              {importing ? "Importing…" : "⬆ Import All"}
+            </button>
+          </>
           <button onClick={() => setAiModalOpen(true)} className="btn btn--purple">✦ Generate</button>
         </div>
       </div>

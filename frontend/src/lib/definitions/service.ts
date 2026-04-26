@@ -8,8 +8,9 @@ export interface ImportAllResult {
   warnings: { kind?: string; id?: string; message: string }[];
 }
 
-export async function importAllDefinitions(): Promise<ImportAllResult> {
+export async function importAllDefinitions(definitions: unknown[]): Promise<ImportAllResult> {
   return request<ImportAllResult>("/api/definitions/import-all", {
     method: "POST",
+    body: JSON.stringify({ definitions }),
   });
 }

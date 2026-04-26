@@ -111,20 +111,12 @@ async def export_definition_route(
 
 
 @router.post("/import-all", response_model=ImportReportOut)
-async def import_all_definitions_route(db: AsyncSession = Depends(get_db)):
-    """Importe toutes les définitions depuis data/registry/all-definitions.json."""
-    import json
-    from pathlib import Path
-
-    bundle_path = Path("data/registry/all-definitions.json")
-    if not bundle_path.exists():
-        raise HTTPException(status_code=404, detail="all-definitions.json not found")
-
-    raw = json.loads(bundle_path.read_text())
-    definitions = raw.get("definitions", [])
-
-    # Validation schéma Pydantic (réutilise la logique existante)
-    validated = _validate_payload_or_422(definitions)
+async def import_all_definitions_route(
+    payload: DefinitionsBatchIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """Importe toutes les définitions depuis un bundle JSON { definitions: [...] }."""
+    validated = _validate_payload_or_422(payload.definitions)
 
     try:
         report = await import_definitions(db, validated)
