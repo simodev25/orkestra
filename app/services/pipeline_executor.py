@@ -36,6 +36,7 @@ class PipelineContext:
     """Mutable state shared across pipeline tool calls (closure-captured)."""
     accumulated: str = ""                   # running context string from all previous outputs
     results: dict[str, str] = field(default_factory=dict)  # agent_id -> last output
+    agents: list = field(default_factory=list)  # pre-created pipeline agents
 
 
 def _run_async(coro):
@@ -93,6 +94,7 @@ async def build_pipeline_tools(
                 "desc":    (agent_def.description or "")[:300],
                 "agent":   react_agent,
             })
+            ctx.agents.append(react_agent)
             logger.info("Pipeline agent pre-created: %s (%s)", agent_id, agent_def.name)
 
         except Exception as exc:

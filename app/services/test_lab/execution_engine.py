@@ -326,8 +326,8 @@ def _make_formatter():
         if is_local_ollama(host):
             from agentscope.formatter import OllamaChatFormatter
             return OllamaChatFormatter()
-    from agentscope.formatter import OpenAIChatFormatter
-    return OpenAIChatFormatter()
+    from app.llm.formatter import OpenAIChatFormatterIgnoringThinking
+    return OpenAIChatFormatterIgnoringThinking()
 
 
 def _load_skills_text(skill_ids: list[str]) -> str:

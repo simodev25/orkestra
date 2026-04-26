@@ -405,6 +405,7 @@ async def create_agentscope_agent(
         # Connect to remote MCP servers and register their tools, enforcing the MCP allowlist
         mcp_servers = await resolve_mcp_servers(db, agent_def)
         connected_mcps = []
+        mcp_clients = []
         for srv in mcp_servers:
             mcp_id = srv["id"]
             if allowed and mcp_id not in allowed:
@@ -452,6 +453,7 @@ async def create_agentscope_agent(
                         namesake_strategy="rename",
                         enable_funcs=[t.name for t in mcp_tools],
                     )
+                    mcp_clients.append(mcp_client)
                     connected_mcps.append({
                         "id": mcp_id,
                         "url": srv["url"],
@@ -492,10 +494,11 @@ async def create_agentscope_agent(
         # each pipeline agent and register one dynamic tool per agent so the
         # orchestrator LLM can call them in sequence with context propagation.
         pipeline_agent_ids = getattr(agent_def, "pipeline_agent_ids", None) or []
+        pipeline_ctx = None
         if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
             try:
                 from app.services.pipeline_executor import build_pipeline_tools
-                pipeline_tools, _pipeline_ctx = await build_pipeline_tools(db, pipeline_agent_ids, test_run_id=test_run_id)
+                pipeline_tools, pipeline_ctx = await build_pipeline_tools(db, pipeline_agent_ids, test_run_id=test_run_id)
                 for pt in pipeline_tools:
                     toolkit.register_tool_function(pt)
                 logger.info(
@@ -528,6 +531,10 @@ async def create_agentscope_agent(
 
         # Attach MCP info for tracing
         agent._connected_mcps = connected_mcps
+        # Keep live MCP clients for explicit async cleanup before loop shutdown.
+        agent._mcp_clients = mcp_clients
+        # Keep pipeline context so nested agents can be cleaned up explicitly.
+        agent._pipeline_ctx = pipeline_ctx
 
         logger.info(f"Created AgentScope agent: {agent_def.id}")
         return agent
@@ -556,3 +563,55 @@ def get_tools_for_agent(agent_def: AgentDefinition) -> list:
             all_tools.extend(tools)
 
     return all_tools
+
+
+async def close_agentscope_agent_resources(agent) -> None:
+    """Best-effort explicit cleanup for AgentScope agent resources.
+
+    Why: some MCP clients internally own httpx.AsyncClient objects. If those are
+    finalized after the asyncio loop is closed, Python can log:
+    ``RuntimeError: Event loop is closed``. We proactively close clients while
+    still in a live async context.
+    """
+    if agent is None:
+        return
+
+    clients = list(getattr(agent, "_mcp_clients", []) or [])
+    for client in clients:
+        try:
+            aclose = getattr(client, "aclose", None)
+            if callable(aclose):
+                try:
+                    await aclose()
+                except RuntimeError as exc:
+                    if "Event loop is closed" in str(exc):
+                        logger.debug("Ignore MCP aclose on closed loop: %s", exc)
+                    else:
+                        raise
+                continue
+
+            close = getattr(client, "close", None)
+            if callable(close):
+                close()
+        except Exception as exc:
+            logger.debug("Failed to close MCP client cleanly: %s", exc)
+
+    try:
+        setattr(agent, "_mcp_clients", [])
+    except Exception:
+        pass
+
+    # Cleanup pre-created pipeline agents (if any), recursively.
+    pipeline_ctx = getattr(agent, "_pipeline_ctx", None)
+    nested_agents = list(getattr(pipeline_ctx, "agents", []) or []) if pipeline_ctx else []
+    for nested in nested_agents:
+        if nested is agent:
+            continue
+        await close_agentscope_agent_resources(nested)
+
+    try:
+        if pipeline_ctx is not None:
+            setattr(pipeline_ctx, "agents", [])
+        setattr(agent, "_pipeline_ctx", None)
+    except Exception:
+        pass

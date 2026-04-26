@@ -182,56 +182,61 @@ async def run_target_agent(
     t0 = time.time()
 
     try:
-        await asyncio.wait_for(
-            react_agent(user_msg),
-            timeout=timeout_seconds,
-        )
-    except asyncio.TimeoutError:
-        duration_ms = int((time.time() - t0) * 1000)
-        logger.warning(f"Agent '{agent_id}' timed out after {timeout_seconds}s")
-        return TargetAgentResult(
-            status="timeout",
-            final_output="",
-            duration_ms=duration_ms,
-            iteration_count=0,
-            error=f"Timed out after {timeout_seconds}s",
-            connected_mcps=connected_mcps,
-            discovered_tools=discovered_tools,
-        )
-    except Exception as exc:
-        duration_ms = int((time.time() - t0) * 1000)
-        # Unwrap ExceptionGroup / TaskGroup to surface the real sub-exception
-        from app.services.agent_factory import _format_mcp_exception
-        readable_err = _format_mcp_exception(exc)
-        logger.warning(f"Agent '{agent_id}' raised an error during execution: {readable_err}")
-        # Try to salvage partial memory so assertions have something to evaluate
-        partial_output = ""
-        partial_history: list[dict] = []
         try:
-            msgs = await react_agent.memory.get_memory()
-            for m in msgs:
-                role = getattr(m, "role", "")
-                name = getattr(m, "name", "")
-                text = m.get_text_content() if hasattr(m, "get_text_content") else ""
-                partial_history.append({"role": role, "name": name, "content": (text or "")[:5000]})
-            for m in reversed(msgs):
-                if getattr(m, "role", "") == "assistant":
-                    t = m.get_text_content() if hasattr(m, "get_text_content") else ""
-                    if t and t.strip():
-                        partial_output = t[:10000]
-                        break
-        except Exception:
-            pass
-        return TargetAgentResult(
-            status="failed",
-            final_output=partial_output,
-            duration_ms=duration_ms,
-            iteration_count=len(partial_history),
-            message_history=partial_history,
-            error=f"Execution error: {readable_err}",
-            connected_mcps=connected_mcps,
-            discovered_tools=discovered_tools,
-        )
+            await asyncio.wait_for(
+                react_agent(user_msg),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            duration_ms = int((time.time() - t0) * 1000)
+            logger.warning(f"Agent '{agent_id}' timed out after {timeout_seconds}s")
+            return TargetAgentResult(
+                status="timeout",
+                final_output="",
+                duration_ms=duration_ms,
+                iteration_count=0,
+                error=f"Timed out after {timeout_seconds}s",
+                connected_mcps=connected_mcps,
+                discovered_tools=discovered_tools,
+            )
+        except Exception as exc:
+            duration_ms = int((time.time() - t0) * 1000)
+            # Unwrap ExceptionGroup / TaskGroup to surface the real sub-exception
+            from app.services.agent_factory import _format_mcp_exception
+            readable_err = _format_mcp_exception(exc)
+            logger.warning(f"Agent '{agent_id}' raised an error during execution: {readable_err}")
+            # Try to salvage partial memory so assertions have something to evaluate
+            partial_output = ""
+            partial_history: list[dict] = []
+            try:
+                msgs = await react_agent.memory.get_memory()
+                for m in msgs:
+                    role = getattr(m, "role", "")
+                    name = getattr(m, "name", "")
+                    text = m.get_text_content() if hasattr(m, "get_text_content") else ""
+                    partial_history.append({"role": role, "name": name, "content": (text or "")[:5000]})
+                for m in reversed(msgs):
+                    if getattr(m, "role", "") == "assistant":
+                        t = m.get_text_content() if hasattr(m, "get_text_content") else ""
+                        if t and t.strip():
+                            partial_output = t[:10000]
+                            break
+            except Exception:
+                pass
+            return TargetAgentResult(
+                status="failed",
+                final_output=partial_output,
+                duration_ms=duration_ms,
+                iteration_count=len(partial_history),
+                message_history=partial_history,
+                error=f"Execution error: {readable_err}",
+                connected_mcps=connected_mcps,
+                discovered_tools=discovered_tools,
+            )
+    finally:
+        # Explicitly close MCP/httpx async clients while loop is alive.
+        from app.services.agent_factory import close_agentscope_agent_resources
+        await close_agentscope_agent_resources(react_agent)
 
     duration_ms = int((time.time() - t0) * 1000)
 

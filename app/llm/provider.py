@@ -121,8 +121,8 @@ def get_formatter():
                 from agentscope.formatter import OllamaChatFormatter
                 return OllamaChatFormatter()
         # Remote Ollama (cloud) or OpenAI/Mistral → OpenAI-compatible formatter
-        from agentscope.formatter import OpenAIChatFormatter
-        return OpenAIChatFormatter()
+        from app.llm.formatter import OpenAIChatFormatterIgnoringThinking
+        return OpenAIChatFormatterIgnoringThinking()
     except Exception as e:
         logger.warning(f"Failed to create formatter: {e}")
         return None
