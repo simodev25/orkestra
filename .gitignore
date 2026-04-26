@@ -21,3 +21,4 @@ governance/
 tmp/
 .ai/local/
 logs/
+.DS_Store
