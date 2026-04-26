@@ -1,0 +1,25 @@
+change_id: GH-13
+title: "Organiser les scripts par thème (sous-dossiers)"
+phases:
+  clarify_scope:    { started: "2026-04-25", completed: "2026-04-25" }
+  specification:    { started: null, completed: null }
+  test_planning:    { started: null, completed: null }
+  delivery_planning:{ started: null, completed: null }
+  delivery:         { started: null, completed: null }
+  system_spec_update:{ started: null, completed: null }
+  review_fix:       { started: null, completed: null }
+  quality_gates:    { started: null, completed: null }
+  dod_check:        { started: null, completed: null }
+  pr_creation:      { started: null, completed: null, url: null }
+
+decisions:
+  - text: "Structure en 4 thèmes: agents/, testlab/, infra/, dev/"
+    date: "2026-04-25"
+
+open_questions: []
+blockers: []
+
+notes:
+  - text: "Scope clair, pas de dépendances complexes. Changement purement structurel (move fichiers + README)."
+    type: "info"
+    date: "2026-04-25"

@@ -18,7 +18,7 @@ from app.core.correlation import CorrelationIdMiddleware
 from app.api.routes import (
     health, requests, cases, agents, mcps, plans, runs,
     control, supervision, approvals, audit, workflows, mcp_catalog, metrics,
-    debug_strategy, test_lab,
+    debug_strategy, test_lab, definitions,
 )
 from app.api.routes import settings as settings_routes
 from app.api.routes.families import router as families_router
@@ -114,5 +114,6 @@ app.include_router(settings_routes.router, prefix="/api/settings", tags=["settin
 app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 app.include_router(debug_strategy.router, prefix="/api", tags=["debug-strategy"])
 app.include_router(test_lab.router, prefix="/api/test-lab", tags=["test-lab"])
+app.include_router(definitions.router, prefix="/api/definitions", tags=["definitions"])
 from app.api.routes import test_lab_session
 app.include_router(test_lab_session.router, tags=["test-lab-sessions"])

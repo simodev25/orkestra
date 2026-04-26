@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/mbensass/projetPreso/multiAgents/orkestra/logs/.79d0f7ab6ce42202731c04600b6edc7bf62dbf08-audit.json",
+    "files": [
+        {
+            "date": 1777212542498,
+            "name": "/Users/mbensass/projetPreso/multiAgents/orkestra/logs/mcp-puppeteer-2026-04-26.log",
+            "hash": "061e2a2dadf600d8513ae67f7beb0903765efa5b0814cbfbede3dc3b3ca18834"
+        }
+    ],
+    "hashType": "sha256"
+}

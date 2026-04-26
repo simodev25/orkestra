@@ -1,0 +1,70 @@
+{
+  "kind": "scenario",
+  "schema_version": "v1",
+  "definition_key": "scn-mobility-agent--mobility-evaluation-lisbonne-mai-2026-3-options--6475391a",
+  "name": "Mobility evaluation — Lisbonne mai 2026 (3 options)",
+  "description": "Test d'évaluation de mobilité pour 3 hébergements à Lisbonne. L'agent doit utiliser search_places pour géocoder les hôtels et compute_routes pour calculer les temps de trajet depuis l'aéroport et le centre-ville, puis retourner un JSON structuré avec mobility_results et mobility_confidence.",
+  "agent_id": "mobility_agent",
+  "input_prompt": "Evaluate the mobility of the following accommodation options. Use Google Maps tools to geocode locations and compute routes. Return raw JSON only.\n\nRequest:\n{\n  \"destination\": \"Lisbonne\",\n  \"points_of_interest\": [\"city_center\", \"airport\"],\n  \"options\": [\n    {\n      \"option_id\": \"stay_001\",\n      \"name\": \"Hotel Bairro Alto\",\n      \"location_text\": \"Bairro Alto, Lisbonne\"\n    },\n    {\n      \"option_id\": \"stay_002\",\n      \"name\": \"Hotel Oriente\",\n      \"location_text\": \"Parque das Nações, Lisbonne\"\n    },\n    {\n      \"option_id\": \"stay_003\",\n      \"name\": \"Hotel Cascais\",\n      \"location_text\": \"Cascais, région de Lisbonne\"\n    }\n  ]\n}",
+  "expected_tools": [
+    "compute_routes",
+    "search_places"
+  ],
+  "assertions": [
+    {
+      "type": "no_tool_failures",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "mobility_results",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "mobility_confidence",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "explanation",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "search_queries_used",
+      "critical": false
+    },
+    {
+      "type": "output_contains",
+      "expected": "stay_001",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "mobility_score",
+      "critical": true
+    },
+    {
+      "type": "output_contains",
+      "expected": "airport",
+      "critical": true
+    },
+    {
+      "type": "max_duration_ms",
+      "expected": "150000",
+      "critical": false
+    }
+  ],
+  "timeout_seconds": 180,
+  "max_iterations": 15,
+  "tags": [
+    "mobility",
+    "hotel",
+    "lisbonne",
+    "google_maps",
+    "travel_time",
+    "smoke_test"
+  ],
+  "enabled": true
+}

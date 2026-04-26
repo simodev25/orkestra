@@ -1,0 +1,62 @@
+{
+  "kind": "scenario",
+  "schema_version": "v1",
+  "definition_key": "scn-stay-discovery-agent--stay-discovery-lisbonne-mai-2026-budget-180--2a42002f",
+  "name": "Stay discovery — Lisbonne mai 2026 (budget 180€)",
+  "description": "Test de découverte d'hébergements pour Lisbonne, 3 nuits en mai 2026, budget 180€/nuit, préférence centre-ville. L'agent doit interroger Tavily, extraire des candidats réels et retourner un JSON structuré avec candidates, within_budget et discovery_confidence.",
+  "agent_id": "stay_discovery_agent",
+  "input_prompt": "Find accommodation options for the following request. Do NOT answer from memory — use the search tools to retrieve live results. Return raw JSON only.\n\nRequest:\n{\n  \"destination\": \"Lisbonne\",\n  \"check_in\": \"2026-05-12\",\n  \"check_out\": \"2026-05-15\",\n  \"budget_per_night\": 180,\n  \"preferences\": {\n    \"near_city_center\": true\n  }\n}",
+  "expected_tools": [
+    "tavily_search"
+  ],
+  "assertions": [
+    {
+      "type": "no_tool_failures",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "candidates",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "within_budget",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "discovery_confidence",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "explanation",
+      "critical": true
+    },
+    {
+      "type": "output_field_exists",
+      "target": "search_queries_used",
+      "critical": false
+    },
+    {
+      "type": "output_contains",
+      "expected": "Lisbo",
+      "critical": true
+    },
+    {
+      "type": "max_duration_ms",
+      "expected": "90000",
+      "critical": false
+    }
+  ],
+  "timeout_seconds": 120,
+  "max_iterations": 10,
+  "tags": [
+    "hotel",
+    "discovery",
+    "lisbonne",
+    "smoke_test"
+  ],
+  "enabled": true
+}

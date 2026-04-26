@@ -19,3 +19,4 @@ debug-scenarios/*
 .ai
 governance/
 tmp/
+.ai/local/

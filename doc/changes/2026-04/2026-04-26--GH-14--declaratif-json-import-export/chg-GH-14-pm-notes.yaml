@@ -1,0 +1,33 @@
+change_id: GH-14
+title: "Système déclaratif JSON import/export pour agents, scénarios et orchestrateurs"
+phases:
+  clarify_scope:     { started: "2026-04-26", completed: "2026-04-26" }
+  specification:     { started: "2026-04-26", completed: "2026-04-26" }
+  test_planning:     { started: "2026-04-26", completed: "2026-04-26" }
+  delivery_planning: { started: "2026-04-26", completed: "2026-04-26" }
+  delivery:          { started: "2026-04-26", completed: null }
+  system_spec_update:{ started: null, completed: null }
+  review_fix:        { started: null, completed: null }
+  quality_gates:     { started: null, completed: null }
+  dod_check:         { started: null, completed: null }
+  pr_creation:       { started: null, completed: null, url: null }
+
+decisions:
+  - text: "Pas de CLI — uniquement services Python + endpoints REST pour import/export"
+    date: "2026-04-26"
+  - text: "@architect consulté avant démarrage — ALT-1 retenue (JSON déclaratif au-dessus des modèles existants)"
+    date: "2026-04-26"
+  - text: "Ticket unique (pas de découpage en 5) — scope global accepté par l'utilisateur"
+    date: "2026-04-26"
+
+open_questions: []
+
+blockers: []
+
+notes:
+  - text: "Analyse architecturale complète réalisée par @architect avant création du ticket"
+    type: "info"
+    date: "2026-04-26"
+  - text: "Zones High Complexity identifiées : app/models/, app/api/routes/, app/services/"
+    type: "risk"
+    date: "2026-04-26"

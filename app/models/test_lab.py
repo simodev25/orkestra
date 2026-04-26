@@ -13,6 +13,7 @@ class TestScenario(BaseModel):
     __tablename__ = "test_scenarios"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: new_id("scn_"))
+    definition_key: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     agent_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)

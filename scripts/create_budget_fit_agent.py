@@ -1,3 +1,7 @@
+# DEPRECATED: Ce script est remplacé par le système déclaratif JSON.
+# Utiliser data/registry/ et POST /api/definitions/import à la place.
+# Ce fichier sera supprimé dans une prochaine version.
+
 """Create the Budget & Fit Agent (Agent 4) in the Orkestra registry.
 
 Usage:
