@@ -40,7 +40,7 @@
         "requires_grounded_evidence": true
       },
       "allowed_mcps": [
-        "ms19gshw"
+        "ms1289fd"
       ],
       "forbidden_effects": [
         "publish",
@@ -102,7 +102,7 @@
         "requires_grounded_evidence": true
       },
       "allowed_mcps": [
-        "ms1dftjc"
+        "ms1gwpkf"
       ],
       "forbidden_effects": [
         "publish",
@@ -161,7 +161,7 @@
         "requires_grounded_evidence": true
       },
       "allowed_mcps": [
-        "ms19gshw"
+        "ms1289fd"
       ],
       "forbidden_effects": [
         "publish",
@@ -368,7 +368,8 @@
         "tavily",
         "lisbonne"
       ],
-      "enabled": true
+      "enabled": true,
+      "allowed_mcps": []
     },
     {
       "kind": "scenario",
@@ -410,7 +411,8 @@
         "google-maps",
         "lisbonne"
       ],
-      "enabled": true
+      "enabled": true,
+      "allowed_mcps": []
     },
     {
       "kind": "scenario",
@@ -452,7 +454,8 @@
         "tavily",
         "lisbonne"
       ],
-      "enabled": true
+      "enabled": true,
+      "allowed_mcps": []
     },
     {
       "kind": "scenario",
@@ -510,7 +513,8 @@
         "lisbonne",
         "smoke_test"
       ],
-      "enabled": true
+      "enabled": true,
+      "allowed_mcps": []
     },
     {
       "kind": "scenario",
@@ -556,7 +560,8 @@
         "lisbonne",
         "e2e"
       ],
-      "enabled": true
+      "enabled": true,
+      "allowed_mcps": []
     }
   ]
 }
