@@ -15,6 +15,8 @@ import contextvars
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +41,20 @@ class PipelineContext:
     agents: list = field(default_factory=list)  # pre-created pipeline agents
     ordered_agent_ids: list[str] = field(default_factory=list)  # expected execution order
     next_stage_index: int = 0  # pointer in ordered_agent_ids
+    stage_attempts: dict[str, int] = field(default_factory=dict)  # agent_id -> attempt count
+
+
+@dataclass
+class StageExecutionResult:
+    """Result for one pipeline stage execution."""
+
+    stage: str
+    status: str
+    output: str | None = None
+    error: str | None = None
+    duration_ms: int = 0
+    started_at: str | None = None
+    completed_at: str | None = None
 
 
 def _run_async(coro):
@@ -54,9 +70,9 @@ def _run_async(coro):
     if loop.is_running():
         with concurrent.futures.ThreadPoolExecutor() as pool:
             try:
-                return pool.submit(asyncio.run, coro).result(timeout=45)
+                return pool.submit(asyncio.run, coro).result(timeout=90)
             except concurrent.futures.TimeoutError as exc:
-                raise RuntimeError("Agent step timed out after 45s") from exc
+                raise RuntimeError("Agent step timed out after 90s") from exc
 
     return loop.run_until_complete(coro)
 
@@ -230,8 +246,13 @@ def _make_tool(entry: dict, ctx: PipelineContext, run_id: str | None = None):
         # Propagate output into shared context
         ctx.results[agent_id] = output
         ctx.accumulated += f"\n\n### {agent_name} ({agent_id}):\n{output}"
+        is_error = output.startswith("[ERROR]")
         if expected_next == agent_id:
-            ctx.next_stage_index += 1
+            attempts = ctx.stage_attempts.get(agent_id, 0) + 1
+            ctx.stage_attempts[agent_id] = attempts
+            # Advance on success OR after 2 failed attempts (prevent infinite retry loop)
+            if not is_error or attempts >= 2:
+                ctx.next_stage_index += 1
 
         # Notify the graph: pipeline agent completed with its output
         if run_id:
@@ -316,3 +337,312 @@ async def build_pipeline_prompt_section(
     ]
 
     return "\n".join(lines)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _sanitize_stage_error(exc: Exception) -> str:
+    """Return a safe client-facing error string."""
+
+    raw = str(exc) or exc.__class__.__name__
+    lowered = raw.lower()
+    if "timed out" in lowered or "timeout" in lowered:
+        return "stage timeout"
+    if any(token in lowered for token in ("api key", "authorization", "forbidden", "permission")):
+        return "stage failed due to upstream authorization"
+    return "stage execution failed"
+
+
+def _extract_final_output_from_memory(msgs: list) -> str:
+    """Extract the last meaningful assistant text from AgentScope memory."""
+
+    def _bget(block, key, default=""):
+        if isinstance(block, dict):
+            return block.get(key, default)
+        return getattr(block, key, default)
+
+    for m in reversed(msgs):
+        if getattr(m, "role", "") != "assistant":
+            continue
+        text = ""
+        if hasattr(m, "get_text_content"):
+            text = m.get_text_content() or ""
+        if not text:
+            blocks = getattr(m, "content", None)
+            if isinstance(blocks, list):
+                text_parts: list[str] = []
+                for b in blocks:
+                    bt = _bget(b, "type", "")
+                    if bt == "text":
+                        text_parts.append(str(_bget(b, "text", "")))
+                    elif bt == "thinking":
+                        text_parts.append(str(_bget(b, "thinking", "")))
+                text = "\n".join(p for p in text_parts if p).strip()
+            elif isinstance(blocks, str):
+                text = blocks
+        if text and text.strip():
+            return text[:10000]
+
+    if msgs:
+        last = msgs[-1]
+        return (
+            (last.get_text_content() if hasattr(last, "get_text_content") else "")
+            or str(getattr(last, "content", ""))
+        )[:5000]
+    return ""
+
+
+async def _execute_stage_agent(
+    db: AsyncSession,
+    stage: str,
+    stage_agent_id: str,
+    input_prompt: str,
+    max_iterations: int,
+) -> str:
+    """Execute one stage with a dedicated AgentScope instance.
+
+    Important: each call creates and destroys a brand-new agent instance to
+    satisfy AgentScope non-thread-safe constraints under concurrent runs.
+    """
+
+    from agentscope.message import Msg
+
+    from app.services import agent_registry_service
+    from app.services.agent_factory import (
+        close_agentscope_agent_resources,
+        create_agentscope_agent,
+        get_tools_for_agent,
+    )
+
+    agent_def = await agent_registry_service.get_agent(db, stage_agent_id)
+    if agent_def is None:
+        raise ValueError(f"stage agent not found: {stage_agent_id}")
+
+    tools = get_tools_for_agent(agent_def)
+    agent = await create_agentscope_agent(
+        agent_def,
+        db=db,
+        tools_to_register=tools,
+        max_iters=max_iterations,
+    )
+    if agent is None:
+        raise RuntimeError(f"could not create stage agent: {stage_agent_id}")
+
+    try:
+        await agent(Msg("user", input_prompt, "user"))
+        msgs = await agent.memory.get_memory()
+        return _extract_final_output_from_memory(msgs)
+    finally:
+        await close_agentscope_agent_resources(agent)
+
+
+async def _run_stage_with_timeout(
+    db: AsyncSession,
+    stage: str,
+    stage_agent_id: str,
+    input_prompt: str,
+    stage_timeout_seconds: int,
+    max_iterations: int,
+    stage_runner=None,
+) -> StageExecutionResult:
+    """Run one stage with timeout isolation and sanitized error capture."""
+
+    started_at = _utc_now_iso()
+    t0 = time.time()
+    try:
+        if stage_runner is None:
+            coro = _execute_stage_agent(
+                db=db,
+                stage=stage,
+                stage_agent_id=stage_agent_id,
+                input_prompt=input_prompt,
+                max_iterations=max_iterations,
+            )
+        else:
+            coro = stage_runner(stage, stage_agent_id, input_prompt)
+
+        output = await asyncio.wait_for(coro, timeout=stage_timeout_seconds)
+        elapsed = int((time.time() - t0) * 1000)
+        return StageExecutionResult(
+            stage=stage,
+            status="completed",
+            output=(output or "").strip(),
+            duration_ms=elapsed,
+            started_at=started_at,
+            completed_at=_utc_now_iso(),
+        )
+    except asyncio.TimeoutError:
+        elapsed = int((time.time() - t0) * 1000)
+        return StageExecutionResult(
+            stage=stage,
+            status="failed",
+            error="stage timeout",
+            duration_ms=elapsed,
+            started_at=started_at,
+            completed_at=_utc_now_iso(),
+        )
+    except Exception as exc:
+        elapsed = int((time.time() - t0) * 1000)
+        logger.warning("Pipeline stage '%s' failed: %s", stage, exc)
+        return StageExecutionResult(
+            stage=stage,
+            status="failed",
+            error=_sanitize_stage_error(exc),
+            duration_ms=elapsed,
+            started_at=started_at,
+            completed_at=_utc_now_iso(),
+        )
+
+
+def resolve_stage_agents(pipeline_agent_ids: list[str]) -> dict[str, str]:
+    """Resolve canonical pipeline stages from configured pipeline agent IDs."""
+
+    stage_map: dict[str, str] = {}
+    lowered = {aid.lower(): aid for aid in pipeline_agent_ids}
+
+    for stage in ("discover", "mobility", "weather", "budget_fit"):
+        if stage in lowered:
+            stage_map[stage] = lowered[stage]
+            continue
+        for aid in pipeline_agent_ids:
+            if stage in aid.lower():
+                stage_map[stage] = aid
+                break
+
+    # Positional fallback for known 4-stage pipelines.
+    if len(stage_map) < 4 and len(pipeline_agent_ids) >= 4:
+        defaults = {
+            "discover": pipeline_agent_ids[0],
+            "mobility": pipeline_agent_ids[1],
+            "weather": pipeline_agent_ids[2],
+            "budget_fit": pipeline_agent_ids[3],
+        }
+        for key, value in defaults.items():
+            stage_map.setdefault(key, value)
+
+    return stage_map
+
+
+async def execute_pipeline_dag(
+    db: AsyncSession,
+    pipeline_agent_ids: list[str],
+    user_message: str,
+    stage_timeout_seconds: int = 90,
+    max_iterations: int = 5,
+    stage_runner=None,
+    on_stage_result=None,
+) -> tuple[dict[str, StageExecutionResult], str]:
+    """Execute discover -> (mobility || weather) -> budget_fit with isolation.
+
+    Returns tuple: (stage_results, final_result_text)
+    """
+
+    stage_agents = resolve_stage_agents(pipeline_agent_ids)
+    required = ("discover", "mobility", "weather", "budget_fit")
+    missing = [s for s in required if s not in stage_agents]
+    if missing:
+        raise ValueError(f"pipeline stages missing mappings: {missing}")
+
+    results: dict[str, StageExecutionResult] = {}
+
+    # Stage 1 - discover
+    discover_res = await _run_stage_with_timeout(
+        db=db,
+        stage="discover",
+        stage_agent_id=stage_agents["discover"],
+        input_prompt=user_message,
+        stage_timeout_seconds=stage_timeout_seconds,
+        max_iterations=max_iterations,
+        stage_runner=stage_runner,
+    )
+    results["discover"] = discover_res
+    if on_stage_result is not None:
+        await on_stage_result(discover_res)
+
+    discover_ctx = discover_res.output or ""
+
+    # Stage 2 - parallel mobility + weather
+    mobility_prompt = (
+        f"{user_message}\n\n--- discover context ---\n{discover_ctx}\n--- end discover context ---"
+    )
+    weather_prompt = mobility_prompt
+
+    stage2_outputs = await asyncio.gather(
+        _run_stage_with_timeout(
+            db=db,
+            stage="mobility",
+            stage_agent_id=stage_agents["mobility"],
+            input_prompt=mobility_prompt,
+            stage_timeout_seconds=stage_timeout_seconds,
+            max_iterations=max_iterations,
+            stage_runner=stage_runner,
+        ),
+        _run_stage_with_timeout(
+            db=db,
+            stage="weather",
+            stage_agent_id=stage_agents["weather"],
+            input_prompt=weather_prompt,
+            stage_timeout_seconds=stage_timeout_seconds,
+            max_iterations=max_iterations,
+            stage_runner=stage_runner,
+        ),
+        return_exceptions=True,
+    )
+
+    for idx, stage_name in enumerate(("mobility", "weather")):
+        candidate = stage2_outputs[idx]
+        if isinstance(candidate, StageExecutionResult):
+            results[stage_name] = candidate
+            if on_stage_result is not None:
+                await on_stage_result(candidate)
+            continue
+        # Safety fallback even with return_exceptions=True.
+        results[stage_name] = StageExecutionResult(
+            stage=stage_name,
+            status="failed",
+            error=_sanitize_stage_error(candidate if isinstance(candidate, Exception) else Exception(str(candidate))),
+            started_at=_utc_now_iso(),
+            completed_at=_utc_now_iso(),
+        )
+        if on_stage_result is not None:
+            await on_stage_result(results[stage_name])
+
+    # Stage 3 - budget_fit still executes even if one Stage-2 sibling failed.
+    mobility_ctx = results["mobility"].output or ""
+    weather_ctx = results["weather"].output or ""
+    budget_prompt = (
+        f"{user_message}\n\n"
+        f"--- discover context ---\n{discover_ctx}\n"
+        f"--- mobility context ---\n{mobility_ctx}\n"
+        f"--- weather context ---\n{weather_ctx}\n"
+        f"--- end contexts ---"
+    )
+    budget_res = await _run_stage_with_timeout(
+        db=db,
+        stage="budget_fit",
+        stage_agent_id=stage_agents["budget_fit"],
+        input_prompt=budget_prompt,
+        stage_timeout_seconds=stage_timeout_seconds,
+        max_iterations=max_iterations,
+        stage_runner=stage_runner,
+    )
+    results["budget_fit"] = budget_res
+    if on_stage_result is not None:
+        await on_stage_result(budget_res)
+
+    final_result = budget_res.output or ""
+    if not final_result:
+        final_result = "\n\n".join(
+            filter(
+                None,
+                [
+                    discover_ctx,
+                    mobility_ctx,
+                    weather_ctx,
+                ],
+            )
+        )
+
+    return results, final_result
