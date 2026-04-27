@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.database import get_db
 from app.models.family import AgentSkill
@@ -30,6 +32,8 @@ from app.services import (
     agent_test_run_service,
     orchestrator_builder_service,
 )
+from app.services.pipeline_executor import resolve_stage_agents
+from app.services.pipeline_runner import pipeline_runner
 from app.services.test_lab.target_agent_runner import run_target_agent
 from sqlalchemy import select
 
@@ -359,6 +363,34 @@ class ChatRequest(BaseModel):
     max_iterations: int = 5
 
 
+class RunCreateRequest(BaseModel):
+    message: str
+    timeout_seconds: int = 90
+    max_iterations: int = 5
+
+
+class StageStatusOut(BaseModel):
+    stage_name: str
+    status: str
+    output: str | None = None
+    error: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    duration_ms: int
+
+
+class RunStatusOut(BaseModel):
+    run_id: str
+    status: str
+    result: str | None = None
+    error: str | None = None
+    stages: list[StageStatusOut]
+    created_at: str
+    updated_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+
+
 def _synthesize(raw_output: str, user_message: str, tool_calls: list) -> str:
     """Use the LLM to produce a readable French synthesis from the agent's raw output."""
     import json
@@ -401,6 +433,104 @@ def _synthesize(raw_output: str, user_message: str, tool_calls: list) -> str:
         return text.strip()
     except Exception:
         return raw_output  # fallback to raw output if synthesis fails
+
+
+@router.post("/{agent_id}/runs", status_code=202)
+async def create_pipeline_run(
+    agent_id: str,
+    body: RunCreateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create an async pipeline run and return run resources."""
+    t0 = time.time()
+
+    agent = await agent_registry_service.get_agent(db, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    pipeline_agent_ids = list(getattr(agent, "pipeline_agent_ids", []) or [])
+    if not pipeline_agent_ids:
+        raise HTTPException(status_code=400, detail="Agent has no configured pipeline_agent_ids")
+
+    stage_map = resolve_stage_agents(pipeline_agent_ids)
+    missing = [s for s in ("discover", "mobility", "weather", "budget_fit") if s not in stage_map]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Pipeline stage mapping incomplete: {missing}")
+
+    record = await pipeline_runner.create_run(agent_id=agent_id, message=body.message)
+    session_factory = async_sessionmaker(bind=db.bind, class_=AsyncSession, expire_on_commit=False)
+    await pipeline_runner.start_run(
+        run_id=record.run_id,
+        pipeline_agent_ids=pipeline_agent_ids,
+        session_factory=session_factory,
+        stage_timeout_seconds=body.timeout_seconds,
+        max_iterations=body.max_iterations,
+    )
+
+    elapsed_ms = int((time.time() - t0) * 1000)
+    logger.info("Async pipeline run accepted", extra={"run_id": record.run_id, "agent_id": agent_id, "duration_ms": elapsed_ms})
+
+    base = f"/api/agents/{agent_id}/runs/{record.run_id}"
+    return {
+        "run_id": record.run_id,
+        "status_url": base,
+        "events_url": f"{base}/events",
+    }
+
+
+@router.get("/{agent_id}/runs/{run_id}", response_model=RunStatusOut)
+async def get_pipeline_run_status(
+    agent_id: str,
+    run_id: str,
+):
+    record = await pipeline_runner.get_run(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if record.agent_id != agent_id:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    stages = [
+        StageStatusOut(
+            stage_name=s.stage_name,
+            status=s.status,
+            output=s.output,
+            error=s.error,
+            started_at=s.started_at,
+            completed_at=s.completed_at,
+            duration_ms=s.duration_ms,
+        )
+        for s in record.stages.values()
+    ]
+
+    return RunStatusOut(
+        run_id=record.run_id,
+        status=record.status.value,
+        result=record.result,
+        error=record.error,
+        stages=stages,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+        started_at=record.started_at,
+        completed_at=record.completed_at,
+    )
+
+
+@router.get("/{agent_id}/runs/{run_id}/events")
+async def stream_pipeline_run_events(
+    agent_id: str,
+    run_id: str,
+):
+    record = await pipeline_runner.get_run(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if record.agent_id != agent_id:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    async def _generator():
+        async for chunk in pipeline_runner.stream_events(run_id):
+            yield chunk
+
+    return StreamingResponse(_generator(), media_type="text/event-stream")
 
 
 @router.post("/{agent_id}/chat")
