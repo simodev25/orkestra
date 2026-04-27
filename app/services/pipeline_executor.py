@@ -37,20 +37,28 @@ class PipelineContext:
     accumulated: str = ""                   # running context string from all previous outputs
     results: dict[str, str] = field(default_factory=dict)  # agent_id -> last output
     agents: list = field(default_factory=list)  # pre-created pipeline agents
+    ordered_agent_ids: list[str] = field(default_factory=list)  # expected execution order
+    next_stage_index: int = 0  # pointer in ordered_agent_ids
 
 
 def _run_async(coro):
     """Run an async coroutine from a sync tool callback."""
     import asyncio
+    import concurrent.futures
+
     try:
         loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(asyncio.run, coro).result()
-        return loop.run_until_complete(coro)
     except RuntimeError:
         return asyncio.run(coro)
+
+    if loop.is_running():
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            try:
+                return pool.submit(asyncio.run, coro).result(timeout=45)
+            except concurrent.futures.TimeoutError as exc:
+                raise RuntimeError("Agent step timed out after 45s") from exc
+
+    return loop.run_until_complete(coro)
 
 
 async def build_pipeline_tools(
@@ -80,8 +88,10 @@ async def build_pipeline_tools(
                 continue
 
             local_tools = get_tools_for_agent(agent_def)
+            # Keep stage agents bounded to avoid runaway tool loops that can
+            # stall the whole pipeline behind the orchestrator timeout window.
             react_agent = await create_agentscope_agent(
-                agent_def, db, tools_to_register=local_tools, max_iters=20
+                agent_def, db, tools_to_register=local_tools, max_iters=1
             )
             if react_agent is None:
                 logger.warning("Could not create AgentScope agent for '%s' — skipping", agent_id)
@@ -99,6 +109,9 @@ async def build_pipeline_tools(
 
         except Exception as exc:
             logger.warning("Failed to pre-create pipeline agent '%s': %s", agent_id, exc)
+
+    # Keep deterministic order of actually-created stages.
+    ctx.ordered_agent_ids = [entry["id"] for entry in entries]
 
     # Use explicitly-passed run_id (most reliable) or fall back to ContextVar
     run_id = test_run_id or _run_id_var.get()
@@ -133,6 +146,28 @@ def _make_tool(entry: dict, ctx: PipelineContext, run_id: str | None = None):
         # run_id is captured at tool-creation time (correct async context)
         safe_tool_name = f"run_{safe_id}"
         phase_key = f"pipeline_{safe_id}"
+
+        # Enforce deterministic stage ordering for sequential pipelines.
+        expected_next = None
+        if ctx.ordered_agent_ids and 0 <= ctx.next_stage_index < len(ctx.ordered_agent_ids):
+            expected_next = ctx.ordered_agent_ids[ctx.next_stage_index]
+
+        if expected_next and agent_id != expected_next:
+            expected_safe = expected_next.replace("-", "_").replace(".", "_")
+            msg = (
+                f"[PIPELINE_ORDER_ERROR] Out-of-order tool call. "
+                f"Next required stage is run_{expected_safe}."
+            )
+            logger.info(
+                "Pipeline stage order violation: got=%s expected=%s",
+                safe_tool_name,
+                f"run_{expected_safe}",
+            )
+            return ToolResponse(content=[TextBlock(type="text", text=msg)])
+
+        if ctx.ordered_agent_ids and ctx.next_stage_index >= len(ctx.ordered_agent_ids):
+            msg = "[PIPELINE_ALREADY_COMPLETED] All configured pipeline stages have already run."
+            return ToolResponse(content=[TextBlock(type="text", text=msg)])
 
         # Prepend accumulated context so the agent knows what happened before
         if ctx.accumulated:
@@ -195,6 +230,8 @@ def _make_tool(entry: dict, ctx: PipelineContext, run_id: str | None = None):
         # Propagate output into shared context
         ctx.results[agent_id] = output
         ctx.accumulated += f"\n\n### {agent_name} ({agent_id}):\n{output}"
+        if expected_next == agent_id:
+            ctx.next_stage_index += 1
 
         # Notify the graph: pipeline agent completed with its output
         if run_id:

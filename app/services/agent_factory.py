@@ -14,6 +14,31 @@ logger = logging.getLogger(__name__)
 # ExceptionGroup unwrapping) at import time.
 apply_mcp_patches()
 
+
+def _resolve_pipeline_agent_ids(agent_def: AgentDefinition) -> list[str]:
+    """Resolve ordered pipeline agent IDs from explicit field or pipeline_definition.
+
+    Some orchestrators are persisted with ``pipeline_definition`` only (stages[]),
+    while ``pipeline_agent_ids`` can be empty after partial updates from the UI.
+    """
+    explicit_ids = [aid for aid in (getattr(agent_def, "pipeline_agent_ids", None) or []) if aid]
+    if explicit_ids:
+        return explicit_ids
+
+    definition = getattr(agent_def, "pipeline_definition", None)
+    if not isinstance(definition, dict):
+        return []
+
+    stages = definition.get("stages") or []
+    if not isinstance(stages, list):
+        return []
+
+    return [
+        stage.get("agent_id")
+        for stage in stages
+        if isinstance(stage, dict) and stage.get("agent_id")
+    ]
+
 # ── MCP schema patches ────────────────────────────────────────────────────────
 
 _WAYPOINT_SCHEMA = {
@@ -493,9 +518,9 @@ async def create_agentscope_agent(
         # If this agent is an orchestrator with pipeline_agent_ids, pre-create
         # each pipeline agent and register one dynamic tool per agent so the
         # orchestrator LLM can call them in sequence with context propagation.
-        pipeline_agent_ids = getattr(agent_def, "pipeline_agent_ids", None) or []
+        pipeline_agent_ids = _resolve_pipeline_agent_ids(agent_def)
         pipeline_ctx = None
-        if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
+        if pipeline_agent_ids:
             try:
                 from app.services.pipeline_executor import build_pipeline_tools
                 pipeline_tools, pipeline_ctx = await build_pipeline_tools(db, pipeline_agent_ids, test_run_id=test_run_id)
@@ -516,8 +541,8 @@ async def create_agentscope_agent(
 
         # For orchestration agents, bump max_iters to cover the full pipeline
         effective_max_iters = max_iters
-        if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
-            effective_max_iters = max(max_iters, len(pipeline_agent_ids) * 2 + 2)
+        if pipeline_agent_ids:
+            effective_max_iters = max(max_iters, len(pipeline_agent_ids) + 2)
 
         agent = ReActAgent(
             name=agent_def.id,

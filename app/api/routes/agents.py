@@ -355,7 +355,7 @@ async def list_agent_effect_violations(
 
 class ChatRequest(BaseModel):
     message: str
-    timeout_seconds: int = 60
+    timeout_seconds: int = 120
     max_iterations: int = 5
 
 

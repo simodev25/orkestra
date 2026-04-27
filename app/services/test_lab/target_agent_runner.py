@@ -180,22 +180,23 @@ async def run_target_agent(
     # ── 4. Run the agent with timeout ─────────────────────────────────────
     user_msg = Msg("user", input_prompt, "user")
     t0 = time.time()
+    effective_timeout_seconds = max(timeout_seconds, 120)
 
     try:
         try:
             await asyncio.wait_for(
                 react_agent(user_msg),
-                timeout=timeout_seconds,
+                timeout=effective_timeout_seconds,
             )
         except asyncio.TimeoutError:
             duration_ms = int((time.time() - t0) * 1000)
-            logger.warning(f"Agent '{agent_id}' timed out after {timeout_seconds}s")
+            logger.warning(f"Agent '{agent_id}' timed out after {effective_timeout_seconds}s")
             return TargetAgentResult(
                 status="timeout",
                 final_output="",
                 duration_ms=duration_ms,
                 iteration_count=0,
-                error=f"Timed out after {timeout_seconds}s",
+                error=f"Timed out after {effective_timeout_seconds}s",
                 connected_mcps=connected_mcps,
                 discovered_tools=discovered_tools,
             )
