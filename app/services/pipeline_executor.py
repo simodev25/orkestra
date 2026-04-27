@@ -91,7 +91,6 @@ async def build_pipeline_tools(
     """
     from app.services import agent_registry_service
     from app.services.agent_factory import create_agentscope_agent, get_tools_for_agent
-    from agentscope.message import Msg
 
     ctx = PipelineContext()
     entries: list[dict] = []

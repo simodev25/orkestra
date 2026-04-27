@@ -11,6 +11,7 @@
 ## Extension V1.1
 
 - `/generate-project-skills` (génère des skills spécifiques au repository)
+- `/test-api-e2e` (lance les tests Backend API E2E via `@runner`)
 
 ## Exécution standard (delivery)
 
@@ -21,10 +22,11 @@
 5. `/write-plan GH-123`
 6. `/run-plan GH-123`
 7. `/review GH-123`
-8. `/check` (ou `/check-fix`)
-9. `/sync-docs GH-123`
-10. `/commit`
-11. `/pr`
+8. `/test-api-e2e` si le changement touche backend/API
+9. `/check` (ou `/check-fix`)
+10. `/sync-docs GH-123`
+11. `/commit`
+12. `/pr`
 
 ## Règles d’utilisation
 

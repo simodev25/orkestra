@@ -1,0 +1,31 @@
+change_id: GH-17
+title: "pipeline orchestrateur — job async + SSE progression + DAG"
+phases:
+  clarify_scope:    { started: "2026-04-27", completed: "2026-04-27" }
+  specification:    { started: "2026-04-27", completed: "2026-04-27" }
+  test_planning:    { started: "2026-04-27", completed: "2026-04-27" }
+  delivery_planning: { started: "2026-04-27", completed: "2026-04-27" }
+  delivery:         { started: "2026-04-27", completed: null }
+  system_spec_update: { started: null, completed: null }
+  review_fix:       { started: null, completed: null }
+  quality_gates:    { started: null, completed: null }
+  dod_check:        { started: null, completed: null }
+  pr_creation:      { started: null, completed: null, url: null }
+
+decisions:
+  - text: "Adopter job async + SSE + DAG (recommandation @architect) plutôt qu'un patch transitoire. Justification: le pipeline 3-5min en HTTP sync n'est pas scalable et les timeouts ne fonctionnent pas correctement avec l'event loop uvicorn."
+    date: "2026-04-27"
+  - text: "Maintenir rétrocompatibilité sur POST /{id}/chat pour ne pas casser les clients existants."
+    date: "2026-04-27"
+
+open_questions: []
+
+blockers: []
+
+notes:
+  - text: "Analyse architecturale complète fournie par @architect avant la spec. Pyramide de timeouts incohérents identifiée (MCP=30s/stage=90s/API=120s/synthèse=35s). DAG recommandé: discover → (mobility ∥ weather) → budget_fit."
+    type: "info"
+    date: "2026-04-27"
+  - text: "GH-16 (fix timeout/max_iters) déjà livré — commit d048269. GH-17 est la refonte cible."
+    type: "info"
+    date: "2026-04-27"

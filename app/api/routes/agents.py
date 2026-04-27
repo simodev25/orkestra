@@ -418,15 +418,15 @@ def _synthesize(raw_output: str, user_message: str, tool_calls: list) -> str:
 
     try:
         from agentscope.message import Msg
-        from app.services.test_lab.execution_engine import _make_model, _make_formatter, _run_async
+        import concurrent.futures
+
+        from app.services.test_lab.execution_engine import _make_formatter, _make_model
 
         model = _make_model()
         formatter = _make_formatter()
         msgs = [Msg("user", prompt, "user")]
         formatted = formatter(msgs)
         # Use sync call wrapped in executor to avoid event loop conflicts
-        import asyncio, concurrent.futures
-        loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as pool:
             response = pool.submit(model, formatted).result(timeout=30)
         text = response.text if hasattr(response, "text") else str(response)
@@ -554,8 +554,7 @@ async def chat_with_agent(
     # Always synthesize into readable French if there were tool calls
     response_text = result.final_output
     if result.tool_calls:
-        import asyncio, concurrent.futures
-        loop = asyncio.get_event_loop()
+        import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as pool:
             response_text = pool.submit(
                 _synthesize, result.final_output, body.message, result.tool_calls
