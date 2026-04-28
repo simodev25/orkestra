@@ -125,15 +125,15 @@ This change upgrades `POST /api/agents/generate-draft` from a heuristic template
 
 **Tasks**:
 
-- [ ] Rewrite `app/services/agent_generation_service.py` to provide:
-  - [ ] A pure prompt builder function (no DB/I/O) that serializes injected context (F-2, NFR-5).
-  - [ ] An async LLM generation function that:
-    - [ ] Reads LLM config from DB (reuse orchestrator builder pattern).
-    - [ ] Calls `get_chat_model()` and executes the chat call with timeout.
-    - [ ] Parses JSON via `_parse_llm_json`-style helper and validates against `GeneratedAgentDraft` (F-3).
-    - [ ] Normalizes/validates `family_id`/`skill_ids` against the provided DB lists (AC-F3-2, RSK-3).
-    - [ ] Writes a trace file for every LLM attempt to `ORKESTRA_DEBUG_AGENT_GENERATION_DIR` (F-6, NFR-4).
-  - [ ] A preserved heuristic generator as a standalone function and a unified entrypoint that chooses LLM vs fallback (F-4).
+- [x] Rewrite `app/services/agent_generation_service.py` to provide:
+  - [x] A pure prompt builder function (no DB/I/O) that serializes injected context (F-2, NFR-5). (`build_generation_prompt` + `AgentGenerationContext` added)
+  - [x] An async LLM generation function that:
+    - [x] Reads LLM config from DB (reuse orchestrator builder pattern). (`_read_llm_config_from_db` with `PlatformCapability` + `PlatformSecret`)
+    - [x] Calls `get_chat_model()` and executes the chat call with timeout. (`_call_llm` with `asyncio.wait_for(..., 30s)`)
+    - [x] Parses JSON via `_parse_llm_json`-style helper and validates against `GeneratedAgentDraft` (F-3). (`_parse_llm_json` + `GeneratedAgentDraft.model_validate`)
+    - [x] Normalizes/validates `family_id`/`skill_ids` against the provided DB lists (AC-F3-2, RSK-3). (`_normalize_llm_draft` for family/skills/MCP IDs)
+    - [x] Writes a trace file for every LLM attempt to `ORKESTRA_DEBUG_AGENT_GENERATION_DIR` (F-6, NFR-4). (`_write_trace` using `/app/storage/debug-agent-generation` default)
+  - [x] A preserved heuristic generator as a standalone function and a unified entrypoint that chooses LLM vs fallback (F-4). (`_heuristic_generate_agent_draft` + `generate_agent_draft_with_fallback`)
 
 **Acceptance Criteria**:
 
@@ -323,3 +323,4 @@ This change upgrades `POST /api/agents/generate-draft` from a heuristic template
 ## Execution Log
 
 - 2026-04-28T22:31:00Z — Phase 1 completed: request contract extended with `preferred_skill_ids`; input sanitization/length checks added for `intent` and `constraints`; no runtime behavior/source change yet. Evidence: `python3 - <<'PY' ... AgentGenerationRequest(...) ... PY` sanitizer/field check PASS; `python3 -m pytest tests/test_api_agent_registry_product.py -q` run showed pre-existing MCP-catalog test failure (`available_mcps` empty) unrelated to Phase 1 contract changes.
+- 2026-04-28T22:44:00Z — Phase 2 completed: implemented async LLM generation pipeline with prompt builder, DB LLM config read, JSON parse/validation, ID normalization, trace writing, and heuristic fallback path; added service tests for happy-path/fallback/parse-failure/normalization. Evidence: `python3 -m pytest tests/services/test_agent_generation_service.py -q` => 5 passed.
