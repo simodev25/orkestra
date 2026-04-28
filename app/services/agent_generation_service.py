@@ -2,14 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
+import os
 import re
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 
-from app.schemas.agent import (
-    AgentGenerationRequest,
-    GeneratedAgentDraft,
-    McpCatalogSummary,
-)
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.encryption import decrypt_value
+from app.llm.provider import get_chat_model, is_agentscope_available
+from app.models.platform_capability import PlatformCapability
+from app.models.secret import PlatformSecret
+from app.schemas.agent import AgentGenerationRequest, GeneratedAgentDraft, McpCatalogSummary
+
+logger = logging.getLogger(__name__)
+
+_TRACE_DIR = Path(os.getenv("ORKESTRA_DEBUG_AGENT_GENERATION_DIR", "/app/storage/debug-agent-generation"))
+_LLM_TIMEOUT_SECONDS = 30
+
+
+@dataclass
+class AgentGenerationContext:
+    families: list[dict]
+    skills: list[dict]
+    similar_agents: list[dict]
 
 
 @dataclass
@@ -30,6 +52,198 @@ def _slugify(value: str) -> str:
 
 def _keywords(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9]{3,}", text.lower())}
+
+
+def _truncate(value: str, max_len: int) -> str:
+    return value if len(value) <= max_len else value[: max_len - 3].rstrip() + "..."
+
+
+def _parse_llm_json(raw: str) -> dict:
+    clean = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
+    clean = re.sub(r"```\s*$", "", clean, flags=re.MULTILINE).strip()
+
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r"\{.*\}", clean, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(f"LLM returned invalid JSON (first 300 chars): {raw[:300]}")
+
+
+def _write_trace(filename: str, data: dict) -> None:
+    try:
+        _TRACE_DIR.mkdir(parents=True, exist_ok=True)
+        with open(_TRACE_DIR / filename, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False, default=str)
+    except Exception as exc:
+        logger.warning("Could not write agent-generation trace: %s", exc)
+
+
+async def _read_llm_config_from_db(db: AsyncSession) -> dict:
+    keys = ["LLM_PROVIDER", "OLLAMA_HOST", "OLLAMA_MODEL", "OPENAI_MODEL", "OPENAI_BASE_URL"]
+    result = await db.execute(select(PlatformCapability).where(PlatformCapability.key.in_(keys)))
+    rows = {row.key: row.value for row in result.scalars().all()}
+
+    ollama_secret = await db.get(PlatformSecret, "OLLAMA_API_KEY")
+    openai_secret = await db.get(PlatformSecret, "OPENAI_API_KEY")
+
+    def _decrypt(secret: PlatformSecret | None) -> str | None:
+        if secret is None:
+            return None
+        try:
+            return decrypt_value(secret.value)
+        except Exception:
+            return None
+
+    return {
+        "provider": rows.get("LLM_PROVIDER"),
+        "ollama_host": rows.get("OLLAMA_HOST"),
+        "ollama_model": rows.get("OLLAMA_MODEL"),
+        "openai_model": rows.get("OPENAI_MODEL"),
+        "openai_base_url": rows.get("OPENAI_BASE_URL"),
+        "ollama_api_key": _decrypt(ollama_secret),
+        "openai_api_key": _decrypt(openai_secret),
+    }
+
+
+def build_generation_prompt(
+    request: AgentGenerationRequest,
+    catalog: list[McpCatalogSummary],
+    context: AgentGenerationContext,
+) -> str:
+    serialized_mcps = [
+        {
+            "id": m.id,
+            "name": m.name,
+            "purpose": _truncate(m.purpose or "", 160),
+            "effect_type": m.effect_type,
+            "criticality": m.criticality,
+            "approval_required": m.approval_required,
+            "obot_state": m.obot_state,
+            "orkestra_state": m.orkestra_state,
+        }
+        for m in catalog
+    ]
+    mcps_for_prompt = serialized_mcps
+    mcp_omitted = 0
+    if len(serialized_mcps) > 50:
+        ranked = _rank_mcps(request, catalog)
+        top_ids = [r.mcp.id for r in ranked[:30]]
+        mcps_for_prompt = [m for m in serialized_mcps if m["id"] in set(top_ids)]
+        mcp_omitted = len(serialized_mcps) - len(mcps_for_prompt)
+
+    payload = {
+        "request": {
+            "intent": request.intent,
+            "use_case": request.use_case,
+            "target_workflow": request.target_workflow,
+            "criticality_target": request.criticality_target,
+            "preferred_family": request.preferred_family,
+            "preferred_skill_ids": request.preferred_skill_ids or [],
+            "preferred_output_style": request.preferred_output_style,
+            "preferred_mcp_scope": request.preferred_mcp_scope,
+            "constraints": request.constraints,
+            "owner": request.owner,
+        },
+        "context": {
+            "mcp_catalog": mcps_for_prompt,
+            "mcp_catalog_omitted_count": mcp_omitted,
+            "families": context.families,
+            "skills": context.skills,
+            "similar_agents": context.similar_agents[:5],
+        },
+    }
+    return (
+        "You generate a governed Orkestra agent draft. "
+        "Return strict JSON only with no markdown, comments, or explanation. "
+        "Output must conform to GeneratedAgentDraft fields.\n\n"
+        f"INPUT:\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n\n"
+        "Rules:\n"
+        "- Use only existing family_id and skill_ids from context where possible.\n"
+        "- Use allowed_mcps from context.mcp_catalog IDs only.\n"
+        "- Fill mcp_rationale for selected MCP IDs.\n"
+        "- Keep limitations non-empty.\n"
+        "- Keep status as 'draft'."
+    )
+
+
+async def _call_llm(prompt: str, db: AsyncSession) -> str:
+    if not is_agentscope_available():
+        raise ValueError("AgentScope unavailable")
+    llm_config = await _read_llm_config_from_db(db)
+    model = get_chat_model(config=llm_config)
+    if model is None:
+        raise ValueError("LLM model could not be created")
+
+    response = await asyncio.wait_for(
+        model(
+            [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "Generate the JSON draft now."},
+            ]
+        ),
+        timeout=_LLM_TIMEOUT_SECONDS,
+    )
+    content = response.get("content") or []
+    text = "".join(
+        block.get("text", "")
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
+    return text or str(response)
+
+
+def _normalize_llm_draft(
+    draft: GeneratedAgentDraft,
+    request: AgentGenerationRequest,
+    catalog: list[McpCatalogSummary],
+    context: AgentGenerationContext,
+) -> GeneratedAgentDraft:
+    active_family_ids = [f.get("id") for f in context.families if f.get("status") == "active" and f.get("id")]
+    all_family_ids = [f.get("id") for f in context.families if f.get("id")]
+    allowed_families = set(active_family_ids or all_family_ids)
+
+    if draft.family_id not in allowed_families:
+        if request.preferred_family in allowed_families:
+            draft.family_id = request.preferred_family  # type: ignore[assignment]
+        elif allowed_families:
+            draft.family_id = sorted(allowed_families)[0]  # type: ignore[assignment]
+
+    active_skill_ids = {
+        s.get("skill_id")
+        for s in context.skills
+        if s.get("skill_id") and s.get("status") in (None, "active")
+    }
+    compatible_skill_ids = {
+        s.get("skill_id")
+        for s in context.skills
+        if s.get("skill_id")
+        and s.get("status") in (None, "active")
+        and (not s.get("allowed_families") or draft.family_id in (s.get("allowed_families") or []))
+    }
+
+    incoming_skills = list(dict.fromkeys(draft.skill_ids or []))
+    normalized_skills = [sid for sid in incoming_skills if sid in active_skill_ids and sid in compatible_skill_ids]
+    if not normalized_skills and request.preferred_skill_ids:
+        normalized_skills = [sid for sid in request.preferred_skill_ids if sid in compatible_skill_ids]
+    draft.skill_ids = normalized_skills
+
+    allowed_mcp_ids = {m.id for m in catalog}
+    normalized_mcps = [mid for mid in dict.fromkeys(draft.allowed_mcps or []) if mid in allowed_mcp_ids]
+    draft.allowed_mcps = normalized_mcps
+    draft.mcp_rationale = {k: v for k, v in (draft.mcp_rationale or {}).items() if k in set(normalized_mcps)}
+
+    if not draft.limitations:
+        draft.limitations = ["Validate evidence before final recommendation."]
+    draft.status = "draft"
+    return draft
 
 
 def _infer_family(req: AgentGenerationRequest) -> str:
@@ -128,7 +342,7 @@ def _suggest_missing_mcps(req: AgentGenerationRequest, selected: list[str]) -> l
     return suggestions
 
 
-def generate_agent_draft(
+def _heuristic_generate_agent_draft(
     request: AgentGenerationRequest,
     catalog: list[McpCatalogSummary],
 ) -> GeneratedAgentDraft:
@@ -222,3 +436,64 @@ def generate_agent_draft(
         suggested_missing_mcps=suggested_missing,
         mcp_rationale=mcp_rationale,
     )
+
+
+def generate_agent_draft(
+    request: AgentGenerationRequest,
+    catalog: list[McpCatalogSummary],
+) -> GeneratedAgentDraft:
+    """Backward-compatible heuristic generator."""
+    return _heuristic_generate_agent_draft(request, catalog)
+
+
+async def generate_agent_draft_with_fallback(
+    db: AsyncSession,
+    request: AgentGenerationRequest,
+    catalog: list[McpCatalogSummary],
+    context: AgentGenerationContext,
+) -> tuple[GeneratedAgentDraft, str]:
+    timestamp = datetime.now(timezone.utc)
+    trace_name = f"{timestamp.strftime('%Y-%m-%dT%H-%M-%S')}_{_slugify((request.use_case or request.intent)[:80])}.json"
+    trace = {
+        "timestamp": timestamp.isoformat(),
+        "request": request.model_dump(),
+        "context": {
+            "mcp_catalog_count": len(catalog),
+            "families_count": len(context.families),
+            "skills_count": len(context.skills),
+            "similar_agents_count": len(context.similar_agents),
+            "families": context.families,
+            "skills": context.skills,
+            "similar_agents": context.similar_agents[:5],
+        },
+        "system_prompt": None,
+        "llm_raw_response": None,
+        "llm_parsed": None,
+        "fallback_reason": None,
+        "source": None,
+        "duration_ms": None,
+    }
+    started = time.monotonic()
+
+    try:
+        prompt = build_generation_prompt(request, catalog, context)
+        trace["system_prompt"] = prompt
+        raw = await _call_llm(prompt, db)
+        trace["llm_raw_response"] = raw
+        parsed = _parse_llm_json(raw)
+        trace["llm_parsed"] = parsed
+
+        validated = GeneratedAgentDraft.model_validate(parsed)
+        normalized = _normalize_llm_draft(validated, request, catalog, context)
+        trace["source"] = "llm"
+        trace["duration_ms"] = round((time.monotonic() - started) * 1000)
+        _write_trace(trace_name, trace)
+        return normalized, "llm"
+    except Exception as exc:
+        trace["fallback_reason"] = str(exc)
+        fallback = _heuristic_generate_agent_draft(request, catalog)
+        trace["llm_parsed"] = fallback.model_dump()
+        trace["source"] = "heuristic_template"
+        trace["duration_ms"] = round((time.monotonic() - started) * 1000)
+        _write_trace(trace_name, trace)
+        return fallback, "heuristic_template"

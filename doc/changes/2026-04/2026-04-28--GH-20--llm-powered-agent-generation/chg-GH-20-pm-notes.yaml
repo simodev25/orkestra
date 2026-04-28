@@ -1,0 +1,34 @@
+change_id: GH-20
+title: "LLM-powered agent generation replacing heuristic draft"
+phases:
+  clarify_scope: { started: "2026-04-28T00:00:00Z", completed: "2026-04-28T00:05:00Z" }
+  specification: { started: "2026-04-28T00:05:00Z", completed: "2026-04-28T00:15:00Z" }
+  test_planning: { started: "2026-04-28T00:15:00Z", completed: "2026-04-28T00:25:00Z" }
+  delivery_planning: { started: "2026-04-28T00:15:00Z", completed: "2026-04-28T00:25:00Z" }
+  delivery: { started: "2026-04-28T00:25:00Z", completed: null }
+  system_spec_update: { started: null, completed: null }
+  review_fix: { started: null, completed: null }
+  quality_gates: { started: null, completed: null }
+  dod_check: { started: null, completed: null }
+  pr_creation: { started: null, completed: null, url: null }
+decisions:
+  - text: "LLM receives full context: MCP catalog, families, skills, similar agents"
+    date: "2026-04-28"
+  - text: "Enrich frontend form with family selector and skills multi-select"
+    date: "2026-04-28"
+  - text: "LLM proposes MCPs with rationale, user adjusts via checkboxes in review"
+    date: "2026-04-28"
+  - text: "Keep heuristic as fallback when LLM is unavailable"
+    date: "2026-04-28"
+open_questions: []
+blockers: []
+notes:
+  - text: "Pattern reference: orchestrator_builder_service.py already implements LLM call with DB config, trace files, JSON parsing — reuse that pattern"
+    type: "info"
+    date: "2026-04-28"
+  - text: "Audit finding F28 flagged mock_llm naming as misleading — this change resolves F28"
+    type: "info"
+    date: "2026-04-28"
+  - text: "All 3 artifacts created in parallel batch — spec, test-plan, plan committed"
+    type: "info"
+    date: "2026-04-28"
