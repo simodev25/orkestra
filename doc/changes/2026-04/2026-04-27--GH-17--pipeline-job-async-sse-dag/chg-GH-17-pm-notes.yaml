@@ -5,12 +5,12 @@ phases:
   specification:    { started: "2026-04-27", completed: "2026-04-27" }
   test_planning:    { started: "2026-04-27", completed: "2026-04-27" }
   delivery_planning: { started: "2026-04-27", completed: "2026-04-27" }
-  delivery:         { started: "2026-04-27", completed: null }
+  delivery:         { started: "2026-04-27", completed: "2026-04-28" }
   system_spec_update: { started: null, completed: null }
-  review_fix:       { started: null, completed: null }
-  quality_gates:    { started: null, completed: null }
-  dod_check:        { started: null, completed: null }
-  pr_creation:      { started: null, completed: null, url: null }
+  review_fix:       { started: "2026-04-28", completed: "2026-04-28" }
+  quality_gates:    { started: "2026-04-28", completed: "2026-04-28" }
+  dod_check:        { started: "2026-04-28", completed: "2026-04-28" }
+  pr_creation:      { started: "2026-04-28", completed: null, url: null }
 
 decisions:
   - text: "Adopter job async + SSE + DAG (recommandation @architect) plutôt qu'un patch transitoire. Justification: le pipeline 3-5min en HTTP sync n'est pas scalable et les timeouts ne fonctionnent pas correctement avec l'event loop uvicorn."
@@ -29,3 +29,9 @@ notes:
   - text: "GH-16 (fix timeout/max_iters) déjà livré — commit d048269. GH-17 est la refonte cible."
     type: "info"
     date: "2026-04-27"
+  - text: "Review FAIL conditionnel: 4 majeurs (race condition task registration, SSE disconnect leak, store lock encapsulation, session factory fragile) + 6 mineurs (stage_started timing, TTL default, singleton test fragility). Phase 10 remédiation ajoutée."
+    type: "decision"
+    date: "2026-04-28"
+  - text: "Finding #2 (session factory from request-scoped db) reporté: risque faible car db.bind est toujours le long-lived engine. Sera traité en follow-up si le pattern change."
+    type: "retro"
+    date: "2026-04-28"
