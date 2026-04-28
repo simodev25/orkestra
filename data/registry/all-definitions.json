@@ -101,9 +101,7 @@
         "use_case_hint": "accommodation mobility scoring",
         "requires_grounded_evidence": true
       },
-      "allowed_mcps": [
-        "ms1gwpkf"
-      ],
+      "allowed_mcps": [],
       "forbidden_effects": [
         "publish",
         "approve",

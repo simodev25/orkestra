@@ -209,6 +209,32 @@
       "updated_at": "2026-04-05T00:00:00Z"
     },
     {
+      "family_id": "orchestration",
+      "label": "Orchestration",
+      "description": "Agents focused on coordinating multi-agent workflows, routing tasks across stages, propagating execution context, and enforcing pipeline-level control flow.",
+      "default_system_rules": [
+        "You are an orchestration-oriented agent.",
+        "Your role is to coordinate specialized agents and route work across explicit workflow stages.",
+        "You must preserve context continuity and deterministic stage sequencing when required.",
+        "You do not replace specialist agent outputs with unsupported assumptions."
+      ],
+      "default_forbidden_effects": [
+        "publish",
+        "approve",
+        "external_act_without_authorization"
+      ],
+      "default_output_expectations": [
+        "Produce clear stage-by-stage coordination decisions and context handoffs.",
+        "Make routing rationale and fallback/error handling explicit.",
+        "Keep orchestration outputs traceable to upstream agent results."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-26T00:00:00Z",
+      "updated_at": "2026-04-26T00:00:00Z"
+    },
+    {
       "family_id": "testing",
       "label": "Testing",
       "description": "Agents dedicated to the Orkestra Test Lab: scenario design, test orchestration, verdict judgment, robustness probing, and policy compliance checking of other agents under test.",

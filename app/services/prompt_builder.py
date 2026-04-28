@@ -26,6 +26,27 @@ Rules:
 """
 
 
+def _resolve_pipeline_agent_ids(agent: AgentDefinition) -> list[str]:
+    """Resolve ordered pipeline IDs from explicit field or pipeline_definition."""
+    explicit_ids = [aid for aid in (getattr(agent, "pipeline_agent_ids", None) or []) if aid]
+    if explicit_ids:
+        return explicit_ids
+
+    definition = getattr(agent, "pipeline_definition", None)
+    if not isinstance(definition, dict):
+        return []
+
+    stages = definition.get("stages") or []
+    if not isinstance(stages, list):
+        return []
+
+    return [
+        stage.get("agent_id")
+        for stage in stages
+        if isinstance(stage, dict) and stage.get("agent_id")
+    ]
+
+
 async def build_agent_prompt(
     db: AsyncSession,
     agent: AgentDefinition,
@@ -88,8 +109,8 @@ async def build_agent_prompt(
     sections.append(_format_section("AGENT MISSION", "\n\n".join(mission_parts)))
 
     # Layer 4.5 — Pipeline agents (orchestration family only)
-    pipeline_agent_ids = getattr(agent, "pipeline_agent_ids", None) or []
-    if (agent.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
+    pipeline_agent_ids = _resolve_pipeline_agent_ids(agent)
+    if pipeline_agent_ids:
         try:
             from app.services.pipeline_executor import build_pipeline_prompt_section
             pipeline_section = await build_pipeline_prompt_section(db, pipeline_agent_ids)

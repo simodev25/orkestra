@@ -1,6 +1,8 @@
 """Agent factory -- creates AgentScope ReActAgent from Orkestra agent definitions."""
 
+import copy
 import logging
+import time
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,9 +12,52 @@ from app.services.mcp_compat import apply_mcp_patches
 
 logger = logging.getLogger(__name__)
 
+_MCP_LIST_TOOLS_CACHE: dict[tuple[str, str, str], tuple[float, list]] = {}
+_MCP_LIST_TOOLS_CACHE_TTL_SECONDS = 300.0
+
+
+def _get_cached_mcp_tools(cache_key: tuple[str, str, str]) -> list | None:
+    cached = _MCP_LIST_TOOLS_CACHE.get(cache_key)
+    if not cached:
+        return None
+    ts, tools = cached
+    if (time.monotonic() - ts) > _MCP_LIST_TOOLS_CACHE_TTL_SECONDS:
+        _MCP_LIST_TOOLS_CACHE.pop(cache_key, None)
+        return None
+    return copy.deepcopy(tools)
+
+
+def _set_cached_mcp_tools(cache_key: tuple[str, str, str], tools: list) -> None:
+    _MCP_LIST_TOOLS_CACHE[cache_key] = (time.monotonic(), copy.deepcopy(tools))
+
 # Apply MCP SDK compatibility patches (structuredContent list→dict,
 # ExceptionGroup unwrapping) at import time.
 apply_mcp_patches()
+
+
+def _resolve_pipeline_agent_ids(agent_def: AgentDefinition) -> list[str]:
+    """Resolve ordered pipeline agent IDs from explicit field or pipeline_definition.
+
+    Some orchestrators are persisted with ``pipeline_definition`` only (stages[]),
+    while ``pipeline_agent_ids`` can be empty after partial updates from the UI.
+    """
+    explicit_ids = [aid for aid in (getattr(agent_def, "pipeline_agent_ids", None) or []) if aid]
+    if explicit_ids:
+        return explicit_ids
+
+    definition = getattr(agent_def, "pipeline_definition", None)
+    if not isinstance(definition, dict):
+        return []
+
+    stages = definition.get("stages") or []
+    if not isinstance(stages, list):
+        return []
+
+    return [
+        stage.get("agent_id")
+        for stage in stages
+        if isinstance(stage, dict) and stage.get("agent_id")
+    ]
 
 # ── MCP schema patches ────────────────────────────────────────────────────────
 
@@ -428,8 +473,12 @@ async def create_agentscope_agent(
                     timeout=30,
                     headers=_mcp_headers,
                 )
-                # List available tools and register them
-                mcp_tools = await mcp_client.list_tools()
+                # List available tools (cached) and register them.
+                cache_key = (mcp_id, srv["url"], _mcp_headers.get("Authorization", ""))
+                mcp_tools = _get_cached_mcp_tools(cache_key)
+                if mcp_tools is None:
+                    mcp_tools = await mcp_client.list_tools()
+                    _set_cached_mcp_tools(cache_key, mcp_tools)
                 logger.info(f"MCP {mcp_id} ({srv['url']}): {len(mcp_tools)} tools found")
 
                 # Pre-flight forbidden-effects enforcement (all contexts).
@@ -459,30 +508,6 @@ async def create_agentscope_agent(
                         "url": srv["url"],
                         "tools": [t.name for t in mcp_tools],
                     })
-                    # Probe: verify that tool execution is actually reachable.
-                    # list_tools() only checks the /tools/list endpoint; the
-                    # downstream API key (e.g. Google Maps X-GOOG-API-KEY) is
-                    # only validated on the first real tool call.  We call the
-                    # first tool with empty arguments — it will fail with
-                    # invalid-argument, but an API-key error appears here too
-                    # and is much easier to diagnose than a silent TaskGroup
-                    # failure inside the agent loop.
-                    try:
-                        probe_fn = await mcp_client.get_callable_function(
-                            mcp_tools[0].name, wrap_tool_result=False
-                        )
-                        await probe_fn()
-                    except BaseException as probe_err:  # noqa: BLE001
-                        real_err = _format_mcp_exception(probe_err)
-                        # A JSON-RPC "invalid params" error is fine (tool works).
-                        # A 403/blocked message means the API key is missing.
-                        if "invalid" in real_err.lower() or "argument" in real_err.lower() or "param" in real_err.lower():
-                            logger.debug(f"MCP {mcp_id} probe OK (expected param error): {real_err}")
-                        else:
-                            logger.warning(
-                                f"MCP {mcp_id} probe FAILED — tools may not work at runtime. "
-                                f"Real error: {real_err}"
-                            )
             except Exception as e:
                 logger.warning(f"Failed to connect MCP {mcp_id} ({srv.get('url')}): {_format_mcp_exception(e)}")
 
@@ -493,9 +518,9 @@ async def create_agentscope_agent(
         # If this agent is an orchestrator with pipeline_agent_ids, pre-create
         # each pipeline agent and register one dynamic tool per agent so the
         # orchestrator LLM can call them in sequence with context propagation.
-        pipeline_agent_ids = getattr(agent_def, "pipeline_agent_ids", None) or []
+        pipeline_agent_ids = _resolve_pipeline_agent_ids(agent_def)
         pipeline_ctx = None
-        if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
+        if pipeline_agent_ids:
             try:
                 from app.services.pipeline_executor import build_pipeline_tools
                 pipeline_tools, pipeline_ctx = await build_pipeline_tools(db, pipeline_agent_ids, test_run_id=test_run_id)
@@ -516,8 +541,8 @@ async def create_agentscope_agent(
 
         # For orchestration agents, bump max_iters to cover the full pipeline
         effective_max_iters = max_iters
-        if (agent_def.family_id or "").lower() == "orchestration" and pipeline_agent_ids:
-            effective_max_iters = max(max_iters, len(pipeline_agent_ids) * 2 + 2)
+        if pipeline_agent_ids:
+            effective_max_iters = max(max_iters, len(pipeline_agent_ids) + 2)
 
         agent = ReActAgent(
             name=agent_def.id,

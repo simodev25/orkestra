@@ -237,6 +237,58 @@
       "updated_at": "2026-04-05T00:00:00Z"
     },
     {
+      "skill_id": "sequential_routing",
+      "label": "Sequential Routing",
+      "category": "orchestration",
+      "allowed_families": ["orchestration", "execution"],
+      "description": "Route work deterministically across ordered workflow stages, ensuring each downstream stage receives the right input at the right time.",
+      "behavior_templates": [
+        "Define and enforce the stage execution order before starting workflow execution.",
+        "Route each task or payload to the next stage according to explicit sequencing rules.",
+        "Apply deterministic fallback paths when a stage fails or returns partial output.",
+        "Prevent out-of-order execution unless an explicit override policy allows it.",
+        "Emit concise routing rationale for each transition between stages."
+      ],
+      "output_guidelines": [
+        "Always make stage order explicit in the produced output.",
+        "Do not skip required stages silently.",
+        "When fallback routing is used, state the trigger and selected path.",
+        "Keep routing decisions reproducible and policy-aligned.",
+        "Separate routing logic from domain-level analysis or recommendations."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-26T00:00:00Z",
+      "updated_at": "2026-04-26T00:00:00Z"
+    },
+    {
+      "skill_id": "context_propagation",
+      "label": "Context Propagation",
+      "category": "orchestration",
+      "allowed_families": ["orchestration", "execution", "testing"],
+      "description": "Carry forward structured context between workflow stages while preserving data fidelity, provenance, and execution constraints.",
+      "behavior_templates": [
+        "Maintain a running context object and update it after each stage output.",
+        "Normalize field names and structures before passing context to downstream agents.",
+        "Preserve provenance for critical values so downstream decisions remain auditable.",
+        "Propagate only task-relevant context to avoid noisy or unsafe state leakage.",
+        "Flag missing, conflicting, or stale context before advancing to the next stage."
+      ],
+      "output_guidelines": [
+        "Clearly separate inherited context from newly produced stage data.",
+        "Never overwrite critical values without explicit reconciliation rationale.",
+        "Expose context gaps that can degrade downstream reliability.",
+        "Keep propagated context concise, structured, and machine-usable.",
+        "Ensure context updates remain consistent with workflow constraints."
+      ],
+      "version": "1.0.0",
+      "status": "active",
+      "owner": "platform_ai_team",
+      "created_at": "2026-04-26T00:00:00Z",
+      "updated_at": "2026-04-26T00:00:00Z"
+    },
+    {
       "skill_id": "source_comparison",
       "label": "Source Comparison",
       "category": "analysis",
