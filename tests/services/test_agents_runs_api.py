@@ -21,6 +21,20 @@ async def _seed_family_and_agent(client, agent_id: str = "hotel_orchestrateur"):
     assert resp.status_code == 201
 
 
+async def _seed_second_agent(client, agent_id: str = "hotel_orchestrateur_bis"):
+    resp = await client.post(
+        "/api/agents",
+        json={
+            "id": agent_id,
+            "name": "Hotel Orchestrateur Bis",
+            "family_id": "orchestration",
+            "purpose": "Second async orchestration test agent",
+            "pipeline_agent_ids": ["discover", "mobility", "weather", "budget_fit"],
+        },
+    )
+    assert resp.status_code == 201
+
+
 async def test_post_runs_returns_202_and_urls(client, monkeypatch):
     await _seed_family_and_agent(client)
 
@@ -120,6 +134,56 @@ async def test_runs_endpoints_do_not_invoke_probe_fn(client, monkeypatch):
         async for chunk in resp.aiter_text():
             if "event: stream_end" in chunk:
                 break
+
+
+async def test_get_run_status_unknown_run_id_returns_404(client):
+    await _seed_family_and_agent(client)
+
+    status = await client.get("/api/agents/hotel_orchestrateur/runs/unknown-run-id")
+    assert status.status_code == 404
+    assert status.json()["detail"] == "Run not found"
+
+
+async def test_get_run_events_unknown_run_id_returns_404(client):
+    await _seed_family_and_agent(client)
+
+    status = await client.get("/api/agents/hotel_orchestrateur/runs/unknown-run-id/events")
+    assert status.status_code == 404
+    assert status.json()["detail"] == "Run not found"
+
+
+async def test_get_run_status_agent_id_mismatch_returns_404(client, monkeypatch):
+    await _seed_family_and_agent(client)
+    await _seed_second_agent(client)
+
+    async def fake_start_run(**kwargs):
+        return None
+
+    monkeypatch.setattr(pipeline_runner, "start_run", fake_start_run)
+
+    create = await client.post("/api/agents/hotel_orchestrateur/runs", json={"message": "hello"})
+    run_id = create.json()["run_id"]
+
+    wrong_agent_status = await client.get(f"/api/agents/hotel_orchestrateur_bis/runs/{run_id}")
+    assert wrong_agent_status.status_code == 404
+    assert wrong_agent_status.json()["detail"] == "Run not found"
+
+
+async def test_get_run_events_agent_id_mismatch_returns_404(client, monkeypatch):
+    await _seed_family_and_agent(client)
+    await _seed_second_agent(client)
+
+    async def fake_start_run(**kwargs):
+        return None
+
+    monkeypatch.setattr(pipeline_runner, "start_run", fake_start_run)
+
+    create = await client.post("/api/agents/hotel_orchestrateur/runs", json={"message": "hello"})
+    run_id = create.json()["run_id"]
+
+    wrong_agent_status = await client.get(f"/api/agents/hotel_orchestrateur_bis/runs/{run_id}/events")
+    assert wrong_agent_status.status_code == 404
+    assert wrong_agent_status.json()["detail"] == "Run not found"
 
 
 async def test_chat_endpoint_backward_compatible_shape(client, monkeypatch):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -519,6 +519,7 @@ async def get_pipeline_run_status(
 async def stream_pipeline_run_events(
     agent_id: str,
     run_id: str,
+    request: Request,
 ):
     record = await pipeline_runner.get_run(run_id)
     if record is None:
@@ -528,6 +529,8 @@ async def stream_pipeline_run_events(
 
     async def _generator():
         async for chunk in pipeline_runner.stream_events(run_id):
+            if await request.is_disconnected():
+                break
             yield chunk
 
     return StreamingResponse(_generator(), media_type="text/event-stream")

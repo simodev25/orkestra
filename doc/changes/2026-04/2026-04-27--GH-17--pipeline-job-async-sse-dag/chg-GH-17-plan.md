@@ -387,9 +387,33 @@ This plan implements the spec for GH-17 by introducing:
   - FastAPI `StreamingResponse` (SSE)
   - asyncio primitives: `Queue`, `create_task`, `wait_for`, `gather`
 
+### Phase 10: Code Review Remediation
+
+- Goal: Address code review findings from first review iteration.
+- Tasks:
+  - [x] Fix race condition in `pipeline_runner.py` `start_run`: register task in `_run_tasks` before calling `asyncio.create_task`, or use a sentinel + lock to ensure atomic registration (implemented sentinel `Future` + locked registration prior to `create_task` in `PipelineRunner.start_run`)
+  - [x] Fix SSE endpoint in `agents.py`: add client disconnect detection using `request.is_disconnected()` or `asyncio.wait_for` with heartbeat timeout to prevent coroutine/queue leak (added `request: Request` + disconnect guard in SSE generator; added heartbeat timeout in `PipelineRunner.stream_events`)
+  - [x] Fix store encapsulation in `pipeline_runner.py` `_cleanup_loop`: replace direct access to `self.store._runs` with a public method `active_run_ids()` that acquires the store's lock (added `PipelineRunStore.active_run_ids()` and updated cleanup loop)
+  - [x] Fix TTL default: change `ttl_seconds` default from 1800 to 3600 to comply with NFR-5 (≥ 1h) (updated defaults in `PipelineRunStore` and `PipelineRunner` constructors)
+  - [x] Fix SSE event timing: emit `stage_started` from `execute_pipeline_dag` before calling `_run_stage_with_timeout`, so consumers see real-time stage lifecycle events per EVT-1 (added optional `on_stage_started` callback and wired from `PipelineRunner.start_run`)
+  - [x] Add missing tests: 404 for unknown run_id, agent_id mismatch on GET status/events, `_sanitize_stage_error` unit test (added tests in `tests/services/test_agents_runs_api.py` and `tests/unit/test_pipeline_executor_async_dag.py`; targeted pytest PASS)
+- Acceptance criteria:
+  - Criterion: All race conditions resolved; SSE disconnect handled gracefully — PASSED (`start_run` sentinel+lock registration, request disconnect guard, heartbeat in event stream)
+  - Criterion: TTL default ≥ 3600s — PASSED (`PipelineRunStore.__init__` and `PipelineRunner.__init__` defaults set to `3600`)
+  - Criterion: `stage_started` event arrives before `stage_completed` in SSE stream — PASSED (moved emission trigger to `execute_pipeline_dag` via `on_stage_started`; ordering assertions in unit tests)
+  - Criterion: New tests pass and cover identified gaps — PASSED (`python3 -m pytest tests/unit/test_pipeline_executor_async_dag.py tests/unit/test_pipeline_runner_sse.py tests/services/test_agents_runs_api.py`)
+- Files and modules:
+  - `app/services/pipeline_runner.py`
+  - `app/services/pipeline_executor.py`
+  - `app/api/routes/agents.py`
+  - `tests/services/test_agents_runs_api.py`
+  - `tests/unit/test_pipeline_runner_sse.py`
+- Completion signal: `fix(GH-17): remediate code review findings`
+
 ## Plan Revision Log
 
 - 2026-04-27T00:00:00Z — Initial plan drafted from `chg-GH-17-spec.md`.
+- 2026-04-28T00:00:00Z — Added Phase 10: Code Review Remediation (6 findings from first review).
 
 ## Execution Log
 
@@ -402,6 +426,7 @@ This plan implements the spec for GH-17 by introducing:
 - 2026-04-28T01:00:00Z — Phase 7 completed: inline developer notes/docstrings added for non-thread-safety, SSE lifecycle, and in-memory limitation.
 - 2026-04-28T01:02:00Z — Phase 8 completed (no external review per user instruction): internal AC/NFR traceability and cleanup/sanitization verification completed.
 - 2026-04-28T01:05:00Z — Phase 9 completed: version bumped to 0.2.0 and final reconciliation done.
+- 2026-04-28T01:20:00Z — Phase 10 completed: remediated race/disconnect/store-encapsulation/TTL/event-timing findings and added missing API+unit tests. Evidence: targeted pytest suites PASS.
 
 ## Acceptance Validation (execution)
 

@@ -445,10 +445,11 @@ async def _run_stage_with_timeout(
     stage_timeout_seconds: int,
     max_iterations: int,
     stage_runner=None,
+    started_at: str | None = None,
 ) -> StageExecutionResult:
     """Run one stage with timeout isolation and sanitized error capture."""
 
-    started_at = _utc_now_iso()
+    started_at = started_at or _utc_now_iso()
     t0 = time.time()
     try:
         if stage_runner is None:
@@ -532,6 +533,7 @@ async def execute_pipeline_dag(
     max_iterations: int = 5,
     stage_runner=None,
     on_stage_result=None,
+    on_stage_started=None,
 ) -> tuple[dict[str, StageExecutionResult], str]:
     """Execute discover -> (mobility || weather) -> budget_fit with isolation.
 
@@ -547,6 +549,9 @@ async def execute_pipeline_dag(
     results: dict[str, StageExecutionResult] = {}
 
     # Stage 1 - discover
+    discover_started_at = _utc_now_iso()
+    if on_stage_started is not None:
+        await on_stage_started("discover", discover_started_at)
     discover_res = await _run_stage_with_timeout(
         db=db,
         stage="discover",
@@ -555,6 +560,7 @@ async def execute_pipeline_dag(
         stage_timeout_seconds=stage_timeout_seconds,
         max_iterations=max_iterations,
         stage_runner=stage_runner,
+        started_at=discover_started_at,
     )
     results["discover"] = discover_res
     if on_stage_result is not None:
@@ -567,6 +573,11 @@ async def execute_pipeline_dag(
         f"{user_message}\n\n--- discover context ---\n{discover_ctx}\n--- end discover context ---"
     )
     weather_prompt = mobility_prompt
+    mobility_started_at = _utc_now_iso()
+    weather_started_at = _utc_now_iso()
+    if on_stage_started is not None:
+        await on_stage_started("mobility", mobility_started_at)
+        await on_stage_started("weather", weather_started_at)
 
     stage2_outputs = await asyncio.gather(
         _run_stage_with_timeout(
@@ -577,6 +588,7 @@ async def execute_pipeline_dag(
             stage_timeout_seconds=stage_timeout_seconds,
             max_iterations=max_iterations,
             stage_runner=stage_runner,
+            started_at=mobility_started_at,
         ),
         _run_stage_with_timeout(
             db=db,
@@ -586,6 +598,7 @@ async def execute_pipeline_dag(
             stage_timeout_seconds=stage_timeout_seconds,
             max_iterations=max_iterations,
             stage_runner=stage_runner,
+            started_at=weather_started_at,
         ),
         return_exceptions=True,
     )
@@ -618,6 +631,9 @@ async def execute_pipeline_dag(
         f"--- weather context ---\n{weather_ctx}\n"
         f"--- end contexts ---"
     )
+    budget_started_at = _utc_now_iso()
+    if on_stage_started is not None:
+        await on_stage_started("budget_fit", budget_started_at)
     budget_res = await _run_stage_with_timeout(
         db=db,
         stage="budget_fit",
@@ -626,6 +642,7 @@ async def execute_pipeline_dag(
         stage_timeout_seconds=stage_timeout_seconds,
         max_iterations=max_iterations,
         stage_runner=stage_runner,
+        started_at=budget_started_at,
     )
     results["budget_fit"] = budget_res
     if on_stage_result is not None:

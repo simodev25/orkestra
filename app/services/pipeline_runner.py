@@ -68,7 +68,7 @@ class RunRecord:
 class PipelineRunStore:
     """In-memory run store with TTL eviction and bounded size guardrail."""
 
-    def __init__(self, ttl_seconds: int = 1800, max_runs: int = 1000):
+    def __init__(self, ttl_seconds: int = 3600, max_runs: int = 1000):
         self.ttl_seconds = ttl_seconds
         self.max_runs = max_runs
         self._runs: dict[str, RunRecord] = {}
@@ -113,6 +113,10 @@ class PipelineRunStore:
             self._runs.pop(run_id, None)
         return len(to_delete)
 
+    async def active_run_ids(self) -> set[str]:
+        async with self._lock:
+            return set(self._runs.keys())
+
     async def _evict_oldest_terminal_locked(self, count: int) -> None:
         terminal = [
             rec
@@ -127,7 +131,7 @@ class PipelineRunStore:
 class PipelineRunner:
     """Coordinates async run execution and SSE event subscriptions."""
 
-    def __init__(self, ttl_seconds: int = 1800, cleanup_interval_seconds: int = 60):
+    def __init__(self, ttl_seconds: int = 3600, cleanup_interval_seconds: int = 60):
         self.store = PipelineRunStore(ttl_seconds=ttl_seconds)
         self.ttl_seconds = ttl_seconds
         self.cleanup_interval_seconds = cleanup_interval_seconds
@@ -158,9 +162,26 @@ class PipelineRunner:
     ) -> None:
         await self._ensure_cleanup_task()
 
+        placeholder = asyncio.get_running_loop().create_future()
+        async with self._lock:
+            # Sentinel registration prevents races with cleanup/cancel observers.
+            self._run_tasks[run_id] = placeholder
+
         async def _execute() -> None:
             initial = await self.get_run(run_id)
             user_message = initial.message if initial is not None else ""
+
+            async def _on_stage_started(stage: str, started_at: str) -> None:
+                def _mark_started(rec: RunRecord) -> None:
+                    stage_record = rec.stages.get(stage)
+                    if stage_record is None:
+                        stage_record = StageRecord(stage_name=stage)
+                        rec.stages[stage] = stage_record
+                    stage_record.status = "running"
+                    stage_record.started_at = started_at
+
+                await self.store.update(run_id, _mark_started)
+                await self.emit_event(run_id, "stage_started", {"stage": stage, "ts": started_at})
 
             await self.store.update(
                 run_id,
@@ -184,6 +205,7 @@ class PipelineRunner:
                         stage_timeout_seconds=stage_timeout_seconds,
                         max_iterations=max_iterations,
                         stage_runner=stage_runner,
+                        on_stage_started=_on_stage_started,
                         on_stage_result=_on_stage_result,
                     )
 
@@ -226,7 +248,14 @@ class PipelineRunner:
                             },
                         )
 
-        task = asyncio.create_task(_execute())
+        try:
+            task = asyncio.create_task(_execute())
+        except Exception:
+            async with self._lock:
+                if self._run_tasks.get(run_id) is placeholder:
+                    self._run_tasks.pop(run_id, None)
+            raise
+
         async with self._lock:
             self._run_tasks[run_id] = task
 
@@ -244,12 +273,6 @@ class PipelineRunner:
             stage_record.completed_at = stage_res.completed_at
 
         await self.store.update(run_id, _update)
-
-        await self.emit_event(
-            run_id,
-            "stage_started",
-            {"stage": stage_res.stage, "ts": stage_res.started_at or _utc_now_iso()},
-        )
         if stage_res.status == "completed":
             await self.emit_event(
                 run_id,
@@ -295,7 +318,7 @@ class PipelineRunner:
             except Exception:
                 pass
 
-    async def stream_events(self, run_id: str):
+    async def stream_events(self, run_id: str, heartbeat_seconds: int = 15):
         """Yield SSE-formatted bytes for the given run queue.
 
         This stream is best-effort live feed. State of truth remains GET status endpoint.
@@ -309,7 +332,11 @@ class PipelineRunner:
             return
 
         while True:
-            evt = await queue.get()
+            try:
+                evt = await asyncio.wait_for(queue.get(), timeout=heartbeat_seconds)
+            except asyncio.TimeoutError:
+                yield self.serialize_sse("heartbeat", {"run_id": run_id, "ts": _utc_now_iso()})
+                continue
             event_name = evt.get("event", "message")
             data = evt.get("data", {})
             yield self.serialize_sse(event_name, data)
@@ -332,8 +359,8 @@ class PipelineRunner:
                     logger.info("Evicted expired pipeline runs", extra={"evicted": evicted})
 
                 # Remove queues for runs no longer in store.
+                active_ids = await self.store.active_run_ids()
                 async with self._lock:
-                    active_ids = set(self.store._runs.keys())
                     stale_run_ids = [rid for rid in self._event_queues.keys() if rid not in active_ids]
                     for rid in stale_run_ids:
                         self._event_queues.pop(rid, None)
