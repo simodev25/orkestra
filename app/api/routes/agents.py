@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -30,7 +31,9 @@ from app.services import (
     agent_generation_service,
     agent_registry_service,
     agent_test_run_service,
+    family_service,
     orchestrator_builder_service,
+    skill_service,
 )
 from app.services.pipeline_executor import resolve_stage_agents
 from app.services.pipeline_runner import pipeline_runner
@@ -40,6 +43,62 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _keywords(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]{3,}", text.lower())}
+
+
+def _similarity_score(data: AgentGenerationRequest, agent: dict) -> int:
+    req_text = " ".join(filter(None, [data.intent, data.use_case, data.constraints]))
+    req_kw = _keywords(req_text)
+    agent_kw = _keywords(
+        " ".join(
+            filter(
+                None,
+                [
+                    agent.get("id"),
+                    agent.get("name"),
+                    agent.get("family_id"),
+                    agent.get("purpose"),
+                    agent.get("description"),
+                ],
+            )
+        )
+    )
+    score = len(req_kw & agent_kw) * 4
+    if data.preferred_family and data.preferred_family == agent.get("family_id"):
+        score += 3
+    return score
+
+
+async def _find_similar_agents(
+    db: AsyncSession,
+    data: AgentGenerationRequest,
+    *,
+    limit: int = 5,
+) -> list[dict]:
+    agents, _ = await agent_registry_service.list_agents(db, status="designed", limit=200)
+    if not agents:
+        agents, _ = await agent_registry_service.list_agents(db, limit=200)
+
+    candidates = []
+    for agent in agents:
+        if (agent.family_id or "").lower() == "orchestration":
+            continue
+        summary = {
+            "id": agent.id,
+            "name": agent.name,
+            "family_id": agent.family_id,
+            "purpose": (agent.purpose or "")[:200],
+            "description": (agent.description or "")[:300],
+        }
+        score = _similarity_score(data, summary)
+        if score > 0:
+            candidates.append((score, summary))
+
+    candidates.sort(key=lambda item: (-item[0], item[1]["name"].lower()))
+    return [item[1] for item in candidates[:limit]]
 
 
 @router.get("/stats", response_model=AgentRegistryStats)
@@ -225,8 +284,19 @@ async def generate_agent_draft(
 ):
     available = await agent_registry_service.available_mcp_summaries(db)
     catalog = [McpCatalogSummary.model_validate(item) for item in available]
-    draft = agent_generation_service.generate_agent_draft(data, catalog)
-    return AgentGenerationResponse(draft=draft, available_mcps=catalog, source="heuristic_template")
+    families, _ = await family_service.list_families(db, include_archived=False, limit=500)
+    skills, _ = await skill_service.list_skills(db, include_archived=False, limit=500)
+    similar_agents = await _find_similar_agents(db, data, limit=5)
+
+    context = agent_generation_service.AgentGenerationContext(
+        families=[{"id": f.id, "label": f.label, "status": f.status} for f in families],
+        skills=skills,
+        similar_agents=similar_agents,
+    )
+    draft, source = await agent_generation_service.generate_agent_draft_with_fallback(
+        db, data, catalog, context
+    )
+    return AgentGenerationResponse(draft=draft, available_mcps=catalog, source=source)
 
 
 @router.post("/save-generated-draft", response_model=AgentOut, status_code=201)

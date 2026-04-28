@@ -161,14 +161,14 @@ This change upgrades `POST /api/agents/generate-draft` from a heuristic template
 
 **Tasks**:
 
-- [ ] Update `app/api/routes/agents.py` generate-draft handler:
-  - [ ] Make handler async.
-  - [ ] Fetch and inject required context: MCP catalog, families, skills, and up to 5 similar agents (F-2).
-  - [ ] Pass `preferred_family` and `preferred_skill_ids` through to the service.
-  - [ ] Ensure errors never surface as 5xx when fallback is expected (NFR-3).
-- [ ] Update `tests/test_api_agent_registry_product.py`:
-  - [ ] Replace any `source="mock_llm"` assertions with `"llm" | "heuristic_template"` depending on test setup.
-  - [ ] Add/adjust coverage to assert fallback behavior returns HTTP 200 and `source="heuristic_template"` when LLM fails.
+- [x] Update `app/api/routes/agents.py` generate-draft handler:
+  - [x] Make handler async. (already async; now delegates to async LLM/fallback service entrypoint)
+  - [x] Fetch and inject required context: MCP catalog, families, skills, and up to 5 similar agents (F-2). (added family/skill fetch + `_find_similar_agents(..., limit=5)`)
+  - [x] Pass `preferred_family` and `preferred_skill_ids` through to the service. (request object passed unchanged to `generate_agent_draft_with_fallback`)
+  - [x] Ensure errors never surface as 5xx when fallback is expected (NFR-3). (fallback path tested via injected LLM error)
+- [x] Update `tests/test_api_agent_registry_product.py`:
+  - [x] Replace any `source="mock_llm"` assertions with `"llm" | "heuristic_template"` depending on test setup. (assertion updated)
+  - [x] Add/adjust coverage to assert fallback behavior returns HTTP 200 and `source="heuristic_template"` when LLM fails. (new `test_generate_agent_draft_fallback_returns_200_on_llm_error`)
 
 **Acceptance Criteria**:
 
@@ -193,13 +193,13 @@ This change upgrades `POST /api/agents/generate-draft` from a heuristic template
 
 **Tasks**:
 
-- [ ] Update `frontend/src/components/agents/generate-agent-modal.tsx`:
-  - [ ] Add family selector populated from `GET /api/families` (F-7).
-  - [ ] Add skills multi-select populated from `GET /api/skills` (F-8).
-  - [ ] Send `preferred_family` + `preferred_skill_ids` in generate request.
-  - [ ] Render `source` badge in review step (F-5).
-  - [ ] Render MCP rationale string alongside each MCP checkbox when available (F-9).
-  - [ ] Update UI copy to reflect truthful “AI-powered” generation with fallback messaging (F-10).
+- [x] Update `frontend/src/components/agents/generate-agent-modal.tsx`:
+  - [x] Add family selector populated from `GET /api/families` (F-7). (fetch via `listFamilies(false)` + active-family dropdown)
+  - [x] Add skills multi-select populated from `GET /api/skills` (F-8). (fetch via `listSkills(false)` + active-skill multi-select)
+  - [x] Send `preferred_family` + `preferred_skill_ids` in generate request. (request state includes `preferred_skill_ids`; bound controls update payload)
+  - [x] Render `source` badge in review step (F-5). (display mapping: `llm -> AI-generated`, `heuristic_template -> Template draft`)
+  - [x] Render MCP rationale string alongside each MCP checkbox when available (F-9). (inline rationale next to each MCP row)
+  - [x] Update UI copy to reflect truthful “AI-powered” generation with fallback messaging (F-10). (title/subtitle/loading/helper copy updated per editor guidance)
 
 **Acceptance Criteria**:
 
@@ -324,3 +324,5 @@ This change upgrades `POST /api/agents/generate-draft` from a heuristic template
 
 - 2026-04-28T22:31:00Z — Phase 1 completed: request contract extended with `preferred_skill_ids`; input sanitization/length checks added for `intent` and `constraints`; no runtime behavior/source change yet. Evidence: `python3 - <<'PY' ... AgentGenerationRequest(...) ... PY` sanitizer/field check PASS; `python3 -m pytest tests/test_api_agent_registry_product.py -q` run showed pre-existing MCP-catalog test failure (`available_mcps` empty) unrelated to Phase 1 contract changes.
 - 2026-04-28T22:44:00Z — Phase 2 completed: implemented async LLM generation pipeline with prompt builder, DB LLM config read, JSON parse/validation, ID normalization, trace writing, and heuristic fallback path; added service tests for happy-path/fallback/parse-failure/normalization. Evidence: `python3 -m pytest tests/services/test_agent_generation_service.py -q` => 5 passed.
+- 2026-04-28T22:51:00Z — Phase 3 completed: wired API handler to inject MCP/family/skill/similar-agent context and call async LLM+fallback service; updated product API tests to accept `llm|heuristic_template` and assert fallback on LLM failure returns HTTP 200. Evidence: `python3 -m pytest tests/test_api_agent_registry_product.py -q` => 5 passed.
+- 2026-04-28T22:59:00Z — Phase 4 completed: frontend modal now fetches families/skills, sends `preferred_family` + `preferred_skill_ids`, renders source label + per-MCP rationale inline, and updates user copy for AI generation with fallback messaging. Evidence: `npm run build` (frontend) PASS; no component-specific automated test file exists.
