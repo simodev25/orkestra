@@ -101,7 +101,9 @@
         "use_case_hint": "accommodation mobility scoring",
         "requires_grounded_evidence": true
       },
-      "allowed_mcps": [],
+      "allowed_mcps": [
+        "google_maps_grounding_lite"
+      ],
       "forbidden_effects": [
         "publish",
         "approve",
@@ -275,7 +277,7 @@
         "requires_grounded_evidence": true
       },
       "pipeline_definition": {
-        "routing_mode": "sequential",
+        "routing_mode": "dag",
         "stages": [
           {
             "stage_id": "discover",
@@ -285,15 +287,17 @@
           {
             "stage_id": "mobility",
             "agent_id": "mobility_agent",
-            "required": false
+            "required": true,
+            "parallel_group": "stage2"
           },
           {
             "stage_id": "weather",
             "agent_id": "weather_agent",
-            "required": false
+            "required": true,
+            "parallel_group": "stage2"
           },
           {
-            "stage_id": "fit",
+            "stage_id": "budget_fit",
             "agent_id": "budget_fit_agent",
             "required": true
           }
