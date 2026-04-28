@@ -545,7 +545,23 @@ async def chat_with_agent(
     body: ChatRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Send a chat message to an agent and get a response."""
+    """Send a chat message to an agent and get a response.
+
+    For orchestrators with a pipeline definition, delegates to the async DAG
+    executor instead of letting the LLM decide tool call order — this avoids
+    PIPELINE_ORDER_ERROR when the LLM calls agents out of sequence.
+    """
+    from app.services import agent_registry_service
+    from app.services.agent_factory import _resolve_pipeline_agent_ids
+
+    # Check if this agent is a pipeline orchestrator
+    agent_def = await agent_registry_service.get_agent(db, agent_id)
+    pipeline_agent_ids = _resolve_pipeline_agent_ids(agent_def) if agent_def else []
+
+    if pipeline_agent_ids:
+        # Use the deterministic DAG executor instead of LLM-driven tool calls
+        return await _chat_via_dag(db, agent_id, pipeline_agent_ids, body)
+
     result = await run_target_agent(
         db=db,
         agent_id=agent_id,
@@ -573,3 +589,78 @@ async def chat_with_agent(
         "duration_ms": result.duration_ms,
         "status": result.status,
     }
+
+
+async def _chat_via_dag(
+    db: AsyncSession,
+    agent_id: str,
+    pipeline_agent_ids: list[str],
+    body: ChatRequest,
+):
+    """Execute an orchestrator chat via the deterministic DAG executor.
+
+    This avoids PIPELINE_ORDER_ERROR by using hardcoded DAG topology
+    (discover → mobility∥weather → budget_fit) instead of LLM-driven ordering.
+    """
+    import asyncio
+    from app.services.pipeline_executor import execute_pipeline_dag
+
+    t0 = time.time()
+    try:
+        stage_results, final_output = await asyncio.wait_for(
+            execute_pipeline_dag(
+                db=db,
+                pipeline_agent_ids=pipeline_agent_ids,
+                user_message=body.message,
+                stage_timeout_seconds=body.timeout_seconds or 90,
+                max_iterations=body.max_iterations or 5,
+            ),
+            timeout=body.timeout_seconds or 300,
+        )
+        duration_ms = int((time.time() - t0) * 1000)
+
+        # Collect tool calls from stage results for the response
+        tool_calls = []
+        for stage_name, res in stage_results.items():
+            tool_calls.append({
+                "tool": f"run_{stage_name}",
+                "status": res.status,
+                "output_preview": (res.output or "")[:200],
+            })
+
+        # Synthesize a readable response
+        response_text = final_output
+        if tool_calls:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                try:
+                    response_text = pool.submit(
+                        _synthesize, final_output, body.message, tool_calls
+                    ).result(timeout=35)
+                except Exception:
+                    response_text = final_output
+
+        return {
+            "response": response_text,
+            "raw_output": final_output,
+            "tool_calls": tool_calls,
+            "duration_ms": duration_ms,
+            "status": "completed",
+        }
+
+    except asyncio.TimeoutError:
+        duration_ms = int((time.time() - t0) * 1000)
+        return {
+            "response": "Le pipeline a dépassé le délai d'exécution.",
+            "raw_output": "",
+            "tool_calls": [],
+            "duration_ms": duration_ms,
+            "status": "failed",
+        }
+    except Exception as exc:
+        logger.exception("DAG execution failed for %s", agent_id)
+        duration_ms = int((time.time() - t0) * 1000)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pipeline execution failed: {exc}",
+        )
