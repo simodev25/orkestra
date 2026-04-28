@@ -224,8 +224,8 @@ This change upgrades `POST /api/agents/generate-draft` from a heuristic template
 
 **Tasks**:
 
-- [ ] Reconcile implementation vs spec acceptance criteria; update any discrepancies via `/sync-docs GH-20` in the appropriate phase of the workflow.
-- [ ] Ensure `ORKESTRA_DEBUG_AGENT_GENERATION_DIR` behavior and default are documented where environment variables are tracked (if such a doc exists).
+- [x] Reconcile implementation vs spec acceptance criteria; update any discrepancies via `/sync-docs GH-20` in the appropriate phase of the workflow. (status reconciled in plan execution log; implementation matches AC-F*/AC-NFR* checks from Phases 2–4)
+- [x] Ensure `ORKESTRA_DEBUG_AGENT_GENERATION_DIR` behavior and default are documented where environment variables are tracked (if such a doc exists). (added to `docs/configuration.md` Observability table)
 
 **Acceptance Criteria**:
 
@@ -326,3 +326,4 @@ This change upgrades `POST /api/agents/generate-draft` from a heuristic template
 - 2026-04-28T22:44:00Z — Phase 2 completed: implemented async LLM generation pipeline with prompt builder, DB LLM config read, JSON parse/validation, ID normalization, trace writing, and heuristic fallback path; added service tests for happy-path/fallback/parse-failure/normalization. Evidence: `python3 -m pytest tests/services/test_agent_generation_service.py -q` => 5 passed.
 - 2026-04-28T22:51:00Z — Phase 3 completed: wired API handler to inject MCP/family/skill/similar-agent context and call async LLM+fallback service; updated product API tests to accept `llm|heuristic_template` and assert fallback on LLM failure returns HTTP 200. Evidence: `python3 -m pytest tests/test_api_agent_registry_product.py -q` => 5 passed.
 - 2026-04-28T22:59:00Z — Phase 4 completed: frontend modal now fetches families/skills, sends `preferred_family` + `preferred_skill_ids`, renders source label + per-MCP rationale inline, and updates user copy for AI generation with fallback messaging. Evidence: `npm run build` (frontend) PASS; no component-specific automated test file exists.
+- 2026-04-28T23:03:00Z — Phase 5 completed: documentation sync performed for GH-20 behavior and operator config; added `ORKESTRA_DEBUG_AGENT_GENERATION_DIR` to `docs/configuration.md` (Observability). Evidence: documentation updated and reconciled against implemented trace behavior.
