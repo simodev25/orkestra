@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "mistral"
     OLLAMA_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "mistral-small-latest"
-    OPENAI_BASE_URL: str = "https://api.mistral.ai/v1"
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
 
     # Observability
     LOG_LEVEL: str = "INFO"

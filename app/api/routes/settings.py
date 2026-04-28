@@ -162,8 +162,8 @@ _LLM_DEFAULTS = {
     "LLM_PROVIDER": "ollama",
     "OLLAMA_HOST": "http://localhost:11434",
     "OLLAMA_MODEL": "mistral",
-    "OPENAI_MODEL": "mistral-small-latest",
-    "OPENAI_BASE_URL": "https://api.mistral.ai/v1",
+    "OPENAI_MODEL": "gpt-4o-mini",
+    "OPENAI_BASE_URL": "https://api.openai.com/v1",
 }
 
 
@@ -171,8 +171,8 @@ class LlmConfigUpdate(PydanticBaseModel):
     provider: str = "ollama"
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "mistral"
-    openai_model: str = "mistral-small-latest"
-    openai_base_url: str = "https://api.mistral.ai/v1"
+    openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = "https://api.openai.com/v1"
 
 
 @router.get("/llm-config")

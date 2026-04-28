@@ -117,7 +117,10 @@ async def list_llm_models(provider: str, db: AsyncSession = Depends(get_db)):
 
     elif provider == "openai":
         api_key = await get_secret(db, "OPENAI_API_KEY", settings.OPENAI_API_KEY)
-        base_url = settings.OPENAI_BASE_URL or "https://api.openai.com/v1"
+        # Read base_url from DB (platform_capabilities) first, then env, then default
+        from app.models.platform_capability import PlatformCapability
+        cap = await db.get(PlatformCapability, "OPENAI_BASE_URL")
+        base_url = (cap.value if cap else None) or settings.OPENAI_BASE_URL or "https://api.openai.com/v1"
         if not api_key:
             return {"provider": "openai", "models": [], "error": "OPENAI_API_KEY not configured. Set it in Admin > Security."}
         try:

@@ -89,8 +89,8 @@ def get_chat_model(config: dict | None = None):
         elif provider in ("openai", "mistral"):
             from agentscope.model import OpenAIChatModel
             openai_key = cfg.get("openai_api_key") or getattr(settings, "OPENAI_API_KEY", "")
-            base_url = _cfg("openai_base_url", "OPENAI_BASE_URL", "https://api.mistral.ai/v1")
-            model_name = _cfg("openai_model", "OPENAI_MODEL", "mistral-small-latest")
+            base_url = _cfg("openai_base_url", "OPENAI_BASE_URL", "https://api.openai.com/v1")
+            model_name = _cfg("openai_model", "OPENAI_MODEL", "gpt-4o-mini")
             logger.info("[LLM-TRACE] provider=%s base_url=%s model=%s api_key=%s",
                         provider, base_url, model_name, "SET" if openai_key else "NOT SET")
             return OpenAIChatModel(

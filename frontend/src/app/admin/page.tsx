@@ -33,8 +33,8 @@ export default function AdminPage() {
     provider: "ollama",
     ollama_host: "http://localhost:11434",
     ollama_model: "mistral",
-    openai_model: "mistral-small-latest",
-    openai_base_url: "https://api.mistral.ai/v1",
+    openai_model: "gpt-4o-mini",
+    openai_base_url: "https://api.openai.com/v1",
   });
   const [savingLlm, setSavingLlm] = useState(false);
   const [llmSaved, setLlmSaved] = useState(false);
