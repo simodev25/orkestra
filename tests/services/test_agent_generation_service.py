@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
@@ -191,3 +192,63 @@ async def test_generate_agent_draft_normalizes_unknown_family_and_skills(monkeyp
     assert draft.family_id in {"analyst", "reviewer"}
     assert "unknown_skill" not in draft.skill_ids
     assert "unknown_mcp" not in draft.allowed_mcps
+
+
+def test_build_generation_prompt_handles_datetime_in_skills():
+    req = _mk_request()
+    catalog = _mk_catalog(2)
+    now = datetime.now(timezone.utc)
+    ctx = AgentGenerationContext(
+        families=[{"id": "analyst", "label": "Analyst", "status": "active"}],
+        skills=[
+            {
+                "skill_id": "document_analysis",
+                "status": "active",
+                "allowed_families": ["analyst"],
+                "created_at": now,
+                "updated_at": now,
+            }
+        ],
+        similar_agents=[],
+    )
+
+    prompt = agent_generation_service.build_generation_prompt(req, catalog, ctx)
+
+    assert "document_analysis" in prompt
+    assert "created_at" in prompt
+    assert "updated_at" in prompt
+
+
+def test_normalize_llm_draft_with_zero_families():
+    req = _mk_request()
+    catalog = _mk_catalog(2)
+    ctx = AgentGenerationContext(families=[], skills=[], similar_agents=[])
+    raw = _valid_llm_draft_dict()
+    draft = agent_generation_service.GeneratedAgentDraft.model_validate(raw)
+
+    normalized = agent_generation_service._normalize_llm_draft(draft, req, catalog, ctx)
+
+    assert normalized.family_id
+    assert normalized.family_id == raw["family_id"]
+
+
+@pytest.mark.asyncio
+async def test_call_llm_handles_async_generator_response(monkeypatch, db_session):
+    class _FakeModel:
+        async def __call__(self, _messages):
+            async def _stream():
+                yield "hello "
+                yield "world"
+
+            return _stream()
+
+    async def _fake_read_config(_db):
+        return {}
+
+    monkeypatch.setattr(agent_generation_service, "is_agentscope_available", lambda: True)
+    monkeypatch.setattr(agent_generation_service, "_read_llm_config_from_db", _fake_read_config)
+    monkeypatch.setattr(agent_generation_service, "get_chat_model", lambda config: _FakeModel())
+
+    text = await agent_generation_service._call_llm("prompt", db_session)
+
+    assert text == "hello world"
