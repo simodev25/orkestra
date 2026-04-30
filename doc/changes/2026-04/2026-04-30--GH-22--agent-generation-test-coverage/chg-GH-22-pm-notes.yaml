@@ -1,0 +1,22 @@
+change_id: GH-22
+title: "Improve agent generation test coverage — realistic data and LLM integration"
+phases:
+  clarify_scope: { started: "2026-04-30T00:00:00Z", completed: "2026-04-30T00:02:00Z" }
+  specification: { started: null, completed: null }
+  test_planning: { started: null, completed: null }
+  delivery_planning: { started: null, completed: null }
+  delivery: { started: null, completed: null }
+  system_spec_update: { started: null, completed: null }
+  review_fix: { started: null, completed: null }
+  quality_gates: { started: null, completed: null }
+  dod_check: { started: null, completed: null }
+  pr_creation: { started: null, completed: null, url: null }
+decisions:
+  - text: "Test-only change — no spec or test-plan needed, go straight to plan+deliver"
+    date: "2026-04-30"
+open_questions: []
+blockers: []
+notes:
+  - text: "This change is purely additive tests — no production code changes. Streamlined delivery: skip spec and test-plan phases."
+    type: "info"
+    date: "2026-04-30"

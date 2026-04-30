@@ -27,10 +27,10 @@ test(agent-generation): add unit tests for datetime, empty families, and streami
 - `tests/e2e/test_generate_agent_draft_flow.py` (new)
 
 ### Tasks
-- [ ] T2.1: Add test `test_generate_draft_without_heuristic_default_families` — seed family "compliance" (not "analyst"), call generate-draft, verify draft family_id is valid (AC-3)
-- [ ] T2.2: Add test `test_generate_draft_then_save_succeeds` — call generate-draft, then save-generated-draft with returned draft, assert 201 (AC-4)
-- [ ] T2.3: Add test `test_fallback_heuristic_normalizes_family_to_existing` — monkeypatch `_call_llm` to raise, seed family "compliance", call generate-draft, verify source="heuristic_template" and family_id matches existing DB family (AC-6)
-- [ ] T2.4: Run `python3 -m pytest tests/e2e/test_generate_agent_draft_flow.py -x -q` — all pass
+- [x] T2.1: Add test `test_generate_draft_without_heuristic_default_families` — seed family "compliance" (not "analyst"), call generate-draft, verify draft family_id is valid (AC-3) (added in `tests/e2e/test_generate_agent_draft_flow.py`, pytest PASS)
+- [x] T2.2: Add test `test_generate_draft_then_save_succeeds` — call generate-draft, then save-generated-draft with returned draft, assert 201 (AC-4) (added in `tests/e2e/test_generate_agent_draft_flow.py`, seeds required skills, pytest PASS)
+- [x] T2.3: Add test `test_fallback_heuristic_normalizes_family_to_existing` — monkeypatch `_call_llm` to raise, seed family "compliance", call generate-draft, verify source="heuristic_template" and family_id matches existing DB family (AC-6) (added in `tests/e2e/test_generate_agent_draft_flow.py`, pytest PASS)
+- [x] T2.4: Run `python3 -m pytest tests/e2e/test_generate_agent_draft_flow.py -x -q` — all pass (evidence: `3 passed`)
 
 ### Commit
 ```
