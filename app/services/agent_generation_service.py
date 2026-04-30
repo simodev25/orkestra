@@ -197,6 +197,15 @@ async def _call_llm(prompt: str, db: AsyncSession) -> str:
         ),
         timeout=_LLM_TIMEOUT_SECONDS,
     )
+
+    # Handle both dict responses and async generators (streaming mode)
+    import inspect
+    if inspect.isasyncgen(response):
+        chunks = []
+        async for chunk in response:
+            chunks.append(str(chunk))
+        return "".join(chunks)
+
     content = response.get("content") or []
     text = "".join(
         block.get("text", "")
@@ -503,6 +512,7 @@ async def generate_agent_draft_with_fallback(
         logger.warning("[AGENT-GEN] LLM generation failed, falling back to heuristic: %s", exc)
         trace["fallback_reason"] = str(exc)
         fallback = _heuristic_generate_agent_draft(request, catalog)
+        fallback = _normalize_llm_draft(fallback, request, catalog, context)
         trace["llm_parsed"] = fallback.model_dump()
         trace["source"] = "heuristic_template"
         trace["duration_ms"] = round((time.monotonic() - started) * 1000)
