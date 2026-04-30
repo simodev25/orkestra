@@ -91,6 +91,7 @@ export interface AgentGenerationRequest {
   target_workflow?: string;
   criticality_target?: string;
   preferred_family?: string;
+  preferred_skill_ids?: string[];
   preferred_output_style?: string;
   preferred_mcp_scope?: string;
   constraints?: string;

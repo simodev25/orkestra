@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   generateAgentDraft,
   saveGeneratedDraft,
@@ -12,6 +12,8 @@ import type {
   McpCatalogSummary,
 } from "@/lib/agent-registry/types";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { listFamilies, listSkills } from "@/lib/families/service";
+import type { FamilyDefinition, SkillDefinition } from "@/lib/families/types";
 
 function parseCsv(input: string): string[] {
   return input
@@ -38,6 +40,7 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
     target_workflow: "",
     criticality_target: "",
     preferred_family: "",
+    preferred_skill_ids: [],
     preferred_output_style: "",
     preferred_mcp_scope: "",
     constraints: "",
@@ -49,6 +52,32 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
   const [source, setSource] = useState<string>("");
   const [availableMcps, setAvailableMcps] = useState<McpCatalogSummary[]>([]);
   const [draft, setDraft] = useState<GeneratedAgentDraft | null>(null);
+  const [families, setFamilies] = useState<FamilyDefinition[]>([]);
+  const [skills, setSkills] = useState<SkillDefinition[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!open) return;
+    (async () => {
+      try {
+        const [familiesResp, skillsResp] = await Promise.all([
+          listFamilies(false),
+          listSkills(false),
+        ]);
+        if (cancelled) return;
+        setFamilies(familiesResp.filter((f) => f.status === "active"));
+        setSkills(skillsResp.filter((s) => (s.status || "active") === "active"));
+      } catch {
+        if (!cancelled) {
+          setFamilies([]);
+          setSkills([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const [skillIdsCsv, setSkillIdsCsv] = useState("");
   const [forbiddenEffectsCsv, setForbiddenEffectsCsv] = useState("");
@@ -86,6 +115,12 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
 
   function updateDraft(next: Partial<GeneratedAgentDraft>) {
     setDraft((prev) => (prev ? { ...prev, ...next } : prev));
+  }
+
+  function sourceLabel(value: string): string {
+    if (value === "llm") return "AI-generated";
+    if (value === "heuristic_template") return "Template draft";
+    return value || "unknown";
   }
 
   function toggleMcp(mcpId: string) {
@@ -152,9 +187,9 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
       <div className="max-w-6xl mx-auto glass-panel border border-ork-border">
         <div className="p-4 border-b border-ork-border flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Generate Agent — Template-Based Draft</h2>
+            <h2 className="text-lg font-semibold">Generate Agent</h2>
             <p className="text-xs font-mono text-ork-dim">
-              Heuristic template proposes a governed draft. You review, edit, then save in `draft`.
+              Describe what this agent should do. AI will draft it for you, with a template fallback when needed.
             </p>
           </div>
           <button onClick={onClose} className="text-xs font-mono text-ork-muted hover:text-ork-text">
@@ -197,12 +232,18 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
                 placeholder="criticality target"
                 className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm"
               />
-              <input
+              <select
                 value={request.preferred_family || ""}
-                onChange={(e) => setRequest((prev) => ({ ...prev, preferred_family: e.target.value }))}
-                placeholder="preferred family"
+                onChange={(e) => setRequest((prev) => ({ ...prev, preferred_family: e.target.value || undefined }))}
                 className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm"
-              />
+              >
+                <option value="">family (optional)</option>
+                {families.map((family) => (
+                  <option key={family.id} value={family.id}>
+                    {family.label} ({family.id})
+                  </option>
+                ))}
+              </select>
               <input
                 value={request.preferred_output_style || ""}
                 onChange={(e) => setRequest((prev) => ({ ...prev, preferred_output_style: e.target.value }))}
@@ -221,12 +262,31 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
                 placeholder="owner"
                 className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm md:col-span-1"
               />
+              <select
+                multiple
+                value={request.preferred_skill_ids || []}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                  setRequest((prev) => ({ ...prev, preferred_skill_ids: selected }));
+                }}
+                className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm md:col-span-2 min-h-28"
+              >
+                {skills.map((skill) => (
+                  <option key={skill.skill_id} value={skill.skill_id}>
+                    {skill.label} ({skill.skill_id})
+                  </option>
+                ))}
+              </select>
               <input
                 value={request.constraints || ""}
                 onChange={(e) => setRequest((prev) => ({ ...prev, constraints: e.target.value }))}
                 placeholder="constraints / forbidden actions"
                 className="bg-ork-bg border border-ork-border rounded px-3 py-2 text-sm md:col-span-2"
               />
+            </div>
+            <div className="text-xs font-mono text-ork-dim">
+              <div>Family: optional, helps focus the draft on a specific agent type.</div>
+              <div>Skills: optional, suggest skills to assign; generation may add or adjust them.</div>
             </div>
             <div className="flex justify-end">
               <button
@@ -241,14 +301,14 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
         )}
 
         {step === "generating" && (
-          <div className="p-10 text-center text-sm font-mono text-ork-cyan">Generating agent draft...</div>
+          <div className="p-10 text-center text-sm font-mono text-ork-cyan">Building your agent draft...</div>
         )}
 
         {step === "review" && draft && (
           <div className="p-4 space-y-4">
             <div className="flex items-center gap-2 text-xs font-mono text-ork-dim">
               <span>Generator:</span>
-              <span className="text-ork-cyan">{source}</span>
+              <span className="text-ork-cyan">{sourceLabel(source)}</span>
               <StatusBadge status={draft.status} />
             </div>
 
@@ -279,6 +339,9 @@ export function GenerateAgentModal({ open, onClose, onSaved }: GenerateAgentModa
                         <span className="text-ork-dim"> ({mcp.id})</span>
                         <span className="ml-2 text-ork-dim">{mcp.effect_type}</span>
                         <span className="ml-2 text-ork-dim">{mcp.criticality}</span>
+                        {draft.mcp_rationale[mcp.id] && (
+                          <span className="ml-2 text-ork-cyan/80">— {draft.mcp_rationale[mcp.id]}</span>
+                        )}
                         <span className="ml-2">
                           <StatusBadge status={mcp.orkestra_state} />
                         </span>

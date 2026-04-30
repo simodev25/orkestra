@@ -97,6 +97,7 @@ def get_chat_model(config: dict | None = None):
                 model_name=model_name,
                 api_key=openai_key,
                 base_url=base_url,
+                stream=False,
             )
         else:
             logger.warning("[LLM-TRACE] Unknown LLM provider: %s", provider)

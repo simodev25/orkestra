@@ -65,6 +65,7 @@ In `docker-compose.yml`: `OBOT_USE_MOCK=false` and `OBOT_FALLBACK_TO_MOCK=false`
 | `ORKESTRA_LOG_LEVEL` | `INFO` | Python logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `ORKESTRA_PROMETHEUS_ENABLED` | `False` | Expose `/api/metrics` as a Prometheus scrape endpoint |
 | `ORKESTRA_OTEL_ENDPOINT` | (empty) | OpenTelemetry collector URL (e.g., `http://otel-collector:4318/v1/traces`) |
+| `ORKESTRA_DEBUG_AGENT_GENERATION_DIR` | `/app/storage/debug-agent-generation` | Directory where agent-draft LLM trace JSON files are written (request/context/raw-output/parsed-output/fallback-reason/latency). |
 
 In `docker-compose.yml`: `PROMETHEUS_ENABLED=true` and `OTEL_ENDPOINT=http://otel-collector:4318/v1/traces`.
 

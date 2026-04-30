@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import AliasChoices, Field
+import re
+
+from pydantic import AliasChoices, Field, field_validator
 
 from app.models.enums import AgentStatus, Criticality, CostProfile
 from app.schemas.common import OrkBaseSchema
@@ -145,10 +147,31 @@ class AgentGenerationRequest(OrkBaseSchema):
     target_workflow: Optional[str] = None
     criticality_target: Optional[str] = None
     preferred_family: Optional[str] = None
+    preferred_skill_ids: Optional[list[str]] = None
     preferred_output_style: Optional[str] = None
     preferred_mcp_scope: Optional[str] = None
     constraints: Optional[str] = None
     owner: Optional[str] = None
+
+    @field_validator("intent")
+    @classmethod
+    def _validate_intent(cls, value: str) -> str:
+        sanitized = re.sub(r"[\x00-\x1F\x7F]", " ", value)
+        sanitized = " ".join(sanitized.split()).strip()
+        if len(sanitized) > 2000:
+            raise ValueError("intent must be at most 2000 characters")
+        return sanitized
+
+    @field_validator("constraints")
+    @classmethod
+    def _validate_constraints(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        sanitized = re.sub(r"[\x00-\x1F\x7F]", " ", value)
+        sanitized = " ".join(sanitized.split()).strip()
+        if len(sanitized) > 2000:
+            raise ValueError("constraints must be at most 2000 characters")
+        return sanitized
 
 
 class GeneratedAgentDraft(OrkBaseSchema):

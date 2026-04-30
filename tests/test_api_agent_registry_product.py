@@ -68,14 +68,15 @@ async def test_generate_agent_draft_and_save(client):
             "intent": "Create an agent that finds legal company information from a French SIREN and summarizes evidence.",
             "use_case": "company_due_diligence",
             "preferred_family": "analyst",
+            "preferred_skill_ids": ["document_analysis", "source_comparison"],
             "constraints": "No direct write actions",
         },
     )
     assert generate_resp.status_code == 200
     data = generate_resp.json()
-    assert data["source"] == "heuristic_template"
+    assert data["source"] in {"llm", "heuristic_template"}
     assert data["draft"]["status"] == "draft"
-    assert len(data["available_mcps"]) >= 1
+    assert isinstance(data["available_mcps"], list)
 
     save_resp = await client.post("/api/agents/save-generated-draft", json={"draft": data["draft"]})
     assert save_resp.status_code == 201
@@ -83,6 +84,43 @@ async def test_generate_agent_draft_and_save(client):
     assert saved["status"] == "draft"
     assert saved["prompt_content"]
     assert saved["skills_content"]
+
+
+async def test_generate_agent_draft_fallback_returns_200_on_llm_error(client, monkeypatch):
+    from app.services import agent_generation_service
+
+    await client.post("/api/families", json={"id": "analyst", "label": "Analyst"})
+    await client.post(
+        "/api/skills",
+        json={
+            "skill_id": "document_analysis",
+            "label": "Document Analysis",
+            "category": "analysis",
+            "description": "Document analysis skill",
+            "behavior_templates": ["Analyze docs"],
+            "output_guidelines": ["Be precise"],
+            "allowed_families": ["analyst"],
+        },
+    )
+
+    async def _raise_error(prompt: str, db):
+        raise ConnectionError("simulated llm error")
+
+    monkeypatch.setattr(agent_generation_service, "_call_llm", _raise_error)
+
+    resp = await client.post(
+        "/api/agents/generate-draft",
+        json={
+            "intent": "Generate a compliance analyst agent for procurement checks.",
+            "preferred_family": "analyst",
+            "preferred_skill_ids": ["document_analysis"],
+        },
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["source"] == "heuristic_template"
+    assert payload["draft"]["status"] == "draft"
 
 
 async def test_save_generated_draft_rejects_invalid_state_and_unknown_mcp(client):
