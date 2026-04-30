@@ -5,12 +5,12 @@ phases:
   specification: { started: "2026-04-28T00:05:00Z", completed: "2026-04-28T00:15:00Z" }
   test_planning: { started: "2026-04-28T00:15:00Z", completed: "2026-04-28T00:25:00Z" }
   delivery_planning: { started: "2026-04-28T00:15:00Z", completed: "2026-04-28T00:25:00Z" }
-  delivery: { started: "2026-04-28T00:25:00Z", completed: null }
-  system_spec_update: { started: null, completed: null }
-  review_fix: { started: null, completed: null }
-  quality_gates: { started: null, completed: null }
-  dod_check: { started: null, completed: null }
-  pr_creation: { started: null, completed: null, url: null }
+  delivery: { started: "2026-04-28T00:25:00Z", completed: "2026-04-28T00:45:00Z" }
+  system_spec_update: { started: "2026-04-28T00:45:00Z", completed: "2026-04-28T00:50:00Z" }
+  review_fix: { started: "2026-04-28T00:50:00Z", completed: "2026-04-28T00:50:00Z" }
+  quality_gates: { started: "2026-04-28T00:50:00Z", completed: "2026-04-28T00:55:00Z" }
+  dod_check: { started: "2026-04-28T00:55:00Z", completed: "2026-04-28T00:58:00Z" }
+  pr_creation: { started: "2026-04-28T00:58:00Z", completed: "2026-04-28T01:00:00Z", url: "https://github.com/simodev25/orkestra/pull/21" }
 decisions:
   - text: "LLM receives full context: MCP catalog, families, skills, similar agents"
     date: "2026-04-28"
@@ -31,4 +31,7 @@ notes:
     date: "2026-04-28"
   - text: "All 3 artifacts created in parallel batch — spec, test-plan, plan committed"
     type: "info"
+    date: "2026-04-28"
+  - text: "Coder hit max steps limit; resumed to finalize docs sync and plan status"
+    type: "retro"
     date: "2026-04-28"

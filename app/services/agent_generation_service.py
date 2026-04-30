@@ -164,7 +164,7 @@ def build_generation_prompt(
         "You generate a governed Orkestra agent draft. "
         "Return strict JSON only with no markdown, comments, or explanation. "
         "Output must conform to GeneratedAgentDraft fields.\n\n"
-        f"INPUT:\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n\n"
+        f"INPUT:\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n\n"
         "Rules:\n"
         "- Use only existing family_id and skill_ids from context where possible.\n"
         "- Use allowed_mcps from context.mcp_catalog IDs only.\n"
@@ -176,10 +176,16 @@ def build_generation_prompt(
 
 async def _call_llm(prompt: str, db: AsyncSession) -> str:
     if not is_agentscope_available():
+        logger.warning("[AGENT-GEN] AgentScope not installed — cannot call LLM")
         raise ValueError("AgentScope unavailable")
     llm_config = await _read_llm_config_from_db(db)
+    logger.info("[AGENT-GEN] LLM config: provider=%s host=%s model=%s api_key=%s",
+                llm_config.get("provider"), llm_config.get("ollama_host"),
+                llm_config.get("ollama_model") or llm_config.get("openai_model"),
+                "SET" if (llm_config.get("ollama_api_key") or llm_config.get("openai_api_key")) else "NOT_SET")
     model = get_chat_model(config=llm_config)
     if model is None:
+        logger.warning("[AGENT-GEN] get_chat_model returned None — check LLM provider config")
         raise ValueError("LLM model could not be created")
 
     response = await asyncio.wait_for(
@@ -476,9 +482,12 @@ async def generate_agent_draft_with_fallback(
     started = time.monotonic()
 
     try:
+        logger.info("[AGENT-GEN] starting LLM generation for intent=%s", request.intent[:80])
         prompt = build_generation_prompt(request, catalog, context)
         trace["system_prompt"] = prompt
+        logger.info("[AGENT-GEN] prompt built (%d chars), calling LLM...", len(prompt))
         raw = await _call_llm(prompt, db)
+        logger.info("[AGENT-GEN] LLM responded (%d chars)", len(raw))
         trace["llm_raw_response"] = raw
         parsed = _parse_llm_json(raw)
         trace["llm_parsed"] = parsed
@@ -488,8 +497,10 @@ async def generate_agent_draft_with_fallback(
         trace["source"] = "llm"
         trace["duration_ms"] = round((time.monotonic() - started) * 1000)
         _write_trace(trace_name, trace)
+        logger.info("[AGENT-GEN] LLM draft generated successfully in %dms", trace["duration_ms"])
         return normalized, "llm"
     except Exception as exc:
+        logger.warning("[AGENT-GEN] LLM generation failed, falling back to heuristic: %s", exc)
         trace["fallback_reason"] = str(exc)
         fallback = _heuristic_generate_agent_draft(request, catalog)
         trace["llm_parsed"] = fallback.model_dump()

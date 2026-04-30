@@ -290,7 +290,12 @@ async def generate_agent_draft(
 
     context = agent_generation_service.AgentGenerationContext(
         families=[{"id": f.id, "label": f.label, "status": f.status} for f in families],
-        skills=skills,
+        skills=[
+            {"skill_id": s["skill_id"], "label": s.get("label"), "category": s.get("category"),
+             "description": s.get("description"), "allowed_families": s.get("allowed_families", []),
+             "status": s.get("status")}
+            for s in skills
+        ],
         similar_agents=similar_agents,
     )
     draft, source = await agent_generation_service.generate_agent_draft_with_fallback(
