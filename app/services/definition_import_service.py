@@ -16,6 +16,7 @@ from app.services.definition_resolver_service import (
     validate_definition_dependencies,
 )
 from app.services.event_service import emit_event
+from app.core.namespaces import DEFAULT_NAMESPACE_ID
 
 
 class DefinitionImportError(ValueError):
@@ -125,6 +126,7 @@ async def _upsert_agent_or_orchestrator(
 
     if existing is None:
         existing = AgentDefinition(id=agent_id)
+        existing.namespace_id = str(DEFAULT_NAMESPACE_ID)
         db.add(existing)
         action = "created"
     else:

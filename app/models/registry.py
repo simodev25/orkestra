@@ -2,18 +2,26 @@
 
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text, Integer, Boolean, DateTime
+from sqlalchemy import ForeignKey, String, Text, Integer, Boolean, DateTime, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
 from app.models.enums import AgentStatus, MCPStatus
+from app.core.namespaces import DEFAULT_NAMESPACE_ID
 
 
 class AgentDefinition(BaseModel):
     __tablename__ = "agent_definitions"
+    __table_args__ = (Index("ix_agent_definitions_namespace_id", "namespace_id"),)
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    namespace_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("namespaces.id"),
+        nullable=False,
+        default=lambda: str(DEFAULT_NAMESPACE_ID),
+    )
     name: Mapped[str] = mapped_column(String(255))
     family_id: Mapped[str] = mapped_column(String(50), ForeignKey("family_definitions.id"), nullable=False)
     purpose: Mapped[str] = mapped_column(Text)
@@ -47,6 +55,7 @@ class AgentDefinition(BaseModel):
 
     # Relationships
     family_rel = relationship("FamilyDefinition", back_populates="agents")
+    namespace = relationship("Namespace", back_populates="agents")
     agent_skills = relationship("AgentSkill", back_populates="agent", cascade="all, delete-orphan")
 
 

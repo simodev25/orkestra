@@ -1,11 +1,12 @@
 ---
 id: SPEC-nonfunctional-requirements
 status: Current
-version: 0.2.0
-last_updated: 2026-04-28
+version: 1.0.0
+last_updated: 2026-05-01
 links:
   related_changes:
     - GH-17
+    - GH-25
 ---
 
 # System Non-Functional Requirements (NFRs)
@@ -33,6 +34,24 @@ This document defines the current non-functional requirements and characteristic
 **Rationale**: Justify DAG model vs sequential execution  
 **Measurement**: E2E timing tests comparing parallel vs sequential stage durations  
 **Version**: 0.2.0 (GH-17)
+
+---
+
+### NFR-PERF-003: Namespace Resolution Overhead
+**Category**: Performance  
+**Requirement**: Request-scoped `X-Namespace` resolution adds ≤ 5ms P99 overhead per request  
+**Rationale**: Namespace scoping must preserve low-latency API behavior  
+**Measurement**: Benchmark `GET /api/agents` with and without header under representative load  
+**Version**: 0.3.0 (GH-25)
+
+---
+
+### NFR-PERF-004: Namespace CRUD Latency
+**Category**: Performance  
+**Requirement**: Namespace CRUD endpoints must meet P50 < 50ms and P95 < 200ms at 50 concurrent requests  
+**Rationale**: Namespace management should remain responsive for operational workflows  
+**Measurement**: Load test on `/api/namespaces` endpoints with 50 concurrent clients  
+**Version**: 0.3.0 (GH-25)
 
 ---
 
@@ -64,6 +83,15 @@ This document defines the current non-functional requirements and characteristic
 **Rationale**: Network instability should not affect run integrity  
 **Measurement**: Integration test with forced SSE disconnect; poll status endpoint for final result  
 **Version**: 0.2.0 (GH-17)
+
+---
+
+### NFR-REL-003: Namespace Migration Idempotence
+**Category**: Reliability  
+**Requirement**: Namespace migration can be re-applied without errors or state divergence  
+**Rationale**: Operational safety for deployments and disaster-recovery replay  
+**Measurement**: Apply migration on already-migrated schema and verify unchanged state  
+**Version**: 0.3.0 (GH-25)
 
 ---
 
@@ -109,6 +137,15 @@ This document defines the current non-functional requirements and characteristic
 
 ---
 
+### NFR-COMPAT-002: Headerless Client Backward Compatibility
+**Category**: Backward Compatibility  
+**Requirement**: Clients that omit `X-Namespace` continue to operate against `default` namespace with no contract breakage  
+**Rationale**: Existing integrations must remain functional after namespace rollout  
+**Measurement**: Regression tests for agent create/list/get without `X-Namespace`  
+**Version**: 0.3.0 (GH-25)
+
+---
+
 ## Security
 
 ### NFR-SEC-001: SSE Error Sanitization
@@ -149,8 +186,38 @@ This document defines the current non-functional requirements and characteristic
 
 ---
 
+### NFR-OBS-003: Namespace Validation and Resolution Logging
+**Category**: Observability  
+**Requirement**: Namespace slug-not-found, CRUD operations, and cross-namespace orchestrator validation failures emit structured logs with identifiers  
+**Rationale**: Fast diagnosis of namespace routing and orchestration issues  
+**Measurement**: Integration tests and log-field assertions for namespace events  
+**Version**: 0.3.0 (GH-25)
+
+---
+
+## Data Integrity
+
+### NFR-DATA-001: Non-Null Agent Namespace Assignment
+**Category**: Data Integrity  
+**Requirement**: After migration, zero `AgentDefinition` rows may have `namespace_id IS NULL`  
+**Rationale**: Enforces mandatory namespace ownership for all agents  
+**Measurement**: Post-migration assertion query and integration test  
+**Version**: 0.3.0 (GH-25)
+
+---
+
+### NFR-DATA-002: Namespace-Scoped Query Performance Indexing
+**Category**: Data Integrity / Performance  
+**Requirement**: `agent_definitions.namespace_id` must be indexed  
+**Rationale**: Prevent full-table scans for namespace-filtered agent queries  
+**Measurement**: Schema inspection tests for namespace index presence  
+**Version**: 0.3.0 (GH-25)
+
+---
+
 ## Version History
 
 | Version | Date | Change |
 |---------|------|--------|
 | 0.2.0 | 2026-04-28 | Initial NFRs: async pipeline performance, scalability, reliability, security (GH-17) |
+| 0.3.0 | 2026-05-01 | Added namespace foundation NFRs: resolution overhead, CRUD latency, migration idempotence, default fallback compatibility, namespace observability, data integrity/indexing (GH-25) |

@@ -18,13 +18,14 @@ from app.core.correlation import CorrelationIdMiddleware
 from app.api.routes import (
     health, requests, cases, agents, mcps, plans, runs,
     control, supervision, approvals, audit, workflows, mcp_catalog, metrics,
-    debug_strategy, test_lab, definitions,
+    debug_strategy, test_lab, definitions, namespaces,
 )
 from app.api.routes import settings as settings_routes
 from app.api.routes.families import router as families_router
 from app.api.routes.skills import router as skills_router
 from app.core.database import get_async_session_factory
 from app.services import seed_service
+from app.services import namespace_service
 
 settings = get_settings()
 logger = logging.getLogger("orkestra")
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI):
     try:
         factory = get_async_session_factory()
         async with factory() as db:
+            await namespace_service.ensure_default_namespace(db)
             await seed_service.seed_all(db)
     except Exception as exc:
         logger.error(f"Failed to seed families/skills: {exc}")
@@ -65,7 +67,7 @@ app.add_middleware(
     allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",")],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Namespace"],
 )
 app.add_middleware(ApiKeyMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
@@ -101,6 +103,7 @@ app.include_router(cases.router, prefix="/api/cases", tags=["cases"])
 app.include_router(families_router, prefix="/api/families", tags=["families"])
 app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
+app.include_router(namespaces.router, prefix="/api/namespaces", tags=["namespaces"])
 app.include_router(mcps.router, prefix="/api/mcps", tags=["mcps"])
 app.include_router(mcp_catalog.router, prefix="/api/mcp-catalog", tags=["mcp-catalog"])
 app.include_router(plans.router, prefix="/api", tags=["plans"])
