@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import logging
 
 from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +21,12 @@ from app.services import obot_catalog_service, skill_service
 from app.services.event_service import emit_event
 from app.utils.strings import dedupe_str_list as _dedupe_str_list
 from app.state_machines.agent_lifecycle_sm import AgentLifecycleStateMachine
+from app.core.namespaces import DEFAULT_NAMESPACE_ID
+from app.models.namespace import Namespace
 
 
 _AGENT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,99}$")
+logger = logging.getLogger("orkestra.agents")
 
 
 async def validate_agent_definition(db: AsyncSession, data: AgentCreate) -> list[str]:
@@ -72,10 +76,98 @@ async def validate_agent_definition(db: AsyncSession, data: AgentCreate) -> list
                     f"skill '{sid}' is not allowed for family '{data.family_id}'"
                 )
 
+    pipeline_ids = _dedupe_str_list(data.pipeline_agent_ids)
+    if pipeline_ids:
+        namespace_errors = await _validate_pipeline_agent_namespaces(
+            db,
+            pipeline_agent_ids=pipeline_ids,
+            target_namespace_id=data.namespace_id or str(DEFAULT_NAMESPACE_ID),
+        )
+        errors.extend(namespace_errors)
+
     return errors
 
 
+async def _validate_pipeline_agent_namespaces(
+    db: AsyncSession,
+    *,
+    pipeline_agent_ids: list[str],
+    target_namespace_id: str,
+) -> list[str]:
+    if not pipeline_agent_ids:
+        return []
+
+    stmt = select(AgentDefinition.id, AgentDefinition.namespace_id).where(
+        AgentDefinition.id.in_(pipeline_agent_ids)
+    )
+    rows = list((await db.execute(stmt)).all())
+    namespace_by_agent_id = {row[0]: row[1] for row in rows}
+
+    missing = [aid for aid in pipeline_agent_ids if aid not in namespace_by_agent_id]
+    if missing:
+        return [f"Unknown pipeline agents: {missing}"]
+
+    distinct_namespace_ids = sorted(set(namespace_by_agent_id.values()))
+    if len(distinct_namespace_ids) > 1:
+        slug_rows = await db.execute(
+            select(Namespace.id, Namespace.slug).where(Namespace.id.in_(distinct_namespace_ids))
+        )
+        slug_by_id = {row[0]: row[1] for row in slug_rows.all()}
+        logger.warning(
+            "pipeline_agent_namespace_validation_failed",
+            extra={
+                "event": "pipeline_agent_namespace_validation_failed",
+                "pipeline_agent_ids": pipeline_agent_ids,
+                "agent_namespace_pairs": [
+                    {
+                        "agent_id": aid,
+                        "namespace_id": namespace_by_agent_id[aid],
+                        "namespace_slug": slug_by_id.get(namespace_by_agent_id[aid]),
+                    }
+                    for aid in pipeline_agent_ids
+                ],
+                "distinct_namespace_ids": distinct_namespace_ids,
+                "distinct_namespace_slugs": [slug_by_id.get(ns_id) for ns_id in distinct_namespace_ids],
+                "validation_scope": "pipeline_agent_ids",
+                "failure_reason": "cross_namespace_agents",
+            },
+        )
+        return ["All pipeline agents must belong to the same namespace"]
+
+    resolved_namespace_id = distinct_namespace_ids[0]
+    if resolved_namespace_id != target_namespace_id:
+        slug_rows = await db.execute(
+            select(Namespace.id, Namespace.slug).where(
+                Namespace.id.in_([resolved_namespace_id, target_namespace_id])
+            )
+        )
+        slug_by_id = {row[0]: row[1] for row in slug_rows.all()}
+        logger.warning(
+            "pipeline_agent_namespace_validation_failed",
+            extra={
+                "event": "pipeline_agent_namespace_validation_failed",
+                "pipeline_agent_ids": pipeline_agent_ids,
+                "agent_namespace_pairs": [
+                    {
+                        "agent_id": aid,
+                        "namespace_id": namespace_by_agent_id[aid],
+                        "namespace_slug": slug_by_id.get(namespace_by_agent_id[aid]),
+                    }
+                    for aid in pipeline_agent_ids
+                ],
+                "distinct_namespace_ids": distinct_namespace_ids,
+                "distinct_namespace_slugs": [slug_by_id.get(ns_id) for ns_id in distinct_namespace_ids],
+                "validation_scope": "pipeline_agent_ids",
+                "failure_reason": "pipeline_namespace_differs_from_agent_namespace",
+            },
+        )
+        return ["All pipeline agents must belong to the same namespace"]
+
+    return []
+
+
 async def _apply_create_payload(db: AsyncSession, agent: AgentDefinition, payload: AgentCreate) -> None:
+    agent.namespace_id = payload.namespace_id or str(DEFAULT_NAMESPACE_ID)
     agent.name = payload.name
     agent.family_id = payload.family_id
     agent.purpose = payload.purpose
@@ -233,6 +325,16 @@ async def update_agent(db: AsyncSession, agent_id: str, data: AgentUpdate) -> Ag
                 f"skills not allowed for family '{new_family_id}': {incompatible}"
             )
 
+    if "pipeline_agent_ids" in updates:
+        pipeline_ids = _dedupe_str_list(updates["pipeline_agent_ids"])
+        namespace_errors = await _validate_pipeline_agent_namespaces(
+            db,
+            pipeline_agent_ids=pipeline_ids,
+            target_namespace_id=agent.namespace_id,
+        )
+        if namespace_errors:
+            raise ValueError("; ".join(namespace_errors))
+
     list_fields = {"allowed_mcps", "forbidden_effects", "limitations"}
     for field, value in updates.items():
         if field in list_fields:
@@ -378,6 +480,7 @@ def _workflow_matches(agent: AgentDefinition, workflow_id: str) -> bool:
 async def list_agents(
     db: AsyncSession,
     *,
+    namespace_id: str | None = None,
     family: str | None = None,
     status: str | None = None,
     criticality: str | None = None,
@@ -393,6 +496,8 @@ async def list_agents(
         selectinload(AgentDefinition.family_rel),
         selectinload(AgentDefinition.agent_skills),
     )
+    if namespace_id:
+        base_stmt = base_stmt.where(AgentDefinition.namespace_id == namespace_id)
     if family and family != "all":
         base_stmt = base_stmt.where(AgentDefinition.family_id == family)
     if status and status != "all":
@@ -432,7 +537,7 @@ async def list_agents(
     return items, total
 
 
-async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
+async def get_agent(db: AsyncSession, agent_id: str, *, namespace_id: str | None = None) -> AgentDefinition | None:
     stmt = (
         select(AgentDefinition)
         .where(AgentDefinition.id == agent_id)
@@ -441,6 +546,8 @@ async def get_agent(db: AsyncSession, agent_id: str) -> AgentDefinition | None:
             selectinload(AgentDefinition.agent_skills),
         )
     )
+    if namespace_id:
+        stmt = stmt.where(AgentDefinition.namespace_id == namespace_id)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -533,6 +640,7 @@ async def enrich_agent(db: AsyncSession, agent: AgentDefinition) -> dict:
 
     return {
         "id": agent.id,
+        "namespace_id": agent.namespace_id,
         "name": agent.name,
         "family_id": agent.family_id,
         "family": family,

@@ -19,6 +19,7 @@ class AgentCreate(OrkBaseSchema):
     id: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=255)
     family_id: str = Field(..., min_length=1, max_length=50)
+    namespace_id: str | None = None
     purpose: str = Field(..., min_length=1)
     description: Optional[str] = None
     skill_ids: Optional[list[str]] = None
@@ -81,6 +82,7 @@ class AgentUpdate(OrkBaseSchema):
 
 class AgentOut(OrkBaseSchema):
     id: str
+    namespace_id: str
     name: str
     family_id: str
     family: Optional[FamilyOut] = None  # enriched at read time via family_rel

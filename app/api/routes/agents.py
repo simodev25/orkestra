@@ -12,8 +12,10 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.database import get_db
+from app.api.dependencies.namespaces import get_resolved_namespace
 from app.models.family import AgentSkill
 from app.models.invocation import MCPInvocation
+from app.models.namespace import Namespace
 from app.schemas.agent import (
     AgentCreate,
     AgentGenerationRequest,
@@ -116,12 +118,20 @@ async def get_available_skills(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=AgentOut, status_code=201)
-async def create_agent(data: AgentCreate, db: AsyncSession = Depends(get_db)):
+async def create_agent(
+    data: AgentCreate,
+    db: AsyncSession = Depends(get_db),
+    namespace: Namespace = Depends(get_resolved_namespace),
+):
     try:
-        agent = await agent_registry_service.create_agent(db, data)
+        payload = data.model_copy(update={"namespace_id": namespace.id})
+        agent = await agent_registry_service.create_agent(db, payload)
         return await agent_registry_service.enrich_agent(db, agent)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        exc_str = str(exc)
+        if "All pipeline agents must belong to the same namespace" in exc_str:
+            raise HTTPException(status_code=422, detail="All pipeline agents must belong to the same namespace")
+        raise HTTPException(status_code=400, detail=exc_str)
 
 
 @router.get("")
@@ -137,9 +147,11 @@ async def list_agents(
     offset: int = 0,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
+    namespace: Namespace = Depends(get_resolved_namespace),
 ):
     agents, total = await agent_registry_service.list_agents(
         db,
+        namespace_id=namespace.id,
         q=q,
         family=family,
         status=status,
@@ -230,20 +242,35 @@ async def restore_agent(agent_id: str, history_id: str, db: AsyncSession = Depen
 
 
 @router.get("/{agent_id}", response_model=AgentOut)
-async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
-    agent = await agent_registry_service.get_agent(db, agent_id)
+async def get_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    namespace: Namespace = Depends(get_resolved_namespace),
+):
+    agent = await agent_registry_service.get_agent(db, agent_id, namespace_id=namespace.id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return await agent_registry_service.enrich_agent(db, agent)
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)
-async def update_agent(agent_id: str, data: AgentUpdate, db: AsyncSession = Depends(get_db)):
+async def update_agent(
+    agent_id: str,
+    data: AgentUpdate,
+    db: AsyncSession = Depends(get_db),
+    namespace: Namespace = Depends(get_resolved_namespace),
+):
     try:
+        existing = await agent_registry_service.get_agent(db, agent_id, namespace_id=namespace.id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
         agent = await agent_registry_service.update_agent(db, agent_id, data)
         return await agent_registry_service.enrich_agent(db, agent)
     except ValueError as exc:
         exc_str = str(exc)
+        if "All pipeline agents must belong to the same namespace" in exc_str:
+            raise HTTPException(status_code=422, detail="All pipeline agents must belong to the same namespace")
         if "not allowed for family" in exc_str or "skills not allowed" in exc_str:
             raise HTTPException(status_code=422, detail=exc_str)
         raise HTTPException(status_code=400, detail=exc_str)
@@ -266,8 +293,9 @@ async def update_agent_status(
 async def delete_agent(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
+    namespace: Namespace = Depends(get_resolved_namespace),
 ):
-    existing = await agent_registry_service.get_agent(db, agent_id)
+    existing = await agent_registry_service.get_agent(db, agent_id, namespace_id=namespace.id)
     if not existing:
         raise HTTPException(status_code=404, detail="Agent not found")
     try:
