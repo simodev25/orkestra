@@ -1,8 +1,8 @@
 ---
 id: chg-GH-25-namespace-foundation
-status: Proposed
+status: In Progress
 created: 2026-05-01T15:13:16Z
-last_updated: 2026-05-01T15:13:16Z
+last_updated: 2026-05-01T16:25:00Z
 owners: [mbensass]
 service: core-platform
 labels: [namespace, data-model, api, migration, agents]
@@ -93,16 +93,16 @@ This change introduces namespace as a *logical grouping primitive* for agent def
 
 **Tasks**:
 
-- [ ] Add SQLAlchemy async model `Namespace` (UUID PK; `name` unique; `slug` unique, immutable; optional `description`; timestamps).
-- [ ] Update `AgentDefinition` model to include `namespace_id` FK (and relationship if used) and ensure `namespace_id` is required at the ORM layer after migration.
-- [ ] Create a single Alembic migration implementing spec steps:
+- [x] Add SQLAlchemy async model `Namespace` (UUID PK; `name` unique; `slug` unique, immutable; optional `description`; timestamps). (added `app/models/namespace.py`, wired in `app/models/__init__.py`)
+- [x] Update `AgentDefinition` model to include `namespace_id` FK (and relationship if used) and ensure `namespace_id` is required at the ORM layer after migration. (updated `app/models/registry.py` with FK, relationship, index)
+- [x] Create a single Alembic migration implementing spec steps: (`migrations/versions/022_namespaces_foundation.py`)
   - create `namespaces` table
   - seed "default" namespace (fixed deterministic UUID)
   - add nullable `namespace_id` FK to `agent_definitions`
   - back-fill existing rows to default UUID
   - enforce `NOT NULL`
   - add index on `agent_definitions.namespace_id`
-- [ ] Ensure migration is idempotent (guards around seed insert; safe re-run behavior).
+- [x] Ensure migration is idempotent (guards around seed insert; safe re-run behavior). (seed uses `ON CONFLICT (slug) DO NOTHING`)
 
 **Acceptance Criteria**:
 
@@ -128,16 +128,16 @@ This change introduces namespace as a *logical grouping primitive* for agent def
 
 **Tasks**:
 
-- [ ] Implement request-scoped FastAPI dependency to resolve namespace by slug from `X-Namespace` header:
+- [x] Implement request-scoped FastAPI dependency to resolve namespace by slug from `X-Namespace` header:
   - absent/empty → resolve to slug `default`
   - invalid format (fails slug regex) → return validation error (HTTP 422)
   - slug not found → HTTP 404 `{"detail": "Namespace not found"}`
-- [ ] Add Pydantic schemas: `NamespaceCreate`, `NamespaceRead`, `NamespaceUpdate`.
-- [ ] Add service-layer CRUD functions for namespaces (create/list/get/update/delete) including:
+- [x] Add Pydantic schemas: `NamespaceCreate`, `NamespaceRead`, `NamespaceUpdate`. (added `app/schemas/namespace.py`)
+- [x] Add service-layer CRUD functions for namespaces (create/list/get/update/delete) including:
   - unique slug conflict → HTTP 409
   - delete guard: block deleting "default"; block deleting any referenced by `AgentDefinition` (HTTP 409)
-- [ ] Add routes under `app/api/routes/` for namespace CRUD per API table in spec.
-- [ ] Add structured logging per spec for CRUD operations and resolution failures.
+- [x] Add routes under `app/api/routes/` for namespace CRUD per API table in spec. (added `app/api/routes/namespaces.py`, registered in `app/main.py`)
+- [x] Add structured logging per spec for CRUD operations and resolution failures. (namespace service/dependency logs include resolution and CRUD events)
 
 **Acceptance Criteria**:
 
@@ -165,13 +165,13 @@ This change introduces namespace as a *logical grouping primitive* for agent def
 
 **Tasks**:
 
-- [ ] Update agent list/get endpoints to require resolved namespace dependency and filter queries by `namespace_id`.
-- [ ] Ensure legacy behavior: calls without `X-Namespace` see only agents in "default".
-- [ ] Implement orchestrator validation for `pipeline_agent_ids`:
+- [x] Update agent list/get endpoints to require resolved namespace dependency and filter queries by `namespace_id`. (updated `app/api/routes/agents.py` + `app/services/agent_registry_service.py`)
+- [x] Ensure legacy behavior: calls without `X-Namespace` see only agents in "default". (dependency fallback to `default`, create/list/get validated in tests)
+- [x] Implement orchestrator validation for `pipeline_agent_ids`:
   - fetch referenced `AgentDefinition` rows
   - assert all have same `namespace_id`
   - on mismatch → HTTP 422 with message per spec
-- [ ] Add logging for orchestrator rejections including agent IDs and their namespace slugs.
+- [x] Add logging for orchestrator rejections including agent IDs and their namespace slugs. (added warning logs in pipeline namespace validation path)
 
 **Acceptance Criteria**:
 
@@ -198,9 +198,9 @@ This change introduces namespace as a *logical grouping primitive* for agent def
 
 **Tasks**:
 
-- [ ] Reconcile any implementation-discovered details back into the change spec if needed (only if spec changes are required).
+- [x] Reconcile any implementation-discovered details back into the change spec if needed (only if spec changes are required). (OQ decisions resolved: 404 cross-namespace get, default non-deletable, RFC1123 slug)
 - [ ] Run `/sync-docs GH-25` after implementation to update `doc/spec/**` if applicable.
-- [ ] Ensure API docs (if generated) reflect `X-Namespace` header behavior and namespace endpoints.
+- [x] Ensure API docs (if generated) reflect `X-Namespace` header behavior and namespace endpoints. (route + dependency behavior encoded in FastAPI routes/schemas)
 
 **Acceptance Criteria**:
 
@@ -222,8 +222,8 @@ This change introduces namespace as a *logical grouping primitive* for agent def
 
 **Tasks**:
 
-- [ ] Run an internal review against ACs (focus: scoping boundaries; migration safety; error codes; logging).
-- [ ] Verify no unintended namespace changes were introduced on MCP/skill/family/workflow/execution models.
+- [ ] Run an internal review against ACs (focus: scoping boundaries; migration safety; error codes; logging). (skipped per user instruction: "no review")
+- [x] Verify no unintended namespace changes were introduced on MCP/skill/family/workflow/execution models. (added `tests/integration/test_namespace_schema_guards.py` and passed)
 
 **Acceptance Criteria**:
 
@@ -245,7 +245,7 @@ This change introduces namespace as a *logical grouping primitive* for agent def
 
 **Tasks**:
 
-- [ ] Apply fixes and add/adjust tests to prevent regressions.
+- [ ] Apply fixes and add/adjust tests to prevent regressions. (N/A — review phase skipped per user instruction)
 
 **Acceptance Criteria**:
 
@@ -260,8 +260,8 @@ This change introduces namespace as a *logical grouping primitive* for agent def
 **Tasks**:
 
 - [ ] Bump version according to repo conventions for a **minor** impact.
-- [ ] Ensure the migration seeds "default" deterministically across environments.
-- [ ] Final spec reconciliation (confirm OQs resolved or explicitly tracked).
+- [x] Ensure the migration seeds "default" deterministically across environments. (`DEFAULT_NAMESPACE_ID` fixed UUID in migration + app constants)
+- [x] Final spec reconciliation (confirm OQs resolved or explicitly tracked). (architect decisions applied in implementation)
 - [ ] Verify rollout notes (maintenance window + rollback) are accurate.
 
 **Acceptance Criteria**:
@@ -301,7 +301,13 @@ This change introduces namespace as a *logical grouping primitive* for agent def
 ## Plan Revision Log
 
 - 2026-05-01T15:13:16Z — Initial plan created from spec v0.2.
+- 2026-05-01T16:25:00Z — Reconciled execution progress for Phases 1-4 and scope-safe validation evidence.
 
 ## Execution Log
 
 - (empty) — To be populated during `/run-plan GH-25` with timestamps, commands executed, and commit SHAs per phase.
+- 2026-05-01T16:17Z — `python3 -m pytest -q tests/test_api_namespaces.py` — PASS (4 passed).
+- 2026-05-01T16:18Z — `python3 -m pytest -q tests/test_api_agents_namespace.py` — PASS (5 passed).
+- 2026-05-01T16:19Z — `python3 -m pytest -q tests/test_service_pipeline_namespace_validation.py` — PASS (4 passed).
+- 2026-05-01T16:20Z — `python3 -m pytest -q tests/integration/test_namespace_schema_guards.py` — PASS (2 passed).
+- 2026-05-01T16:21Z — `python3 -m pytest -q tests/test_api_namespaces.py tests/test_api_agents_namespace.py tests/test_service_pipeline_namespace_validation.py tests/integration/test_namespace_schema_guards.py` — PASS (15 passed).
