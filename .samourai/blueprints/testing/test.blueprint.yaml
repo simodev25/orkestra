@@ -1,0 +1,26 @@
+schema_version: 1
+kind: testing
+name: test
+description: "Generation contract for a test plan."
+inputs:
+  required:
+    - scope
+    - acceptance_criteria
+    - risk_areas
+  optional:
+    - existing_tests
+    - test_data
+outputs:
+  primary:
+    - ".samourai/docai/changes/<change>/chg-<ref>-test-plan.md"
+safety:
+  secrets_policy: "Never use real credentials as test data."
+  external_actions: "Tests against external services require approval."
+  destructive_actions: "Destructive tests require a dedicated environment and human approval."
+tools_allowed:
+  - read
+  - search
+  - shell_readonly
+validation:
+  - "Each acceptance criterion has at least one test."
+  - "External or destructive tests are marked."

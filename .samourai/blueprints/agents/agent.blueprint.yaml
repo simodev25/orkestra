@@ -1,0 +1,30 @@
+schema_version: 1
+kind: agent
+name: agent
+description: "Generation contract for a Samourai agent."
+inputs:
+  required:
+    - agent_name
+    - mission
+    - triggers
+    - tools_allowed
+    - output_contract
+  optional:
+    - handoffs
+    - forbidden_actions
+    - examples
+outputs:
+  primary:
+    - ".opencode/agent/<agent_name>.md"
+safety:
+  secrets_policy: "Never read, display, store, or copy secrets."
+  external_actions: "GitHub, Jira, CI, and publishing require human approval."
+  destructive_actions: "Ask for confirmation before deletion, reset, merge, rebase, or overwrite."
+tools_allowed:
+  - read
+  - search
+  - edit
+  - shell_readonly
+validation:
+  - "Allowed tools are explicitly listed."
+  - "Expected outputs are observable and testable."

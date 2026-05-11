@@ -1,0 +1,29 @@
+schema_version: 1
+kind: workflow
+name: workflow
+description: "Generation contract for a Samourai workflow."
+inputs:
+  required:
+    - workflow_name
+    - objective
+    - phases
+    - gates
+  optional:
+    - owners
+    - rollback
+    - metrics
+outputs:
+  primary:
+    - ".samourai/docai/workflows/<workflow_name>.md"
+safety:
+  secrets_policy: "Never store secrets in the workflow."
+  external_actions: "GitHub, Jira, CI, release, and deployment are sensitive."
+  destructive_actions: "Rollback, deletion, and overwrite require confirmation."
+tools_allowed:
+  - read
+  - search
+  - edit
+  - shell_readonly
+validation:
+  - "Each phase has a measurable output."
+  - "Each sensitive action has a human gate."

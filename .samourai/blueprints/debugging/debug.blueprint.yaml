@@ -1,0 +1,26 @@
+schema_version: 1
+kind: debugging
+name: debug
+description: "Generation contract for a debugging report."
+inputs:
+  required:
+    - symptom
+    - reproduction_steps
+    - observed_evidence
+  optional:
+    - environment
+    - suspected_area
+outputs:
+  primary:
+    - ".samourai/tmpai/debugging/debug-report.md"
+safety:
+  secrets_policy: "Mask any observed secret; never copy it."
+  external_actions: "Do not call external services without approval."
+  destructive_actions: "Do not delete caches, data, or branches without confirmation."
+tools_allowed:
+  - read
+  - search
+  - shell_readonly
+validation:
+  - "Root cause is separated from hypotheses."
+  - "Reproduction commands are listed."

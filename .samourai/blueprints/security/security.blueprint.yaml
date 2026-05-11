@@ -1,0 +1,27 @@
+schema_version: 1
+kind: security
+name: security
+description: "Generation contract for a security policy."
+inputs:
+  required:
+    - scope
+    - sensitive_actions
+    - data_classes
+    - verification
+  optional:
+    - compliance_notes
+    - incident_contacts
+outputs:
+  primary:
+    - ".samourai/docai/guides/security-policy.md"
+safety:
+  secrets_policy: "Never read, display, store, or copy secrets."
+  external_actions: "Every external action is sensitive by default."
+  destructive_actions: "Every destructive action requires human confirmation."
+tools_allowed:
+  - read
+  - search
+  - edit
+validation:
+  - "Sensitive actions are explicitly listed."
+  - "The policy includes an escalation procedure."

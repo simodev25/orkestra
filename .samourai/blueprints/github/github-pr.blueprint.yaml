@@ -1,0 +1,29 @@
+schema_version: 1
+kind: github_pr
+name: github-pr
+description: "Generation contract for a GitHub Pull Request."
+inputs:
+  required:
+    - branch
+    - base_branch
+    - summary
+    - changes
+    - test_evidence
+  optional:
+    - linked_issues
+    - screenshots
+    - rollout_notes
+outputs:
+  primary:
+    - ".samourai/tmpai/pr/<branch>/description.md"
+safety:
+  secrets_policy: "Never include secrets in the description or logs."
+  external_actions: "Create, update, merge, and review actions on GitHub require human approval."
+  destructive_actions: "Merge, close, delete branch, and force-push are sensitive."
+tools_allowed:
+  - read
+  - search
+  - shell_readonly
+validation:
+  - "The PR lists executed tests."
+  - "Risks and rollback notes are included when relevant."

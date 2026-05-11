@@ -1,0 +1,27 @@
+schema_version: 1
+kind: code_review
+name: code-review
+description: "Samourai code review contract."
+inputs:
+  required:
+    - diff_scope
+    - acceptance_criteria
+    - test_evidence
+  optional:
+    - ticket_context
+    - risk_focus
+outputs:
+  primary:
+    - ".samourai/tmpai/code-review/<branch>/review-draft.md"
+    - ".samourai/tmpai/code-review/<branch>/findings.json"
+safety:
+  secrets_policy: "Report suspected secrets without copying their values."
+  external_actions: "Publishing a remote review is sensitive and requires approval."
+  destructive_actions: "No destructive action during review."
+tools_allowed:
+  - read
+  - search
+  - shell_readonly
+validation:
+  - "Findings cite file and line when possible."
+  - "Severity levels are justified."

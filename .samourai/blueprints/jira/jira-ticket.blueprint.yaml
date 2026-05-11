@@ -1,0 +1,27 @@
+schema_version: 1
+kind: jira_ticket
+name: jira-ticket
+description: "Generation contract for a Jira ticket."
+inputs:
+  required:
+    - issue_type
+    - summary
+    - problem
+    - acceptance_criteria
+  optional:
+    - priority
+    - labels
+    - links
+outputs:
+  primary:
+    - "jira-ticket-description.md"
+safety:
+  secrets_policy: "Never include secrets or unnecessary personal data."
+  external_actions: "Creating or transitioning a Jira issue requires human approval."
+  destructive_actions: "Never close, delete, or transition without approval."
+tools_allowed:
+  - read
+  - search
+validation:
+  - "The ticket contains testable acceptance criteria."
+  - "The description does not duplicate comments unnecessarily."

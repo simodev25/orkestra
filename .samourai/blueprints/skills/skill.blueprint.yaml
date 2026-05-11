@@ -1,0 +1,28 @@
+schema_version: 1
+kind: skill
+name: skill
+description: "Generation contract for a Samourai skill."
+inputs:
+  required:
+    - skill_name
+    - use_when
+    - procedure
+    - verification
+  optional:
+    - examples
+    - anti_patterns
+outputs:
+  primary:
+    - ".opencode/skills/project/<domain>/<skill_name>/SKILL.md"
+  forbidden:
+    - ".opencode/command/<skill_name>.md"
+safety:
+  secrets_policy: "Never include secrets in examples."
+  external_actions: "Any external action must be marked as sensitive."
+tools_allowed:
+  - read
+  - search
+validation:
+  - "The skill has clear applicability criteria."
+  - "The skill includes final verification."
+  - "The skill is not documented as a slash command."

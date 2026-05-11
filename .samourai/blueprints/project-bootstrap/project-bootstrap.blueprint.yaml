@@ -1,0 +1,32 @@
+schema_version: 1
+kind: project_bootstrap
+name: project-bootstrap
+description: "Initialize Samourai project instructions."
+inputs:
+  required:
+    - project_name
+    - repository_summary
+    - tech_stack
+    - quality_commands
+  optional:
+    - documentation_paths
+    - deployment_notes
+    - language_policy
+outputs:
+  primary:
+    - ".samourai/AGENTS.md"
+  optional:
+    - "AGENTS.md"
+    - ".samourai/docai/00-index.md"
+safety:
+  secrets_policy: "Never read, display, store, or copy secrets."
+  external_actions: "No external action during bootstrap without human approval."
+  destructive_actions: "Forbidden without explicit confirmation."
+tools_allowed:
+  - read
+  - search
+  - edit
+  - shell_readonly
+validation:
+  - "Referenced paths exist or are clearly marked as to-create."
+  - "Test and build commands are exact."
